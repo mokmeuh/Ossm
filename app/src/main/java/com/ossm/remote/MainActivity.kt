@@ -1,0 +1,218 @@
+package com.ossm.remote
+
+import android.Manifest
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothManager
+import android.content.Intent
+import android.os.Build
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
+import androidx.compose.animation.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
+import androidx.navigation.compose.*
+import com.ossm.remote.model.BleConnectionState
+import com.ossm.remote.ui.navigation.BottomNavScreens
+import com.ossm.remote.ui.navigation.Screen
+import com.ossm.remote.ui.screens.*
+import com.ossm.remote.ui.theme.*
+import com.ossm.remote.viewmodel.*
+import dagger.hilt.android.AndroidEntryPoint
+
+@AndroidEntryPoint
+class MainActivity : ComponentActivity() {
+
+    private val bleVm: BleViewModel by viewModels()
+    private val controlVm: ControlViewModel by viewModels()
+    private val diagnosticsVm: DiagnosticsViewModel by viewModels()
+    private val profilesVm: ProfilesViewModel by viewModels()
+    private val funscriptVm: FunscriptViewModel by viewModels()
+
+    private val enableBtLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { /* handle result */ }
+
+    private val permissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { /* permissions granted */ }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+
+        requestBlePermissions()
+
+        setContent {
+            OssmRemoteTheme {
+                OssmApp(
+                    bleVm = bleVm,
+                    controlVm = controlVm,
+                    diagnosticsVm = diagnosticsVm,
+                    profilesVm = profilesVm,
+                    funscriptVm = funscriptVm,
+                    onEnableBluetooth = {
+                        if (!bleVm.isBluetoothEnabled()) {
+                            enableBtLauncher.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE))
+                        }
+                    }
+                )
+            }
+        }
+    }
+
+    private fun requestBlePermissions() {
+        val perms = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            arrayOf(
+                Manifest.permission.BLUETOOTH_SCAN,
+                Manifest.permission.BLUETOOTH_CONNECT
+            )
+        } else {
+            arrayOf(
+                Manifest.permission.BLUETOOTH,
+                Manifest.permission.BLUETOOTH_ADMIN,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            )
+        }
+        permissionLauncher.launch(perms)
+    }
+}
+
+@OptIn(ExperimentalAnimationApi::class)
+@Composable
+fun OssmApp(
+    bleVm: BleViewModel,
+    controlVm: ControlViewModel,
+    diagnosticsVm: DiagnosticsViewModel,
+    profilesVm: ProfilesViewModel,
+    funscriptVm: FunscriptViewModel,
+    onEnableBluetooth: () -> Unit
+) {
+    val navController = rememberNavController()
+    var warningAccepted by remember { mutableStateOf(false) }
+
+    if (!warningAccepted) {
+        WarningScreen(onAccept = { warningAccepted = true })
+        return
+    }
+
+    val connectionState by bleVm.connectionState.collectAsState()
+    val controlUiState by controlVm.uiState.collectAsState()
+    val diagnosticsLogs by diagnosticsVm.logs.collectAsState()
+    val lastCommand by diagnosticsVm.lastCommand.collectAsState()
+    val presets by profilesVm.presets.collectAsState()
+    val funscriptState by funscriptVm.uiState.collectAsState()
+    val scannedDevices by bleVm.scannedDevices.collectAsState()
+
+    val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
+
+    Scaffold(
+        containerColor = OssmBackground,
+        bottomBar = {
+            NavigationBar(
+                containerColor = OssmSurface.copy(alpha = 0.95f),
+                modifier = Modifier
+                    .navigationBarsPadding()
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                    .clip(RoundedCornerShape(20.dp))
+            ) {
+                BottomNavScreens.forEach { screen ->
+                    NavigationBarItem(
+                        selected = currentRoute == screen.route,
+                        onClick = {
+                            navController.navigate(screen.route) {
+                                popUpTo(navController.graph.startDestinationId) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
+                        icon = { Icon(screen.icon, screen.label) },
+                        label = { Text(screen.label) },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = OssmPrimary,
+                            selectedTextColor = OssmPrimary,
+                            unselectedIconColor = OssmOnSurface.copy(0.5f),
+                            unselectedTextColor = OssmOnSurface.copy(0.5f),
+                            indicatorColor = OssmPrimary.copy(0.15f)
+                        )
+                    )
+                }
+            }
+        }
+    ) { padding ->
+        NavHost(
+            navController = navController,
+            startDestination = Screen.Scan.route,
+            modifier = Modifier.padding(padding)
+        ) {
+            composable(Screen.Scan.route) {
+                ScanScreen(
+                    connectionState = connectionState,
+                    devices = scannedDevices,
+                    onScan = {
+                        if (!bleVm.isBluetoothEnabled()) onEnableBluetooth()
+                        else bleVm.startScan()
+                    },
+                    onConnect = { address ->
+                        bleVm.connect(address)
+                        navController.navigate(Screen.Control.route)
+                    },
+                    onStop = bleVm::stopScan
+                )
+            }
+            composable(Screen.Control.route) {
+                ControlScreen(
+                    connectionState = connectionState,
+                    uiState = controlUiState,
+                    onSpeed = controlVm::setSpeed,
+                    onDepth = controlVm::setDepth,
+                    onStroke = controlVm::setStrokeLength,
+                    onSensation = controlVm::setSensation,
+                    onPattern = controlVm::activatePattern,
+                    onStop = {
+                        controlVm.stop()
+                        bleVm.emergencyStop()
+                    },
+                    onSavePreset = profilesVm::savePreset
+                )
+            }
+            composable(Screen.Diagnostics.route) {
+                DiagnosticsScreen(
+                    logs = diagnosticsLogs,
+                    connectionState = connectionState,
+                    lastCommand = lastCommand,
+                    onClear = diagnosticsVm::clearLogs
+                )
+            }
+            composable(Screen.Profiles.route) {
+                ProfilesScreen(
+                    presets = presets,
+                    onApply = { preset ->
+                        controlVm.applyPreset(preset.speed, preset.depth, preset.strokeLength, preset.sensation)
+                        navController.navigate(Screen.Control.route)
+                    },
+                    onDelete = profilesVm::deletePreset
+                )
+            }
+            composable(Screen.Funscript.route) {
+                FunscriptScreen(
+                    uiState = funscriptState,
+                    connectionState = connectionState,
+                    onLoad = funscriptVm::loadFunscript,
+                    onPlay = funscriptVm::play,
+                    onPause = funscriptVm::pause,
+                    onStop = funscriptVm::stop
+                )
+            }
+        }
+    }
+}

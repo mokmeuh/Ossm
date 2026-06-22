@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">OSSM Remote</string>
+    <string name="warning_title">⚠ Avertissement</string>
+    <string name="warning_body">Cette application contrôle un appareil OSSM/OFFM via Bluetooth Low Energy.\n\nL\'API Bluetooth OSSM est expérimentale. Des comportements inattendus peuvent se produire.\n\nAssurez-vous que le bouton STOP physique est accessible à tout moment.\n\nUtilisez en toute sécurité et de manière responsable.</string>
+    <string name="warning_accept">J\'ai compris, continuer</string>
+    <string name="stop">STOP</string>
+    <string name="scan">Scanner</string>
+    <string name="connect">Connecter</string>
+    <string name="disconnect">Déconnecter</string>
+    <string name="control">Contrôle</string>
+    <string name="diagnostics">Diagnostics</string>
+    <string name="profiles">Profils</string>
+    <string name="funscript">Funscript</string>
+</resources>
