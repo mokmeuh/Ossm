@@ -26,7 +26,7 @@ jobs:
         run: |
           mkdir -p gradle/wrapper
           curl -fL \
-            "https://github.com/gradle/gradle/raw/v8.7.0/gradle/wrapper/gradle-wrapper.jar" \
+            "https://github.com/gradle/gradle/raw/v8.10.2/gradle/wrapper/gradle-wrapper.jar" \
             -o gradle/wrapper/gradle-wrapper.jar
 
       - name: Grant execute permission to gradlew
