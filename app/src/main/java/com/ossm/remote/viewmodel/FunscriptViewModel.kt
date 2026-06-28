@@ -10,15 +10,22 @@ import com.ossm.remote.model.Funscript
 import com.ossm.remote.model.OssmCommand
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class FunscriptUiState(
     val isPlaying: Boolean = false,
     val isPaused: Boolean = false,
+    val isPreparing: Boolean = false,
     val fileName: String = "",
     val totalActions: Int = 0,
     val currentActionIndex: Int = 0,
@@ -61,47 +68,73 @@ class FunscriptViewModel @Inject constructor(
         if (_uiState.value.isPlaying) return
 
         playJob?.cancel()
-        val startOffset = if (_uiState.value.isPaused) pausedAtMs else 0L
-        val startTime = System.currentTimeMillis() - startOffset
+        val resumeFromPause = _uiState.value.isPaused
+        val startOffset = if (resumeFromPause) pausedAtMs else 0L
 
-        _uiState.value = _uiState.value.copy(isPlaying = true, isPaused = false, error = null)
+        _uiState.value = _uiState.value.copy(
+            isPlaying = true,
+            isPaused = false,
+            isPreparing = !resumeFromPause,
+            error = null
+        )
 
         playJob = viewModelScope.launch {
+            if (!resumeFromPause) {
+                bleManager.sendCommand(OssmCommand.EnterStreaming)
+                // Wait for homing/preflight to complete before sending stream commands
+                waitForStreamingReady()
+            }
+
+            _uiState.value = _uiState.value.copy(isPreparing = false)
+
             val actions = fs.actions.sortedBy { it.atMs }
+            val startTime = System.currentTimeMillis() - startOffset
             var actionIdx = actions.indexOfFirst { it.atMs >= startOffset }.coerceAtLeast(0)
 
             while (actionIdx < actions.size && isActive) {
                 val action = actions[actionIdx]
                 val targetTime = startTime + action.atMs
-                val now = System.currentTimeMillis()
-                val delay = targetTime - now
+                val waitMs = targetTime - System.currentTimeMillis()
+                if (waitMs > 0) delay(waitMs)
 
-                if (delay > 0) delay(delay)
+                val durationMs = if (actionIdx == 0) {
+                    150
+                } else {
+                    (action.atMs - actions[actionIdx - 1].atMs).coerceIn(20L, 2000L).toInt()
+                }
 
-                val elapsed = System.currentTimeMillis() - startTime
                 bleManager.sendCommand(
-                    OssmCommand.Position(
-                        position = action.pos / 100f,
-                        speed = 1f
+                    OssmCommand.Stream(
+                        positionPercent = action.pos.coerceIn(0, 100),
+                        timeMs = durationMs
                     )
                 )
 
                 _uiState.value = _uiState.value.copy(
                     currentActionIndex = actionIdx,
-                    elapsedMs = elapsed
+                    elapsedMs = System.currentTimeMillis() - startTime
                 )
                 actionIdx++
             }
 
-            // Playback complete
             stop()
+        }
+    }
+
+    private suspend fun waitForStreamingReady(timeoutMs: Long = 8000) {
+        withTimeoutOrNull(timeoutMs) {
+            bleManager.machineState.first { state ->
+                state.state.contains("streaming", ignoreCase = true) &&
+                    !state.isHoming &&
+                    !state.isPreflight
+            }
         }
     }
 
     fun pause() {
         pausedAtMs = _uiState.value.elapsedMs
         playJob?.cancel()
-        _uiState.value = _uiState.value.copy(isPlaying = false, isPaused = true)
+        _uiState.value = _uiState.value.copy(isPlaying = false, isPaused = true, isPreparing = false)
         bleManager.sendCommand(OssmCommand.Stop)
     }
 
@@ -111,6 +144,7 @@ class FunscriptViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(
             isPlaying = false,
             isPaused = false,
+            isPreparing = false,
             currentActionIndex = 0,
             elapsedMs = 0L
         )

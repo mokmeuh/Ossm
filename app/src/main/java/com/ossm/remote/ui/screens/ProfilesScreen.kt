@@ -6,18 +6,41 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.BookmarkBorder
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ossm.remote.model.Preset
 import com.ossm.remote.ui.components.GlassCard
-import com.ossm.remote.ui.theme.*
+import com.ossm.remote.ui.theme.OssmAccent
+import com.ossm.remote.ui.theme.OssmBackground
+import com.ossm.remote.ui.theme.OssmConnected
+import com.ossm.remote.ui.theme.OssmError
+import com.ossm.remote.ui.theme.OssmOnSurface
+import com.ossm.remote.ui.theme.OssmPrimary
+import com.ossm.remote.ui.theme.OssmPrimaryLight
+import com.ossm.remote.ui.theme.OssmSecondary
+import com.ossm.remote.ui.theme.OssmSurface
 
 @Composable
 fun ProfilesScreen(
@@ -45,14 +68,22 @@ fun ProfilesScreen(
             )
 
             if (presets.isEmpty()) {
-                Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         Icon(Icons.Default.BookmarkBorder, null, tint = OssmPrimaryLight, modifier = Modifier.size(48.dp))
                         Text(
-                            "Aucun profil sauvegardé\n\nUtilisez l'icône 💾 dans l'onglet Contrôle\npour sauvegarder vos réglages",
-                            color = OssmOnSurface.copy(0.4f),
+                            "Aucun profil sauvegarde\n\nUtilisez l'icone de sauvegarde dans l'onglet Controle pour garder vos reglages.",
+                            color = OssmOnSurface.copy(alpha = 0.4f),
                             fontSize = 14.sp,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            textAlign = TextAlign.Center
                         )
                     }
                 }
@@ -62,7 +93,11 @@ fun ProfilesScreen(
                     modifier = Modifier.weight(1f)
                 ) {
                     items(presets, key = { it.id }) { preset ->
-                        PresetCard(preset = preset, onApply = { onApply(preset) }, onDelete = { onDelete(preset) })
+                        PresetCard(
+                            preset = preset,
+                            onApply = { onApply(preset) },
+                            onDelete = { onDelete(preset) }
+                        )
                     }
                 }
             }
@@ -79,14 +114,17 @@ private fun PresetCard(preset: Preset, onApply: () -> Unit, onDelete: () -> Unit
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
                 Text(preset.name, fontWeight = FontWeight.Bold, color = OssmOnSurface, fontSize = 16.sp)
+                Text(preset.patternName, color = OssmPrimaryLight, fontSize = 12.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     StatChip("Vitesse", "${(preset.speed * 100).toInt()}%", OssmPrimary)
-                    StatChip("Prof.", "${(preset.depth * 100).toInt()}%", OssmAccent)
-                    StatChip("Stroke", "${(preset.strokeLength * 100).toInt()}%", OssmConnected)
+                    StatChip("Min", "${(preset.depthMin * 100).toInt()}%", OssmAccent)
+                    StatChip("Max", "${(preset.depthMax * 100).toInt()}%", OssmConnected)
                 }
-                StatChip("Sensation", "${(preset.sensation * 100).toInt()}%", OssmWarning)
             }
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 IconButton(onClick = onApply) {
@@ -104,22 +142,26 @@ private fun PresetCard(preset: Preset, onApply: () -> Unit, onDelete: () -> Unit
             onDismissRequest = { confirmDelete = false },
             containerColor = OssmSurface,
             title = { Text("Supprimer le profil ?", color = OssmOnSurface) },
-            text = { Text("\"${preset.name}\" sera supprimé définitivement.", color = OssmOnSurface.copy(0.7f)) },
+            text = { Text("\"${preset.name}\" sera supprime definitivement.", color = OssmOnSurface.copy(alpha = 0.7f)) },
             confirmButton = {
                 Button(
                     onClick = { onDelete(); confirmDelete = false },
                     colors = ButtonDefaults.buttonColors(containerColor = OssmError)
-                ) { Text("Supprimer") }
+                ) {
+                    Text("Supprimer")
+                }
             },
             dismissButton = {
-                TextButton(onClick = { confirmDelete = false }) { Text("Annuler", color = OssmPrimaryLight) }
+                TextButton(onClick = { confirmDelete = false }) {
+                    Text("Annuler", color = OssmPrimaryLight)
+                }
             }
         )
     }
 }
 
 @Composable
-private fun StatChip(label: String, value: String, color: androidx.compose.ui.graphics.Color) {
+private fun StatChip(label: String, value: String, color: Color) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)

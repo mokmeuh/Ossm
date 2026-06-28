@@ -168,8 +168,11 @@ fun FunscriptScreen(
             if (uiState.isPaused) {
                 Text("⏸ En pause — appuyez sur ▶ pour reprendre", color = OssmWarning, fontSize = 12.sp)
             }
-            if (uiState.isPlaying) {
-                Text("▶ Lecture en cours...", color = OssmConnected, fontSize = 12.sp)
+            if (uiState.isPreparing) {
+                Text("Préparation (homing en cours)...", color = OssmAccent, fontSize = 12.sp)
+            }
+            if (uiState.isPlaying && !uiState.isPreparing) {
+                Text("▶ Streaming en cours...", color = OssmConnected, fontSize = 12.sp)
             }
         }
     }

@@ -2,13 +2,34 @@ package com.ossm.remote.viewmodel
 
 import app.cash.turbine.test
 import com.ossm.remote.ble.BleManager
+import com.ossm.remote.data.repository.ControlSafetySettings
+import com.ossm.remote.data.repository.ControlSafetySettingsRepository
+import com.ossm.remote.data.repository.SliderGuardSettings
+import com.ossm.remote.model.KnownFallbackPatterns
+import com.ossm.remote.model.KnownStrokeEnginePattern
+import com.ossm.remote.model.OssmCommand
+import com.ossm.remote.model.OssmPattern
+import com.ossm.remote.model.PatternControlMode
+import com.ossm.remote.model.Preset
+import io.mockk.coEvery
+import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.test.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
 import org.junit.After
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -17,13 +38,31 @@ class ControlViewModelTest {
 
     private val testDispatcher = StandardTestDispatcher()
     private lateinit var bleManager: BleManager
+    private lateinit var safetySettingsRepository: ControlSafetySettingsRepository
     private lateinit var viewModel: ControlViewModel
+    private lateinit var patternsFlow: MutableStateFlow<List<OssmPattern>>
+    private lateinit var settingsFlow: MutableStateFlow<ControlSafetySettings>
 
     @Before
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
         bleManager = mockk(relaxed = true)
-        viewModel = ControlViewModel(bleManager)
+        safetySettingsRepository = mockk(relaxed = true)
+        patternsFlow = MutableStateFlow(KnownFallbackPatterns)
+        settingsFlow = MutableStateFlow(
+            ControlSafetySettings(
+                speed = SliderGuardSettings(enabled = true, thresholdPercent = 10),
+                depth = SliderGuardSettings(enabled = true, thresholdPercent = 5)
+            )
+        )
+
+        every { bleManager.availablePatterns } returns patternsFlow
+        every { safetySettingsRepository.settings } returns settingsFlow
+        coEvery { safetySettingsRepository.setSpeedGuardEnabled(any()) } returns Unit
+        coEvery { safetySettingsRepository.setDepthGuardEnabled(any()) } returns Unit
+
+        viewModel = ControlViewModel(bleManager, safetySettingsRepository)
+        testDispatcher.scheduler.advanceUntilIdle()
     }
 
     @After
@@ -32,80 +71,117 @@ class ControlViewModelTest {
     }
 
     @Test
-    fun `initial state is zero speed`() = runTest {
+    fun `initial state defaults to stroke engine safe range`() = runTest {
         viewModel.uiState.test {
             val state = awaitItem()
-            assertEquals(0f, state.speed)
+            assertEquals(KnownStrokeEnginePattern.key, state.activePatternKey)
+            assertEquals(0.2f, state.depthMin)
+            assertEquals(0.8f, state.depthMax)
+            assertEquals(10, state.speedGuard.thresholdPercent)
+            assertEquals(5, state.depthGuard.thresholdPercent)
             cancelAndIgnoreRemainingEvents()
         }
     }
 
     @Test
-    fun `setSpeed updates state and sends command`() = runTest {
-        viewModel.setSpeed(0.75f)
-        testDispatcher.scheduler.advanceUntilIdle()
+    fun `pattern list from ble updates state`() = runTest {
+        patternsFlow.value = listOf(
+            KnownStrokeEnginePattern,
+            OssmPattern("simplePenetration", "Simple Penetration", PatternControlMode.LAUNCH_ONLY)
+        )
+        advanceUntilIdle()
 
-        val state = viewModel.uiState.value
-        assertEquals(0.75f, state.speed)
-        assertEquals(0, state.activePatternId) // pattern reset
-        verify { bleManager.sendCommand(any()) }
+        assertEquals(2, viewModel.uiState.value.availablePatterns.size)
     }
 
     @Test
-    fun `setDepth updates state`() = runTest {
-        viewModel.setDepth(0.5f)
-        assertEquals(0.5f, viewModel.uiState.value.depth)
+    fun `small speed change sends stroke engine command immediately`() = runTest {
+        viewModel.requestSpeedChange(0.04f)
+        advanceUntilIdle()
+
+        assertEquals(0.04f, viewModel.uiState.value.speed)
+        verify { bleManager.sendCommand(match { it is OssmCommand.UpdateStrokeEngine }) }
     }
 
     @Test
-    fun `setStrokeLength updates state`() = runTest {
-        viewModel.setStrokeLength(0.3f)
-        assertEquals(0.3f, viewModel.uiState.value.strokeLength)
-    }
-
-    @Test
-    fun `setSensation updates state`() = runTest {
-        viewModel.setSensation(0.9f)
-        assertEquals(0.9f, viewModel.uiState.value.sensation)
-    }
-
-    @Test
-    fun `stop resets speed and sends emergency stop`() = runTest {
-        viewModel.setSpeed(0.8f)
-        viewModel.stop()
-        testDispatcher.scheduler.advanceUntilIdle()
+    fun `speed change over speed threshold requires confirmation`() = runTest {
+        viewModel.requestSpeedChange(0.2f)
+        advanceUntilIdle()
 
         assertEquals(0f, viewModel.uiState.value.speed)
-        assertFalse(viewModel.uiState.value.isRunning)
-        verify(atLeast = 1) { bleManager.emergencyStop() }
+        assertEquals(GuardedControl.SPEED, viewModel.uiState.value.pendingManualChange?.control)
     }
 
     @Test
-    fun `activatePattern sets activePatternId`() = runTest {
-        viewModel.activatePattern(2)
-        testDispatcher.scheduler.advanceUntilIdle()
+    fun `depth change over depth threshold requires confirmation`() = runTest {
+        viewModel.requestDepthRangeChange(0.2f, 0.95f)
+        advanceUntilIdle()
 
-        assertEquals(2, viewModel.uiState.value.activePatternId)
-        assertTrue(viewModel.uiState.value.isRunning)
-        verify { bleManager.sendCommand(any()) }
+        assertNotNull(viewModel.uiState.value.pendingManualChange)
+        assertEquals(GuardedControl.DEPTH, viewModel.uiState.value.pendingManualChange?.control)
     }
 
     @Test
-    fun `applyPreset updates all values`() = runTest {
-        viewModel.applyPreset(0.6f, 0.8f, 0.7f, 0.5f)
+    fun `session bypass for speed does not bypass depth`() = runTest {
+        viewModel.requestSpeedChange(0.2f)
+        advanceUntilIdle()
+        viewModel.confirmPendingManualChange(skipForSession = true, neverAskAgain = false)
+        advanceUntilIdle()
+
+        viewModel.requestSpeedChange(0.35f)
+        advanceUntilIdle()
+        assertNull(viewModel.uiState.value.pendingManualChange)
+
+        viewModel.requestDepthRangeChange(0.2f, 0.95f)
+        advanceUntilIdle()
+        assertEquals(GuardedControl.DEPTH, viewModel.uiState.value.pendingManualChange?.control)
+    }
+
+    @Test
+    fun `never ask again disables only the pending control`() = runTest {
+        viewModel.requestSpeedChange(0.2f)
+        advanceUntilIdle()
+
+        viewModel.confirmPendingManualChange(skipForSession = false, neverAskAgain = true)
+        advanceUntilIdle()
+
+        coVerify { safetySettingsRepository.setSpeedGuardEnabled(false) }
+        coVerify(exactly = 0) { safetySettingsRepository.setDepthGuardEnabled(any()) }
+    }
+
+    @Test
+    fun `activating launch only pattern switches active key`() = runTest {
+        val pattern = OssmPattern("simplePenetration", "Simple Penetration", PatternControlMode.LAUNCH_ONLY)
+        patternsFlow.value = listOf(KnownStrokeEnginePattern, pattern)
+        advanceUntilIdle()
+
+        viewModel.activatePattern(pattern.key)
+        advanceUntilIdle()
+
+        assertEquals(pattern.key, viewModel.uiState.value.activePatternKey)
+        assertFalse(viewModel.uiState.value.activePatternSupportsControls)
+        verify { bleManager.sendCommand(match { it is OssmCommand.ActivatePattern && it.pattern.key == pattern.key }) }
+    }
+
+    @Test
+    fun `apply preset restores saved pattern and range`() = runTest {
+        val preset = Preset(
+            name = "Range preset",
+            patternKey = KnownStrokeEnginePattern.key,
+            patternName = KnownStrokeEnginePattern.name,
+            speed = 0.5f,
+            depthMin = 0.25f,
+            depthMax = 0.75f
+        )
+
+        viewModel.applyPreset(preset)
+        advanceUntilIdle()
+
         with(viewModel.uiState.value) {
-            assertEquals(0.6f, speed)
-            assertEquals(0.8f, depth)
-            assertEquals(0.7f, strokeLength)
-            assertEquals(0.5f, sensation)
-            assertEquals(0, activePatternId)
+            assertEquals(0.5f, speed)
+            assertEquals(0.25f, depthMin)
+            assertEquals(0.75f, depthMax)
+            assertTrue(isRunning)
         }
-    }
-
-    @Test
-    fun `setSpeed clears active pattern`() = runTest {
-        viewModel.activatePattern(1)
-        viewModel.setSpeed(0.5f)
-        assertEquals(0, viewModel.uiState.value.activePatternId)
     }
 }

@@ -7,10 +7,10 @@ import androidx.room.PrimaryKey
 data class PresetEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String,
+    val patternKey: String,
+    val patternName: String,
     val speed: Float,
-    val depth: Float,
-    val strokeLength: Float,
-    val sensation: Float,
-    val patternId: Int,
+    val depthMin: Float,
+    val depthMax: Float,
     val createdAt: Long
 )

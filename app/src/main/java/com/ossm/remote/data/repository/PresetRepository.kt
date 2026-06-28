@@ -19,6 +19,25 @@ class PresetRepository @Inject constructor(
     suspend fun save(preset: Preset): Long = dao.insertPreset(preset.toEntity())
     suspend fun delete(preset: Preset) = dao.deleteById(preset.id)
 
-    private fun PresetEntity.toModel() = Preset(id, name, speed, depth, strokeLength, sensation, patternId, createdAt)
-    private fun Preset.toEntity() = PresetEntity(id, name, speed, depth, strokeLength, sensation, patternId, createdAt)
+    private fun PresetEntity.toModel() = Preset(
+        id = id,
+        name = name,
+        patternKey = patternKey,
+        patternName = patternName,
+        speed = speed,
+        depthMin = depthMin,
+        depthMax = depthMax,
+        createdAt = createdAt
+    )
+
+    private fun Preset.toEntity() = PresetEntity(
+        id = id,
+        name = name,
+        patternKey = patternKey,
+        patternName = patternName,
+        speed = speed,
+        depthMin = depthMin,
+        depthMax = depthMax,
+        createdAt = createdAt
+    )
 }

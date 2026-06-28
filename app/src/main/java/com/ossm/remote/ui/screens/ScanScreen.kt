@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ossm.remote.BuildConfig
 import com.ossm.remote.model.BleConnectionState
 import com.ossm.remote.model.BleDevice
 import com.ossm.remote.ui.components.BleStatusIndicator
@@ -36,6 +37,19 @@ fun ScanScreen(
     val isConnecting = connectionState is BleConnectionState.Connecting
     val isConnected = connectionState is BleConnectionState.Connected
 
+    // Auto-start scan on first launch (if not already connected)
+    LaunchedEffect(Unit) {
+        if (!isConnected && !isConnecting && !isScanning) onScan()
+    }
+
+    // Auto-connect: as soon as exactly 1 OSSM device is found, connect immediately
+    LaunchedEffect(devices) {
+        val ossmDevices = devices.filter { it.isOssm }
+        if (ossmDevices.size == 1 && !isConnecting && !isConnected) {
+            onConnect(ossmDevices.first().address)
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -53,11 +67,18 @@ fun ScanScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    "OSSM Remote",
-                    style = MaterialTheme.typography.headlineLarge,
-                    color = OssmPrimary
-                )
+                Column {
+                    Text(
+                        "OSSM Remote",
+                        style = MaterialTheme.typography.headlineLarge,
+                        color = OssmPrimary
+                    )
+                    Text(
+                        "v${BuildConfig.VERSION_NAME}",
+                        color = OssmPrimaryLight.copy(alpha = 0.5f),
+                        fontSize = 11.sp
+                    )
+                }
                 BleStatusIndicator(state = connectionState)
             }
 

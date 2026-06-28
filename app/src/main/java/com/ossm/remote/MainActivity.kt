@@ -2,7 +2,6 @@ package com.ossm.remote
 
 import android.Manifest
 import android.bluetooth.BluetoothAdapter
-import android.bluetooth.BluetoothManager
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
@@ -11,7 +10,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.*
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -21,7 +19,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.navigation.compose.*
-import com.ossm.remote.model.BleConnectionState
 import com.ossm.remote.ui.navigation.BottomNavScreens
 import com.ossm.remote.ui.navigation.Screen
 import com.ossm.remote.ui.screens.*
@@ -44,7 +41,11 @@ class MainActivity : ComponentActivity() {
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { /* permissions granted */ }
+    ) { grants ->
+        if (grants.values.all { it } && bleVm.isBluetoothEnabled()) {
+            bleVm.startScan()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -98,12 +99,6 @@ fun OssmApp(
     onEnableBluetooth: () -> Unit
 ) {
     val navController = rememberNavController()
-    var warningAccepted by remember { mutableStateOf(false) }
-
-    if (!warningAccepted) {
-        WarningScreen(onAccept = { warningAccepted = true })
-        return
-    }
 
     val connectionState by bleVm.connectionState.collectAsState()
     val controlUiState by controlVm.uiState.collectAsState()
@@ -112,6 +107,7 @@ fun OssmApp(
     val presets by profilesVm.presets.collectAsState()
     val funscriptState by funscriptVm.uiState.collectAsState()
     val scannedDevices by bleVm.scannedDevices.collectAsState()
+    val machineState by bleVm.machineState.collectAsState()
 
     val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
 
@@ -172,17 +168,26 @@ fun OssmApp(
             composable(Screen.Control.route) {
                 ControlScreen(
                     connectionState = connectionState,
+                    machineState = machineState,
                     uiState = controlUiState,
-                    onSpeed = controlVm::setSpeed,
-                    onDepth = controlVm::setDepth,
-                    onStroke = controlVm::setStrokeLength,
-                    onSensation = controlVm::setSensation,
+                    onSpeedCommit = controlVm::requestSpeedChange,
+                    onSpeedLive = controlVm::setSpeedLive,
+                    onDepthRangeCommit = controlVm::requestDepthRangeChange,
+                    onDepthLive = controlVm::setDepthLive,
+                    onSensationCommit = controlVm::requestSensationChange,
+                    onSensationLive = controlVm::setSensationLive,
+                    onProgressiveMaxCommit = controlVm::setProgressiveMaxSpeed,
+                    onChaosToggle = controlVm::setChaosAtMax,
+                    onStreamTarget = controlVm::setStreamTarget,
+                    onStreamActive = controlVm::setStreamActive,
                     onPattern = controlVm::activatePattern,
-                    onStop = {
-                        controlVm.stop()
-                        bleVm.emergencyStop()
-                    },
-                    onSavePreset = profilesVm::savePreset
+                    onStop = { controlVm.stop() },
+                    onHome = { controlVm.home() },
+                    onSavePreset = profilesVm::savePreset,
+                    onSpeedGuardEnabledChange = controlVm::setSpeedGuardEnabled,
+                    onDepthGuardEnabledChange = controlVm::setDepthGuardEnabled,
+                    onConfirmPendingChange = controlVm::confirmPendingManualChange,
+                    onDismissPendingChange = controlVm::dismissPendingManualChange
                 )
             }
             composable(Screen.Diagnostics.route) {
@@ -197,7 +202,7 @@ fun OssmApp(
                 ProfilesScreen(
                     presets = presets,
                     onApply = { preset ->
-                        controlVm.applyPreset(preset.speed, preset.depth, preset.strokeLength, preset.sensation)
+                        controlVm.applyPreset(preset)
                         navController.navigate(Screen.Control.route)
                     },
                     onDelete = profilesVm::deletePreset
