@@ -104,7 +104,7 @@
     <integer name="m3c_window_layout_in_display_cutout_mode">1</integer>
     <integer name="status_bar_notification_info_maxnum">999</integer>
     <string name="androidx_startup" translatable="false">androidx.startup</string>
-    <string name="app_name" translatable="false">OSSM V1.21.1</string>
+    <string name="app_name" translatable="false">OSSM V1.21.2</string>
     <string name="call_notification_answer_action">Answer</string>
     <string name="call_notification_answer_video_action">Video</string>
     <string name="call_notification_decline_action">Decline</string>
@@ -116,6 +116,26 @@
     <string name="close_sheet">"Close sheet"</string>
     <string name="connect">Connecter</string>
     <string name="control">Contrôle</string>
+    <string name="ctl_cancel">Annuler</string>
+    <string name="ctl_connect_prompt">Connectez-vous à un OSSM pour activer les commandes</string>
+    <string name="ctl_depth">PROFONDEUR</string>
+    <string name="ctl_live_hint_ready">Glisse ton doigt dans la zone — la machine suit ta position en direct (0 % = home, 100 % = fond).</string>
+    <string name="ctl_live_knob_hint">→ Baisse le bouton de vitesse physique à 0 pour entrer dans le mode.</string>
+    <string name="ctl_live_preparing">Préparation du mode Live — la machine confirme la pleine course…</string>
+    <string name="ctl_no_patterns">Aucun pattern détecté pour ce firmware.</string>
+    <string name="ctl_patterns">PATTERNS  ▾</string>
+    <string name="ctl_rec_armed">Prêt — touche le pad (appuie pour annuler)</string>
+    <string name="ctl_rec_idle">●  Enregistrer un mouvement</string>
+    <string name="ctl_rec_playing">⏸  Arrêter la boucle</string>
+    <string name="ctl_rec_recording">●  REC — lève le doigt pour boucler</string>
+    <string name="ctl_reorder_hint">Appui long puis glisse pour déplacer.</string>
+    <string name="ctl_reorder_title">Réorganiser les patterns</string>
+    <string name="ctl_save">Enregistrer</string>
+    <string name="ctl_sensation">Sensation</string>
+    <string name="ctl_sensation_ramp">Sensation (vitesse de montée)</string>
+    <string name="ctl_speed">Vitesse</string>
+    <string name="ctl_start">Demarrer</string>
+    <string name="ctl_stop_mix">Arreter</string>
     <string name="default_error_message">"Invalid input"</string>
     <string name="default_popup_window_title" ns1:ignore="ExtraTranslation">"Pop-Up Window"</string>
     <string name="diagnostics">Diagnostics</string>

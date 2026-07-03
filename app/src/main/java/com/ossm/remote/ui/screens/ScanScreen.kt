@@ -4,6 +4,7 @@ import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -13,12 +14,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ossm.remote.BuildConfig
+import com.ossm.remote.R
 import com.ossm.remote.model.BleConnectionState
 import com.ossm.remote.model.BleDevice
 import com.ossm.remote.ui.components.BleStatusIndicator
@@ -67,17 +70,25 @@ fun ScanScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
-                    Text(
-                        "OSSM Remote",
-                        style = MaterialTheme.typography.headlineLarge,
-                        color = OssmPrimary
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Image(
+                        painter = painterResource(id = R.drawable.ic_launcher_foreground),
+                        contentDescription = null,
+                        modifier = Modifier.size(64.dp)
                     )
-                    Text(
-                        "v${BuildConfig.VERSION_NAME}",
-                        color = OssmPrimaryLight.copy(alpha = 0.5f),
-                        fontSize = 11.sp
-                    )
+                    Spacer(Modifier.width(4.dp))
+                    Column {
+                        Text(
+                            "OSSM Remote",
+                            style = MaterialTheme.typography.headlineLarge,
+                            color = OssmPrimary
+                        )
+                        Text(
+                            "v${BuildConfig.VERSION_NAME}",
+                            color = OssmPrimaryLight.copy(alpha = 0.5f),
+                            fontSize = 11.sp
+                        )
+                    }
                 }
                 BleStatusIndicator(state = connectionState)
             }

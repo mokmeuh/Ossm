@@ -29,4 +29,24 @@
     <string name="funscript_paused">⏸ Paused — press ▶ to resume</string>
     <string name="funscript_preparing">Preparing (homing in progress)…</string>
     <string name="funscript_streaming">▶ Streaming…</string>
+    <string name="ctl_connect_prompt">Connect to an OSSM to enable the controls</string>
+    <string name="ctl_patterns">PATTERNS  ▾</string>
+    <string name="ctl_no_patterns">No pattern detected for this firmware.</string>
+    <string name="ctl_live_hint_ready">Slide your finger in the zone — the machine follows your position live (0% = home, 100% = deep end).</string>
+    <string name="ctl_live_preparing">Preparing Live mode — the machine is confirming full range…</string>
+    <string name="ctl_live_knob_hint">→ Turn the physical speed knob down to 0 to enter the mode.</string>
+    <string name="ctl_rec_idle">●  Record a movement</string>
+    <string name="ctl_rec_armed">Ready — touch the pad (tap to cancel)</string>
+    <string name="ctl_rec_recording">●  REC — lift your finger to loop</string>
+    <string name="ctl_rec_playing">⏸  Stop the loop</string>
+    <string name="ctl_depth">DEPTH</string>
+    <string name="ctl_speed">Speed</string>
+    <string name="ctl_sensation">Sensation</string>
+    <string name="ctl_sensation_ramp">Sensation (ramp-up rate)</string>
+    <string name="ctl_reorder_title">Reorder patterns</string>
+    <string name="ctl_reorder_hint">Long-press then drag to move.</string>
+    <string name="ctl_save">Save</string>
+    <string name="ctl_cancel">Cancel</string>
+    <string name="ctl_start">Start</string>
+    <string name="ctl_stop_mix">Stop</string>
 </resources>

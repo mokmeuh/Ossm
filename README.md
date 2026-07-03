@@ -142,3 +142,48 @@ MVVM + Hilt DI
 ## License
 
 Usage personnel uniquement. Respectez les consignes de sécurité et utilisez cet appareil de manière responsable.
+
+---
+
+## Rebuild & installation (référence rapide)
+
+```bat
+cd C:\Users\mikae\Documents\Ossm\Ossm
+rebuild_install.bat        :: tests unitaires -> build -> install (log: build_result.log)
+```
+
+Ou manuellement :
+
+```bat
+.\gradlew.bat testDebugUnitTest    :: tests
+.\gradlew.bat installDebug         :: build + install (téléphone branché, débogage USB actif)
+```
+
+APK produit : `app\build\outputs\apk\debug\app-debug.apk` (package installé : `com.ossm.remote.debug`).
+Vérifier la version installée : `adb shell dumpsys package com.ossm.remote.debug | findstr versionName`.
+
+## Architecture (couches)
+
+```
+ui/screens + ui/components   Compose UI (ControlScreen, ScanScreen, ...)
+viewmodel/                   État & logique de présentation (ControlViewModel: tickers live,
+                             enregistreur de boucle, gardes de sécurité asymétriques)
+ble/BleManager               Couche protocole OSSM : commandes texte (set:/go:/stream:),
+                             séquençage GATT strict (MTU -> notifications -> config),
+                             transitions pilotées par l'état NOTIFY réel + vérifications
+model/                       Modèles purs (OssmCommand, MachineState, Pattern, Preset)
+data/repository              Persistance (Room presets, DataStore réglages/habitudes/ordre patterns)
+```
+
+Points spécifiques Android (à isoler pour un futur port iOS) : `BleManager` (API BluetoothGatt),
+DataStore/Room. La logique métier (mapping profondeur/course, enregistreur, gardes) vit dans les
+ViewModels et modèles, portables.
+
+### Faits protocole confirmés sur appareil (firmware 1.0.31)
+- `stream:100` = home/début, `stream:0` = fond (l'app inverse ; marge 2 % aux deux butées).
+- L'état NOTIFY (JSON) exige MTU ≥ ~180 : négocier le MTU AVANT l'abonnement aux notifications.
+- `set:speed` BLE est plafonné par le bouton physique par défaut → caractéristique `…1010` à `false`.
+- Le firmware réinitialise ses réglages à l'entrée d'un mode → application vérifiée avec réessais.
+- Ne jamais envoyer deux `stream:` consécutifs à la même position (crash firmware).
+
+Voir `HANDOFF_CLAUDE.md` pour l'historique détaillé et les chantiers en cours.

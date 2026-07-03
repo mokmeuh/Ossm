@@ -1,9 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_launcher_background">#141422</color>
-    <string name="app_name" translatable="false">OSSM V1.21.1</string>
+    <string name="app_name" translatable="false">OSSM V1.21.2</string>
     <string name="connect">Connecter</string>
     <string name="control">Contrôle</string>
+    <string name="ctl_cancel">Annuler</string>
+    <string name="ctl_connect_prompt">Connectez-vous à un OSSM pour activer les commandes</string>
+    <string name="ctl_depth">PROFONDEUR</string>
+    <string name="ctl_live_hint_ready">Glisse ton doigt dans la zone — la machine suit ta position en direct (0 % = home, 100 % = fond).</string>
+    <string name="ctl_live_knob_hint">→ Baisse le bouton de vitesse physique à 0 pour entrer dans le mode.</string>
+    <string name="ctl_live_preparing">Préparation du mode Live — la machine confirme la pleine course…</string>
+    <string name="ctl_no_patterns">Aucun pattern détecté pour ce firmware.</string>
+    <string name="ctl_patterns">PATTERNS  ▾</string>
+    <string name="ctl_rec_armed">Prêt — touche le pad (appuie pour annuler)</string>
+    <string name="ctl_rec_idle">●  Enregistrer un mouvement</string>
+    <string name="ctl_rec_playing">⏸  Arrêter la boucle</string>
+    <string name="ctl_rec_recording">●  REC — lève le doigt pour boucler</string>
+    <string name="ctl_reorder_hint">Appui long puis glisse pour déplacer.</string>
+    <string name="ctl_reorder_title">Réorganiser les patterns</string>
+    <string name="ctl_save">Enregistrer</string>
+    <string name="ctl_sensation">Sensation</string>
+    <string name="ctl_sensation_ramp">Sensation (vitesse de montée)</string>
+    <string name="ctl_speed">Vitesse</string>
+    <string name="ctl_start">Demarrer</string>
+    <string name="ctl_stop_mix">Arreter</string>
     <string name="diagnostics">Diagnostics</string>
     <string name="disconnect">Déconnecter</string>
     <string name="funscript">Funscript</string>

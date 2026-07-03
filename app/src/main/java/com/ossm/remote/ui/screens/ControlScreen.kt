@@ -68,10 +68,12 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ossm.remote.R
 import com.ossm.remote.model.AutoRandomMixablePatterns
 import com.ossm.remote.model.BleConnectionState
 import com.ossm.remote.model.MachineState
@@ -239,7 +241,7 @@ fun ControlScreen(
             if (!connected) {
                 GlassCard(modifier = Modifier.fillMaxWidth(), tint = OssmWarning) {
                     Text(
-                        "Connectez-vous à un OSSM pour activer les commandes",
+                        stringResource(R.string.ctl_connect_prompt),
                         color = OssmWarning,
                         fontSize = 13.sp,
                         textAlign = TextAlign.Center
@@ -273,7 +275,7 @@ fun ControlScreen(
                 ) {
                     // Touche le titre pour replier la boîte en bulle flottante.
                     Text(
-                        "PATTERNS  ▾",
+                        stringResource(R.string.ctl_patterns),
                         color = OssmPrimaryLight,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
@@ -287,7 +289,7 @@ fun ControlScreen(
 
                 if (uiState.availablePatterns.isEmpty()) {
                     Text(
-                        "Aucun pattern détecté pour ce firmware.",
+                        stringResource(R.string.ctl_no_patterns),
                         color = OssmOnSurface.copy(alpha = 0.7f),
                         fontSize = 13.sp
                     )
@@ -413,9 +415,9 @@ fun ControlScreen(
                     activePattern.mode == PatternControlMode.STREAMING -> {
                         Text(
                             if (uiState.streamingReady)
-                                "Glisse ton doigt dans la zone — la machine suit ta position en direct (0 % = home, 100 % = fond)."
+                                stringResource(R.string.ctl_live_hint_ready)
                             else
-                                "Préparation du mode Live — la machine confirme la pleine course…",
+                                stringResource(R.string.ctl_live_preparing),
                             color = OssmOnSurface.copy(alpha = 0.7f),
                             fontSize = 12.sp,
                             modifier = Modifier.padding(bottom = 10.dp)
@@ -443,10 +445,10 @@ fun ControlScreen(
                         )
                         Spacer(Modifier.height(10.dp))
                         val recLabel = when (uiState.liveRec) {
-                            LiveRecState.IDLE -> "●  Enregistrer un mouvement"
-                            LiveRecState.ARMED -> "Prêt — touche le pad (appuie pour annuler)"
-                            LiveRecState.RECORDING -> "●  REC — lève le doigt pour boucler"
-                            LiveRecState.PLAYING -> "⏸  Arrêter la boucle"
+                            LiveRecState.IDLE -> stringResource(R.string.ctl_rec_idle)
+                            LiveRecState.ARMED -> stringResource(R.string.ctl_rec_armed)
+                            LiveRecState.RECORDING -> stringResource(R.string.ctl_rec_recording)
+                            LiveRecState.PLAYING -> stringResource(R.string.ctl_rec_playing)
                         }
                         val recColor = when (uiState.liveRec) {
                             LiveRecState.IDLE -> OssmPrimary
@@ -488,7 +490,7 @@ fun ControlScreen(
                         )
                         Spacer(Modifier.height(8.dp))
                         ControlSlider(
-                            label = "Sensation (vitesse de montée)",
+                            label = stringResource(R.string.ctl_sensation_ramp),
                             value = sensationDraft,
                             onValueChange = { sensationDraft = it; onSensationLive(it) },
                             onValueCommit = { committed ->
@@ -640,7 +642,7 @@ fun ControlScreen(
                                 modifier = Modifier.weight(1f),
                                 colors = ButtonDefaults.buttonColors(containerColor = OssmConnected)
                             ) {
-                                Text("Demarrer")
+                                Text(stringResource(R.string.ctl_start))
                             }
                             Button(
                                 onClick = onAutoStop,
@@ -648,13 +650,13 @@ fun ControlScreen(
                                 modifier = Modifier.weight(1f),
                                 colors = ButtonDefaults.buttonColors(containerColor = OssmWarning)
                             ) {
-                                Text("Arreter")
+                                Text(stringResource(R.string.ctl_stop_mix))
                             }
                         }
                     }
                     else -> {
                         ControlSlider(
-                            label = "Vitesse",
+                            label = stringResource(R.string.ctl_speed),
                             value = speedDraft,
                             onValueChange = { speedDraft = it; onSpeedLive(it) },
                             onValueCommit = { committed ->
@@ -682,7 +684,7 @@ fun ControlScreen(
                         if (activePattern.mode == PatternControlMode.STROKE_ENGINE && activePattern.key != "simpleStroke") {
                             Spacer(Modifier.height(12.dp))
                             ControlSlider(
-                                label = "Sensation",
+                                label = stringResource(R.string.ctl_sensation),
                                 value = sensationDraft,
                                 onValueChange = { sensationDraft = it; onSensationLive(it) },
                                 onValueCommit = { committed ->
@@ -1011,7 +1013,7 @@ private fun AutoRandomStartDialog(
                 onClick = onConfirm,
                 colors = ButtonDefaults.buttonColors(containerColor = OssmConnected)
             ) {
-                Text("Demarrer")
+                Text(stringResource(R.string.ctl_start))
             }
         },
         dismissButton = {
@@ -1076,7 +1078,7 @@ private fun DepthRangeEditor(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                "PROFONDEUR",
+                stringResource(R.string.ctl_depth),
                 color = OssmPrimaryLight,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
@@ -1199,11 +1201,11 @@ private fun ReorderPatternsDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = OssmSurface.copy(alpha = if (draggingIndex >= 0) 0.75f else 1f),
-        title = { Text("Réorganiser les patterns", color = OssmOnSurface, fontSize = 17.sp) },
+        title = { Text(stringResource(R.string.ctl_reorder_title), color = OssmOnSurface, fontSize = 17.sp) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
-                    "Appui long puis glisse pour déplacer.",
+                    stringResource(R.string.ctl_reorder_hint),
                     color = OssmOnSurface.copy(alpha = 0.6f),
                     fontSize = 12.sp
                 )
@@ -1267,7 +1269,7 @@ private fun ReorderPatternsDialog(
             Button(
                 onClick = { onSave(order.map { it.first }) },
                 colors = ButtonDefaults.buttonColors(containerColor = OssmPrimary)
-            ) { Text("Enregistrer") }
+            ) { Text(stringResource(R.string.ctl_save)) }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Annuler", color = OssmOnSurface.copy(alpha = 0.7f)) }
