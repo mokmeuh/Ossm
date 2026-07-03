@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_launcher_background">#141422</color>
-    <string name="app_name" translatable="false">OSSM V1.21.2</string>
+    <string name="app_name" translatable="false">OSSM V1.21.3</string>
     <string name="connect">Connecter</string>
     <string name="control">Contrôle</string>
     <string name="ctl_cancel">Annuler</string>

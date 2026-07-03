@@ -13,7 +13,7 @@ Claude et Codex éditent les MÊMES fichiers en parallèle, ce qui cause des éc
 
 ## Version actuelle
 - **BASELINE DE RÉFÉRENCE : v1.20.5 (commit git `0785248`)** — « celle qui fonctionne le mieux » selon l'utilisateur. En cas de régression, revenir à ce commit.
-- v1.21.1 (versionCode 75) : COMPILÉE, PAS ENCORE INSTALLÉE (téléphone débranché). À installer au retour : `adb install -r app\build\outputs\apk\debug\app-debug.apk`.
+- **v1.21.2 (versionCode 76, commit `8ee0922`) : COMPILÉE + TESTS OK, PAS ENCORE INSTALLÉE** (téléphone débranché). À installer au retour : `adb install -r app\build\outputs\apk\debug\app-debug.apk`. Ajoute par rapport à 1.21.1 : logo dans l'écran Scanner, README (rebuild + architecture + faits protocole), i18n FR/EN des chaînes statiques de l'écran Contrôle (~20 clés ctl_* dans strings.xml ; reste à migrer : textes avec interpolation, dialogs, écrans Profils/Diagnostics/Scan).
 - Installée sur l'appareil : v1.21.0 (bulle patterns + enregistreur, sans l'icône).
 
 ### v1.21.x (2026-07-02 soir) — nouveautés à TESTER

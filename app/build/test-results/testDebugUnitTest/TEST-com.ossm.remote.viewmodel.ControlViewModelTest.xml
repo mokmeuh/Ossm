@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.ossm.remote.viewmodel.ControlViewModelTest" tests="9" skipped="0" failures="0" errors="0" timestamp="2026-07-03T00:45:23" hostname="MIKOLO" time="0.499">
+<testsuite name="com.ossm.remote.viewmodel.ControlViewModelTest" tests="9" skipped="0" failures="0" errors="0" timestamp="2026-07-03T01:45:28" hostname="MIKOLO" time="0.583">
   <properties/>
-  <testcase name="initial state defaults to stroke engine safe range" classname="com.ossm.remote.viewmodel.ControlViewModelTest" time="0.181"/>
-  <testcase name="speed change over speed threshold requires confirmation" classname="com.ossm.remote.viewmodel.ControlViewModelTest" time="0.043"/>
-  <testcase name="depth increase over threshold requires confirmation, decrease does not" classname="com.ossm.remote.viewmodel.ControlViewModelTest" time="0.042"/>
-  <testcase name="session bypass for speed does not bypass depth" classname="com.ossm.remote.viewmodel.ControlViewModelTest" time="0.033"/>
-  <testcase name="pattern list from ble updates state" classname="com.ossm.remote.viewmodel.ControlViewModelTest" time="0.026"/>
-  <testcase name="never ask again disables only the pending control" classname="com.ossm.remote.viewmodel.ControlViewModelTest" time="0.051"/>
-  <testcase name="activating launch only pattern switches active key" classname="com.ossm.remote.viewmodel.ControlViewModelTest" time="0.069"/>
-  <testcase name="apply preset restores saved pattern and range" classname="com.ossm.remote.viewmodel.ControlViewModelTest" time="0.022"/>
-  <testcase name="small speed change sends stroke engine command immediately" classname="com.ossm.remote.viewmodel.ControlViewModelTest" time="0.03"/>
+  <testcase name="initial state defaults to stroke engine safe range" classname="com.ossm.remote.viewmodel.ControlViewModelTest" time="0.254"/>
+  <testcase name="speed change over speed threshold requires confirmation" classname="com.ossm.remote.viewmodel.ControlViewModelTest" time="0.058"/>
+  <testcase name="depth increase over threshold requires confirmation, decrease does not" classname="com.ossm.remote.viewmodel.ControlViewModelTest" time="0.045"/>
+  <testcase name="session bypass for speed does not bypass depth" classname="com.ossm.remote.viewmodel.ControlViewModelTest" time="0.034"/>
+  <testcase name="pattern list from ble updates state" classname="com.ossm.remote.viewmodel.ControlViewModelTest" time="0.032"/>
+  <testcase name="never ask again disables only the pending control" classname="com.ossm.remote.viewmodel.ControlViewModelTest" time="0.055"/>
+  <testcase name="activating launch only pattern switches active key" classname="com.ossm.remote.viewmodel.ControlViewModelTest" time="0.044"/>
+  <testcase name="apply preset restores saved pattern and range" classname="com.ossm.remote.viewmodel.ControlViewModelTest" time="0.02"/>
+  <testcase name="small speed change sends stroke engine command immediately" classname="com.ossm.remote.viewmodel.ControlViewModelTest" time="0.04"/>
   <system-out><![CDATA[]]></system-out>
   <system-err><![CDATA[]]></system-err>
 </testsuite>
