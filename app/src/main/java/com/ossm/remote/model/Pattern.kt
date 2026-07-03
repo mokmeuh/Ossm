@@ -5,7 +5,8 @@ enum class PatternControlMode {
     SIMPLE_PENETRATION,
     STREAMING,
     PROGRESSIVE,         // app-driven: full strokes, speed auto-ramps +1% per stroke
-    LAUNCH_ONLY          // pattern that can be activated but exposes no parameter sliders
+    LAUNCH_ONLY,         // pattern that can be activated but exposes no parameter sliders
+    AUTO_RANDOM          // app-driven: randomly mixes the chosen patterns within set limits
 }
 
 data class OssmPattern(
@@ -37,6 +38,14 @@ val KnownStreamingPattern = OssmPattern(
     mode = PatternControlMode.STREAMING
 )
 
+// Auto-random mixer: the user chooses which patterns to include and global limits; the app
+// randomly blends them with a rising intensity to imitate a natural build-up.
+val KnownAutoRandomPattern = OssmPattern(
+    key = "autoRandom",
+    name = "Auto Random",
+    mode = PatternControlMode.AUTO_RANDOM
+)
+
 val KnownStrokeEnginePatterns = listOf(
     OssmPattern("simpleStroke",     "Simple Stroke",     PatternControlMode.STROKE_ENGINE, id = 0),
     OssmPattern("teasingPounding",  "Teasing Pounding",  PatternControlMode.STROKE_ENGINE, id = 1),
@@ -49,6 +58,12 @@ val KnownStrokeEnginePatterns = listOf(
 
 val KnownStrokeEnginePattern = KnownStrokeEnginePatterns.first()
 
-// "Progressif" replaces the broken "Simple" in the picker. "Live" (streaming) kept.
+// Patterns selectable for the Auto-Random mix: ONLY the 7 stroke-engine patterns. Simple
+// Penetration is deliberately excluded — it's a separate firmware mode, so mixing it in forces a
+// costly go:menu round-trip (~1.3s frozen) on every switch in AND out, which stalls the mix and
+// kills the randomness. Its plain in-out motion is already covered by "Simple Stroke" (id 0).
+val AutoRandomMixablePatterns: List<OssmPattern> = KnownStrokeEnginePatterns
+
+// Picker: Auto Random, Progressif, Live, then the 7 stroke patterns.
 val KnownFallbackPatterns: List<OssmPattern> =
-    listOf(KnownProgressivePattern, KnownStreamingPattern) + KnownStrokeEnginePatterns
+    listOf(KnownAutoRandomPattern, KnownProgressivePattern, KnownStreamingPattern) + KnownStrokeEnginePatterns

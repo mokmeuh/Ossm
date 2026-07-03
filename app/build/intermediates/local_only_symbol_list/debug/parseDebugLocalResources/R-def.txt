@@ -1,0 +1,33 @@
+R_DEF: Internal format may change without notice
+local
+mipmap ic_launcher
+mipmap ic_launcher_round
+string app_name
+string connect
+string control
+string diagnostics
+string disconnect
+string funscript
+string funscript_action
+string funscript_actions_count
+string funscript_depth_range
+string funscript_depth_range_value
+string funscript_file_label
+string funscript_no_file
+string funscript_not_connected
+string funscript_open
+string funscript_pause
+string funscript_paused
+string funscript_play
+string funscript_preparing
+string funscript_speed
+string funscript_speed_value
+string funscript_streaming
+string funscript_title
+string profiles
+string scan
+string stop
+string warning_accept
+string warning_body
+string warning_title
+style Theme.OssmRemote

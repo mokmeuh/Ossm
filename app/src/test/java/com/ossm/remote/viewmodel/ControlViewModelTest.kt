@@ -4,8 +4,11 @@ import app.cash.turbine.test
 import com.ossm.remote.ble.BleManager
 import com.ossm.remote.data.repository.ControlSafetySettings
 import com.ossm.remote.data.repository.ControlSafetySettingsRepository
+import com.ossm.remote.data.repository.SessionDefaults
 import com.ossm.remote.data.repository.SliderGuardSettings
+import com.ossm.remote.data.repository.UserHabitsRepository
 import com.ossm.remote.model.KnownFallbackPatterns
+import com.ossm.remote.model.MachineState
 import com.ossm.remote.model.KnownStrokeEnginePattern
 import com.ossm.remote.model.OssmCommand
 import com.ossm.remote.model.OssmPattern
@@ -19,6 +22,7 @@ import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -39,9 +43,12 @@ class ControlViewModelTest {
     private val testDispatcher = StandardTestDispatcher()
     private lateinit var bleManager: BleManager
     private lateinit var safetySettingsRepository: ControlSafetySettingsRepository
+    private lateinit var userHabitsRepository: UserHabitsRepository
     private lateinit var viewModel: ControlViewModel
     private lateinit var patternsFlow: MutableStateFlow<List<OssmPattern>>
     private lateinit var settingsFlow: MutableStateFlow<ControlSafetySettings>
+    private lateinit var machineStateFlow: MutableStateFlow<MachineState>
+    private lateinit var streamingReadyFlow: MutableStateFlow<Boolean>
 
     @Before
     fun setUp() {
@@ -56,12 +63,20 @@ class ControlViewModelTest {
             )
         )
 
+        userHabitsRepository = mockk(relaxed = true)
+        machineStateFlow = MutableStateFlow(MachineState())
+        streamingReadyFlow = MutableStateFlow(false)
+
         every { bleManager.availablePatterns } returns patternsFlow
+        every { bleManager.machineState } returns machineStateFlow
+        every { bleManager.streamingReady } returns streamingReadyFlow
+        every { bleManager.connectionState } returns MutableStateFlow(com.ossm.remote.model.BleConnectionState.Disconnected)
         every { safetySettingsRepository.settings } returns settingsFlow
         coEvery { safetySettingsRepository.setSpeedGuardEnabled(any()) } returns Unit
         coEvery { safetySettingsRepository.setDepthGuardEnabled(any()) } returns Unit
+        every { userHabitsRepository.sessionDefaults } returns flowOf(SessionDefaults(null, null, null))
 
-        viewModel = ControlViewModel(bleManager, safetySettingsRepository)
+        viewModel = ControlViewModel(bleManager, safetySettingsRepository, userHabitsRepository)
         testDispatcher.scheduler.advanceUntilIdle()
     }
 
@@ -75,8 +90,8 @@ class ControlViewModelTest {
         viewModel.uiState.test {
             val state = awaitItem()
             assertEquals(KnownStrokeEnginePattern.key, state.activePatternKey)
-            assertEquals(0.2f, state.depthMin)
-            assertEquals(0.8f, state.depthMax)
+            assertEquals(0f, state.depthMin)
+            assertEquals(1f, state.depthMax)
             assertEquals(10, state.speedGuard.thresholdPercent)
             assertEquals(5, state.depthGuard.thresholdPercent)
             cancelAndIgnoreRemainingEvents()
@@ -113,10 +128,16 @@ class ControlViewModelTest {
     }
 
     @Test
-    fun `depth change over depth threshold requires confirmation`() = runTest {
-        viewModel.requestDepthRangeChange(0.2f, 0.95f)
+    fun `depth increase over threshold requires confirmation, decrease does not`() = runTest {
+        // Réduire la plage (moins profond) passe sans confirmation.
+        viewModel.requestDepthRangeChange(0.3f, 0.6f)
         advanceUntilIdle()
+        assertNull(viewModel.uiState.value.pendingManualChange)
+        assertEquals(0.6f, viewModel.uiState.value.depthMax)
 
+        // Aller nettement plus profond demande confirmation.
+        viewModel.requestDepthRangeChange(0.3f, 0.9f)
+        advanceUntilIdle()
         assertNotNull(viewModel.uiState.value.pendingManualChange)
         assertEquals(GuardedControl.DEPTH, viewModel.uiState.value.pendingManualChange?.control)
     }
@@ -132,7 +153,9 @@ class ControlViewModelTest {
         advanceUntilIdle()
         assertNull(viewModel.uiState.value.pendingManualChange)
 
-        viewModel.requestDepthRangeChange(0.2f, 0.95f)
+        viewModel.requestDepthRangeChange(0.3f, 0.6f)
+        advanceUntilIdle()
+        viewModel.requestDepthRangeChange(0.3f, 0.9f)
         advanceUntilIdle()
         assertEquals(GuardedControl.DEPTH, viewModel.uiState.value.pendingManualChange?.control)
     }

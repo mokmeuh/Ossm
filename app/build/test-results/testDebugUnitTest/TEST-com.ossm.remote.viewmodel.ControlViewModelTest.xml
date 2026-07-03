@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.ossm.remote.viewmodel.ControlViewModelTest" tests="9" skipped="0" failures="0" errors="0" timestamp="2026-07-03T00:01:38" hostname="MIKOLO" time="0.741">
+  <properties/>
+  <testcase name="initial state defaults to stroke engine safe range" classname="com.ossm.remote.viewmodel.ControlViewModelTest" time="0.324"/>
+  <testcase name="speed change over speed threshold requires confirmation" classname="com.ossm.remote.viewmodel.ControlViewModelTest" time="0.07"/>
+  <testcase name="depth increase over threshold requires confirmation, decrease does not" classname="com.ossm.remote.viewmodel.ControlViewModelTest" time="0.05"/>
+  <testcase name="session bypass for speed does not bypass depth" classname="com.ossm.remote.viewmodel.ControlViewModelTest" time="0.042"/>
+  <testcase name="pattern list from ble updates state" classname="com.ossm.remote.viewmodel.ControlViewModelTest" time="0.038"/>
+  <testcase name="never ask again disables only the pending control" classname="com.ossm.remote.viewmodel.ControlViewModelTest" time="0.07"/>
+  <testcase name="activating launch only pattern switches active key" classname="com.ossm.remote.viewmodel.ControlViewModelTest" time="0.067"/>
+  <testcase name="apply preset restores saved pattern and range" classname="com.ossm.remote.viewmodel.ControlViewModelTest" time="0.029"/>
+  <testcase name="small speed change sends stroke engine command immediately" classname="com.ossm.remote.viewmodel.ControlViewModelTest" time="0.051"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

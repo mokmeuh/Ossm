@@ -5,6 +5,7 @@ import android.bluetooth.BluetoothAdapter
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -50,6 +51,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         requestBlePermissions()
 
@@ -180,14 +182,29 @@ fun OssmApp(
                     onChaosToggle = controlVm::setChaosAtMax,
                     onStreamTarget = controlVm::setStreamTarget,
                     onStreamActive = controlVm::setStreamActive,
+                    onRangeWizardStart = controlVm::startRangeWizard,
+                    onRangeWizardCapture = controlVm::captureRangePoint,
+                    onRangeWizardCancel = controlVm::cancelRangeWizard,
                     onPattern = controlVm::activatePattern,
                     onStop = { controlVm.stop() },
                     onHome = { controlVm.home() },
+                    onAutoToggleSelected = controlVm::toggleAutoSelected,
+                    onAutoMaxSpeedChange = controlVm::setAutoMaxSpeed,
+                    onAutoIntensityCapChange = controlVm::setAutoIntensityCap,
+                    onAutoRandomnessChange = controlVm::setAutoRandomness,
+                    onAutoRequestStart = controlVm::requestAutoStart,
+                    onAutoCancelStart = controlVm::cancelAutoStart,
+                    onAutoConfirmStart = controlVm::confirmAutoStart,
+                    onAutoStop = controlVm::stopAuto,
+                    onAutoInitialIntensityChange = controlVm::setAutoInitialIntensity,
+                    onPause = controlVm::pause,
+                    onResume = controlVm::resume,
                     onSavePreset = profilesVm::savePreset,
                     onSpeedGuardEnabledChange = controlVm::setSpeedGuardEnabled,
                     onDepthGuardEnabledChange = controlVm::setDepthGuardEnabled,
                     onConfirmPendingChange = controlVm::confirmPendingManualChange,
-                    onDismissPendingChange = controlVm::dismissPendingManualChange
+                    onDismissPendingChange = controlVm::dismissPendingManualChange,
+                    onPatternOrderSave = controlVm::savePatternOrder
                 )
             }
             composable(Screen.Diagnostics.route) {
@@ -215,7 +232,9 @@ fun OssmApp(
                     onLoad = funscriptVm::loadFunscript,
                     onPlay = funscriptVm::play,
                     onPause = funscriptVm::pause,
-                    onStop = funscriptVm::stop
+                    onStop = funscriptVm::stop,
+                    onDepthRangeChange = funscriptVm::setDepthRange,
+                    onSpeedChange = funscriptVm::setSpeedFactor
                 )
             }
         }

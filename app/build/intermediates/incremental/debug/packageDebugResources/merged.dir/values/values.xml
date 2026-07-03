@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name" translatable="false">OSSM V1.20.5</string>
+    <string name="connect">Connecter</string>
+    <string name="control">Contrôle</string>
+    <string name="diagnostics">Diagnostics</string>
+    <string name="disconnect">Déconnecter</string>
+    <string name="funscript">Funscript</string>
+    <string name="funscript_action">Action</string>
+    <string name="funscript_actions_count">%1$d actions</string>
+    <string name="funscript_depth_range">Plage de profondeur</string>
+    <string name="funscript_depth_range_value">%1$d%% – %2$d%%</string>
+    <string name="funscript_file_label">Fichier Funscript</string>
+    <string name="funscript_no_file">Aucun fichier chargé</string>
+    <string name="funscript_not_connected">Connectez-vous à un OSSM pour lancer la lecture</string>
+    <string name="funscript_open">Ouvrir</string>
+    <string name="funscript_pause">Pause</string>
+    <string name="funscript_paused">⏸ En pause — appuyez sur ▶ pour reprendre</string>
+    <string name="funscript_play">Lecture</string>
+    <string name="funscript_preparing">Préparation (homing en cours)…</string>
+    <string name="funscript_speed">Vitesse de lecture</string>
+    <string name="funscript_speed_value">%1$s×</string>
+    <string name="funscript_streaming">▶ Streaming en cours…</string>
+    <string name="funscript_title">FUNSCRIPT</string>
+    <string name="profiles">Profils</string>
+    <string name="scan">Scanner</string>
+    <string name="stop">STOP</string>
+    <string name="warning_accept">J\'ai compris, continuer</string>
+    <string name="warning_body">Cette application contrôle un appareil OSSM/OFFM via Bluetooth Low Energy.\n\nL\'API Bluetooth OSSM est expérimentale. Des comportements inattendus peuvent se produire.\n\nAssurez-vous que le bouton STOP physique est accessible à tout moment.\n\nUtilisez en toute sécurité et de manière responsable.</string>
+    <string name="warning_title">⚠ Avertissement</string>
+    <style name="Theme.OssmRemote" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+    </style>
+</resources>

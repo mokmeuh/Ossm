@@ -3,7 +3,9 @@
 ## Contexte rapide
 - Workspace: `C:\Users\mikae\Documents\Ossm\Ossm`
 - Projet: app Android native OSSM Remote en Kotlin/Compose/Hilt
-- Etat actuel: build debug et install debug passent
+- Etat actuel: v1.20.4 installee, build/tests passent
+- **LIRE EN PREMIER: HANDOFF_CLAUDE.md section "REPRISE IMMEDIATE"** (bugs ouverts du mode Live, conventions streaming CONFIRMEES sur appareil, pieges BLE Android: sequencage GATT/MTU, speedBLE/bouton physique)
+- Build: `rebuild_install.bat` (log: `build_result.log`); ne JAMAIS editer un meme fichier en alternant outils Cowork et bash/python (troncatures)
 
 ## Ce qu'il faut croire en priorite
 - Les threads OSSM historiques fournis par l'utilisateur sont plus fiables que l'ancienne UI locale de ce clone.

@@ -72,7 +72,7 @@ fun ControlSlider(
                     onValueCommit((value - step).coerceIn(valueRange.start, valueRange.endInclusive))
                 },
                 enabled = enabled,
-                modifier = Modifier.size(36.dp),
+                modifier = Modifier.size(52.dp),
                 shape = CircleShape,
                 colors = IconButtonDefaults.filledTonalIconButtonColors(
                     containerColor = activeColor.copy(alpha = 0.18f),
@@ -81,7 +81,7 @@ fun ControlSlider(
                     disabledContentColor = activeColor.copy(0.3f)
                 )
             ) {
-                Text("-", fontSize = 18.sp, fontWeight = FontWeight.Bold, lineHeight = 18.sp)
+                Text("−", fontSize = 26.sp, fontWeight = FontWeight.Bold, lineHeight = 18.sp)
             }
 
             Box(
@@ -123,7 +123,7 @@ fun ControlSlider(
                     onValueCommit((value + step).coerceIn(valueRange.start, valueRange.endInclusive))
                 },
                 enabled = enabled,
-                modifier = Modifier.size(36.dp),
+                modifier = Modifier.size(52.dp),
                 shape = CircleShape,
                 colors = IconButtonDefaults.filledTonalIconButtonColors(
                     containerColor = activeColor.copy(alpha = 0.18f),
@@ -132,7 +132,7 @@ fun ControlSlider(
                     disabledContentColor = activeColor.copy(0.3f)
                 )
             ) {
-                Text("+", fontSize = 18.sp, fontWeight = FontWeight.Bold, lineHeight = 18.sp)
+                Text("+", fontSize = 26.sp, fontWeight = FontWeight.Bold, lineHeight = 18.sp)
             }
         }
     }

@@ -15,9 +15,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ossm.remote.R
 import com.ossm.remote.model.BleConnectionState
 import com.ossm.remote.ui.components.GlassCard
 import com.ossm.remote.ui.components.StopButton
@@ -31,11 +34,16 @@ fun FunscriptScreen(
     onLoad: (Uri, String) -> Unit,
     onPlay: () -> Unit,
     onPause: () -> Unit,
-    onStop: () -> Unit
+    onStop: () -> Unit,
+    onDepthRangeChange: (Int, Int) -> Unit,
+    onSpeedChange: (Float) -> Unit
 ) {
     val context = LocalContext.current
     val connected = connectionState is BleConnectionState.Connected
+    val hasFile = uiState.totalActions > 0
 
+    // Accepte tous les types: les .funscript sont souvent signales en
+    // application/octet-stream, un filtre application/json les masquerait.
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let {
             val name = context.contentResolver.query(it, null, null, null, null)?.use { c ->
@@ -59,14 +67,14 @@ fun FunscriptScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Text(
-                "FUNSCRIPT",
+                stringResource(R.string.funscript_title),
                 style = MaterialTheme.typography.titleLarge,
                 color = OssmAccent,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 2.sp
             )
 
-            // File picker
+            // Selecteur de fichier
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -74,31 +82,106 @@ fun FunscriptScreen(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Fichier Funscript", color = OssmPrimaryLight, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         Text(
-                            uiState.fileName.ifBlank { "Aucun fichier chargé" },
+                            stringResource(R.string.funscript_file_label),
+                            color = OssmPrimaryLight, fontSize = 11.sp, fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            uiState.fileName.ifBlank { stringResource(R.string.funscript_no_file) },
                             color = if (uiState.fileName.isBlank()) OssmOnSurface.copy(0.4f) else OssmOnSurface,
                             fontSize = 14.sp
                         )
                         if (uiState.totalActions > 0) {
-                            Text("${uiState.totalActions} actions", color = OssmAccent, fontSize = 12.sp)
+                            Text(
+                                stringResource(R.string.funscript_actions_count, uiState.totalActions),
+                                color = OssmAccent, fontSize = 12.sp
+                            )
                         }
                     }
-                    IconButton(onClick = { launcher.launch("application/json") }) {
-                        Icon(Icons.Default.FolderOpen, "Ouvrir", tint = OssmPrimary, modifier = Modifier.size(28.dp))
+                    IconButton(onClick = { launcher.launch("*/*") }) {
+                        Icon(
+                            Icons.Default.FolderOpen,
+                            stringResource(R.string.funscript_open),
+                            tint = OssmPrimary,
+                            modifier = Modifier.size(28.dp)
+                        )
                     }
                 }
             }
 
-            // Progress
-            if (uiState.totalActions > 0) {
+            // Plage de profondeur (remappe pos brut 0-100 dans [min, max])
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            stringResource(R.string.funscript_depth_range),
+                            color = OssmPrimaryLight, fontSize = 12.sp, fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            stringResource(
+                                R.string.funscript_depth_range_value,
+                                uiState.depthMin, uiState.depthMax
+                            ),
+                            color = OssmAccent, fontSize = 13.sp, fontWeight = FontWeight.Bold
+                        )
+                    }
+                    RangeSlider(
+                        value = uiState.depthMin.toFloat()..uiState.depthMax.toFloat(),
+                        onValueChange = { r ->
+                            onDepthRangeChange(r.start.toInt(), r.endInclusive.toInt())
+                        },
+                        valueRange = 0f..100f,
+                        colors = SliderDefaults.colors(
+                            thumbColor = OssmPrimary,
+                            activeTrackColor = OssmAccent
+                        )
+                    )
+                }
+            }
+
+            // Vitesse de lecture
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            stringResource(R.string.funscript_speed),
+                            color = OssmPrimaryLight, fontSize = 12.sp, fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            stringResource(
+                                R.string.funscript_speed_value,
+                                "%.2f".format(uiState.speedFactor)
+                            ),
+                            color = OssmAccent, fontSize = 13.sp, fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Slider(
+                        value = uiState.speedFactor,
+                        onValueChange = onSpeedChange,
+                        valueRange = 0.5f..2.0f,
+                        colors = SliderDefaults.colors(
+                            thumbColor = OssmPrimary,
+                            activeTrackColor = OssmAccent
+                        )
+                    )
+                }
+            }
+
+            // Progression
+            if (hasFile) {
                 GlassCard(modifier = Modifier.fillMaxWidth()) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text("Action", color = OssmPrimaryLight, fontSize = 11.sp)
+                            Text(stringResource(R.string.funscript_action), color = OssmPrimaryLight, fontSize = 11.sp)
                             Text(
                                 "${uiState.currentActionIndex} / ${uiState.totalActions}",
                                 color = OssmOnSurface,
@@ -117,24 +200,25 @@ fun FunscriptScreen(
                 }
             }
 
-            // Controls
+            // Controles
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Play/Pause
                     FilledIconButton(
                         onClick = if (uiState.isPlaying) onPause else onPlay,
-                        enabled = connected && uiState.fileName.isNotBlank(),
-                        modifier = Modifier.size(64.dp),
+                        enabled = connected && hasFile,
+                        modifier = Modifier.size(72.dp),
                         colors = IconButtonDefaults.filledIconButtonColors(containerColor = OssmPrimary)
                     ) {
                         Icon(
                             imageVector = if (uiState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            contentDescription = if (uiState.isPlaying) "Pause" else "Play",
-                            modifier = Modifier.size(32.dp)
+                            contentDescription = if (uiState.isPlaying)
+                                stringResource(R.string.funscript_pause)
+                            else stringResource(R.string.funscript_play),
+                            modifier = Modifier.size(36.dp)
                         )
                     }
 
@@ -144,16 +228,16 @@ fun FunscriptScreen(
                 if (!connected) {
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        "Connectez-vous à un OSSM pour lancer la lecture",
+                        stringResource(R.string.funscript_not_connected),
                         color = OssmWarning,
                         fontSize = 12.sp,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
             }
 
-            // Error
+            // Erreur
             uiState.error?.let { err ->
                 GlassCard(modifier = Modifier.fillMaxWidth(), tint = OssmError) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -164,15 +248,15 @@ fun FunscriptScreen(
                 }
             }
 
-            // Status
+            // Statut
             if (uiState.isPaused) {
-                Text("⏸ En pause — appuyez sur ▶ pour reprendre", color = OssmWarning, fontSize = 12.sp)
+                Text(stringResource(R.string.funscript_paused), color = OssmWarning, fontSize = 12.sp)
             }
             if (uiState.isPreparing) {
-                Text("Préparation (homing en cours)...", color = OssmAccent, fontSize = 12.sp)
+                Text(stringResource(R.string.funscript_preparing), color = OssmAccent, fontSize = 12.sp)
             }
             if (uiState.isPlaying && !uiState.isPreparing) {
-                Text("▶ Streaming en cours...", color = OssmConnected, fontSize = 12.sp)
+                Text(stringResource(R.string.funscript_streaming), color = OssmConnected, fontSize = 12.sp)
             }
         }
     }

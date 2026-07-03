@@ -1,2 +1,13 @@
 
 local.properties
+
+video_*.mp4
+build_result.log
+install*.log
+phone_screen.png
+build-err.log
+build-out.log
+build_err.txt
+build_out.txt
+compile-*.log
+ksp-*.log

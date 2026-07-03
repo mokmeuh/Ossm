@@ -11,4 +11,22 @@
     <string name="diagnostics">Diagnostics</string>
     <string name="profiles">Profils</string>
     <string name="funscript">Funscript</string>
+
+    <!-- Ecran Funscript -->
+    <string name="funscript_title">FUNSCRIPT</string>
+    <string name="funscript_file_label">Fichier Funscript</string>
+    <string name="funscript_no_file">Aucun fichier chargé</string>
+    <string name="funscript_open">Ouvrir</string>
+    <string name="funscript_actions_count">%1$d actions</string>
+    <string name="funscript_action">Action</string>
+    <string name="funscript_depth_range">Plage de profondeur</string>
+    <string name="funscript_depth_range_value">%1$d%% – %2$d%%</string>
+    <string name="funscript_speed">Vitesse de lecture</string>
+    <string name="funscript_speed_value">%1$s×</string>
+    <string name="funscript_play">Lecture</string>
+    <string name="funscript_pause">Pause</string>
+    <string name="funscript_not_connected">Connectez-vous à un OSSM pour lancer la lecture</string>
+    <string name="funscript_paused">⏸ En pause — appuyez sur ▶ pour reprendre</string>
+    <string name="funscript_preparing">Préparation (homing en cours)…</string>
+    <string name="funscript_streaming">▶ Streaming en cours…</string>
 </resources>

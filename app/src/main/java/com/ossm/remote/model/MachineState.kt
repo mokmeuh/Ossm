@@ -6,7 +6,9 @@ data class MachineState(
     val stroke: Int? = null,
     val sensation: Int? = null,
     val depth: Int? = null,
-    val pattern: Int? = null
+    val pattern: Int? = null,
+    // Position réelle du chariot en mm (0 = home ; s'éloigne vers le fond).
+    val positionMm: Float? = null
 ) {
     val isHoming: Boolean
         get() = state.contains("homing", ignoreCase = true)
@@ -26,6 +28,7 @@ data class MachineState(
             isHoming -> "Homing..."
             isPreflight -> "Préparation..."
             state.equals("idle", ignoreCase = true) -> "Inactif"
+            state.contains("streaming", ignoreCase = true) -> "Live (streaming)"
             state.contains("strokeEngine", ignoreCase = true) -> "Stroke Engine"
             state.contains("simplePenetration", ignoreCase = true) -> "Simple Penetration"
             state.equals("menu", ignoreCase = true) -> "Menu"

@@ -1,0 +1,10 @@
+[
+    {
+        "merged": "com.ossm.remote.app-debug-66:/mipmap-hdpi_ic_launcher.xml.flat",
+        "source": "com.ossm.remote.app-main-68:/mipmap-hdpi/ic_launcher.xml"
+    },
+    {
+        "merged": "com.ossm.remote.app-debug-66:/mipmap-hdpi_ic_launcher_round.xml.flat",
+        "source": "com.ossm.remote.app-main-68:/mipmap-hdpi/ic_launcher_round.xml"
+    }
+]

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
@@ -57,10 +58,16 @@ fun LiveStreamPad(
     var anchorY by remember { mutableFloatStateOf(0f) }
     var anchorPos by remember { mutableFloatStateOf(0f) }
 
+    // Quand le mode (re)devient prêt, la machine vient d'être replacée au home (0 %) :
+    // on repart du même point pour que l'affichage reflète la position réelle.
+    LaunchedEffect(enabled) {
+        if (enabled) logicalPos = 0f
+    }
+
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(380.dp)
+            .height(300.dp)
             .clip(RoundedCornerShape(20.dp))
             .background(
                 Brush.verticalGradient(
@@ -87,6 +94,9 @@ fun LiveStreamPad(
                         onActive(true)   // start the cadence ticker; no jump on touch-down
                     },
                     onDrag = { change, _ ->
+                        // Consomme le geste pour que le scroll vertical de la page
+                        // ne vole JAMAIS le drag du pad.
+                        change.consume()
                         if (padHeightPx <= 0f) return@detectDragGestures
                         // Up (smaller y) increases; full pad height == full 0..100 range.
                         val deltaPct = (anchorY - change.position.y) / padHeightPx * 100f
@@ -102,7 +112,7 @@ fun LiveStreamPad(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height((380 * (logicalPos / 100f)).dp)
+                .height((300 * (logicalPos / 100f)).dp)
                 .align(Alignment.BottomCenter)
                 .clip(RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp))
                 .background(
@@ -122,7 +132,7 @@ fun LiveStreamPad(
             modifier = Modifier.align(Alignment.Center)
         )
         Text(
-            text = if (enabled) "Touche puis glisse — relatif" else "Calibration…",
+            text = if (enabled) "Touche puis glisse — relatif" else "Préparation…",
             color = OssmOnSurface.copy(alpha = 0.6f),
             fontSize = 12.sp,
             fontWeight = FontWeight.Medium,
