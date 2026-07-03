@@ -55,6 +55,9 @@ data class SliderGuardUiState(
  * Aucune commande firmware non documentée (équivalent fonctionnel du "setup depth"
  * de la librairie StrokeEngine, qui n'est PAS exposé par le firmware OSSM).
  */
+/** Enregistreur de mouvement Live : un seul bouton qui cycle. */
+enum class LiveRecState { IDLE, ARMED, RECORDING, PLAYING }
+
 data class RangeWizardState(
     val step: Int = 1,                // 1 = définir le fond, 2 = définir le retrait
     val capturedMax: Float? = null,   // fond capturé (0..1)
@@ -88,6 +91,8 @@ data class ControlUiState(
     val rangeWizard: RangeWizardState? = null,
     // Ordre personnalisé des patterns (keys) ; vide = ordre naturel.
     val patternOrder: List<String> = emptyList(),
+    // Enregistreur de mouvement du mode Live.
+    val liveRec: LiveRecState = LiveRecState.IDLE,
     val speedGuard: SliderGuardUiState = SliderGuardUiState(enabled = true, thresholdPercent = 10),
     val depthGuard: SliderGuardUiState = SliderGuardUiState(enabled = true, thresholdPercent = 5),
     val pendingManualChange: PendingManualChange? = null
@@ -229,12 +234,13 @@ class ControlViewModel @Inject constructor(
         val pattern = _uiState.value.availablePatterns.firstOrNull { it.key == patternKey } ?: return
         viewModelScope.launch { userHabitsRepository.recordPatternHabit(pattern.key) }
         // Leaving any previous live/progressive session: stop the tickers.
+        liveLoopJob?.cancel(); liveLoopJob = null
         streamJob?.cancel(); streamJob = null
         streamTarget = 0f; streamSent = 0f
         progressiveJob?.cancel(); progressiveJob = null
         chaosJob?.cancel(); chaosJob = null
         autoJob?.cancel(); autoJob = null; autoFirmwareMode = null
-        _uiState.update { it.copy(autoRunning = false, autoIntensity = 0f, pendingAutoStart = false) }
+        _uiState.update { it.copy(autoRunning = false, autoIntensity = 0f, pendingAutoStart = false, liveRec = LiveRecState.IDLE) }
         // Sensation always starts at minimum, except Teasing/Pounding where neutral (50%) is the base.
         val defaultSensation = if (pattern.key == "teasingPounding") 0.5f else 0f
         _uiState.update {
@@ -437,6 +443,8 @@ class ControlViewModel @Inject constructor(
     }
 
     fun stop() {
+        liveLoopJob?.cancel(); liveLoopJob = null
+        _uiState.update { it.copy(liveRec = LiveRecState.IDLE) }
         streamJob?.cancel(); streamJob = null
         progressiveJob?.cancel(); progressiveJob = null
         chaosJob?.cancel(); chaosJob = null
@@ -610,11 +618,12 @@ class ControlViewModel @Inject constructor(
         val st = _uiState.value
         if (!st.isRunning || st.isPaused) return
         val mode = st.activePattern?.mode ?: return
+        liveLoopJob?.cancel(); liveLoopJob = null
         streamJob?.cancel(); streamJob = null
         progressiveJob?.cancel(); progressiveJob = null
         chaosJob?.cancel(); chaosJob = null
         autoJob?.cancel(); autoJob = null
-        _uiState.update { it.copy(isPaused = true, isRunning = false) }
+        _uiState.update { it.copy(isPaused = true, isRunning = false, liveRec = LiveRecState.IDLE) }
         when (mode) {
             PatternControlMode.STREAMING -> { /* ticker stopped → machine holds last sent position */ }
             else -> bleManager.liveSet("speed", 0)
@@ -745,6 +754,10 @@ class ControlViewModel @Inject constructor(
     private var streamTarget: Float = 0f          // position voulue par le doigt (0..100)
     private var streamSent: Float = 0f            // dernière position envoyée
     private var streamJob: Job? = null            // (plus de ticker ; conservé pour les cancel)
+    // Enregistreur Live : échantillons (t relatif ms, position 0-100).
+    private val recSamples = ArrayList<Pair<Long, Int>>()
+    private var recStartMs = 0L
+    private var liveLoopJob: Job? = null
 
     fun setStreamTarget(positionPercent: Int) {
         streamTarget = positionPercent.toFloat().coerceIn(0f, 100f)
@@ -754,6 +767,13 @@ class ControlViewModel @Inject constructor(
         val st = _uiState.value
         if (st.activePattern?.mode != PatternControlMode.STREAMING && st.rangeWizard == null) return
         if (active) {
+            // Toucher le pad pendant une boucle = reprendre la main.
+            if (st.liveRec == LiveRecState.PLAYING) stopLiveLoop()
+            if (st.liveRec == LiveRecState.ARMED) {
+                recSamples.clear()
+                recStartMs = System.currentTimeMillis()
+                _uiState.update { it.copy(liveRec = LiveRecState.RECORDING) }
+            }
             if (streamJob?.isActive == true) return
             // Un Stop/pause précédent a pu mettre speed=0 : en streaming le firmware
             // ignore silencieusement tout stream:pos:time si speed=0 — on restaure au
@@ -771,6 +791,9 @@ class ControlViewModel @Inject constructor(
                 var nudge = false
                 while (isActive) {
                     val now = System.currentTimeMillis()
+                    if (_uiState.value.liveRec == LiveRecState.RECORDING) {
+                        recSamples.add((now - recStartMs) to streamTarget.toInt())
+                    }
                     if (kotlin.math.abs(streamTarget - streamSent) >= 1f) {
                         streamSent = streamTarget
                         lastSendMs = now
@@ -799,6 +822,11 @@ class ControlViewModel @Inject constructor(
         } else {
             streamJob?.cancel()
             streamJob = null
+            if (_uiState.value.liveRec == LiveRecState.RECORDING) {
+                // Levée du doigt : l'enregistrement part immédiatement en boucle.
+                finishRecordingAndLoop()
+                return
+            }
             // Fin de geste : rejoint la position finale, avec deux rappels espacés
             // pour rattraper un éventuel retard (mouvements raccourcis par le firmware).
             viewModelScope.launch {
@@ -812,6 +840,70 @@ class ControlViewModel @Inject constructor(
         }
     }
 
+    // ---- Enregistreur de mouvement Live (un bouton : Enregistrer → REC → Pause) ----
+
+    fun toggleLiveRecord() {
+        when (_uiState.value.liveRec) {
+            LiveRecState.IDLE -> _uiState.update { it.copy(liveRec = LiveRecState.ARMED) }
+            LiveRecState.ARMED -> _uiState.update { it.copy(liveRec = LiveRecState.IDLE) }
+            LiveRecState.RECORDING -> {
+                recSamples.clear()
+                _uiState.update { it.copy(liveRec = LiveRecState.IDLE) }
+            }
+            LiveRecState.PLAYING -> stopLiveLoop()
+        }
+    }
+
+    private fun stopLiveLoop() {
+        liveLoopJob?.cancel(); liveLoopJob = null
+        _uiState.update { it.copy(liveRec = LiveRecState.IDLE) }
+    }
+
+    private fun finishRecordingAndLoop() {
+        // Coupe le silence initial (échantillons immobiles avant le premier mouvement)
+        // pour que la boucle soit continue.
+        val samples = recSamples.toList()
+        recSamples.clear()
+        val firstPos = samples.firstOrNull()?.second
+        val firstMoveIdx = samples.indexOfFirst { it.second != firstPos }
+        if (firstPos == null || firstMoveIdx < 1) {
+            _uiState.update { it.copy(liveRec = LiveRecState.IDLE) }
+            return
+        }
+        val t0 = samples[firstMoveIdx - 1].first
+        val trimmed = samples.drop(firstMoveIdx - 1).map { (t, p) -> (t - t0) to p }
+        if (trimmed.size < 3 || trimmed.last().first < 300L) {
+            _uiState.update { it.copy(liveRec = LiveRecState.IDLE) }
+            return
+        }
+        _uiState.update { it.copy(liveRec = LiveRecState.PLAYING) }
+        liveLoopJob?.cancel()
+        liveLoopJob = viewModelScope.launch {
+            // Rejoint le point de départ en douceur avant la première itération.
+            bleManager.sendCommand(OssmCommand.Stream(trimmed.first().second, timeMs = 400))
+            delay(450)
+            while (isActive) {
+                val start = System.currentTimeMillis()
+                var lastPos = trimmed.first().second
+                for ((t, pos) in trimmed) {
+                    val wait = start + t - System.currentTimeMillis()
+                    if (wait > 0) delay(wait)
+                    if (!isActive) return@launch
+                    if (kotlin.math.abs(pos - lastPos) >= 1) {
+                        bleManager.sendCommand(OssmCommand.Stream(pos, timeMs = STREAM_MOVE_MS))
+                        lastPos = pos
+                    }
+                }
+                // Jonction de boucle : retour souple au point de départ.
+                val startPos = trimmed.first().second
+                if (kotlin.math.abs(startPos - lastPos) >= 1) {
+                    bleManager.sendCommand(OssmCommand.Stream(startPos, timeMs = 300))
+                    delay(350)
+                }
+            }
+        }
+    }
+
     // ---- Assistant de plage au toucher ----
 
     fun startRangeWizard() {
@@ -820,6 +912,7 @@ class ControlViewModel @Inject constructor(
         val mode = current.activePattern?.mode ?: return
         if (mode == PatternControlMode.STREAMING || mode == PatternControlMode.LAUNCH_ONLY) return
         // Stoppe toute activité en cours avant de passer la machine en suivi de position.
+        liveLoopJob?.cancel(); liveLoopJob = null
         streamJob?.cancel(); streamJob = null
         progressiveJob?.cancel(); progressiveJob = null
         chaosJob?.cancel(); chaosJob = null
@@ -988,6 +1081,7 @@ class ControlViewModel @Inject constructor(
 
     override fun onCleared() {
         super.onCleared()
+        liveLoopJob?.cancel()
         streamJob?.cancel()
         progressiveJob?.cancel()
         chaosJob?.cancel()

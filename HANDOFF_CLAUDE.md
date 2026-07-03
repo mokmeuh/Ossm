@@ -12,7 +12,16 @@ Claude et Codex éditent les MÊMES fichiers en parallèle, ce qui cause des éc
 **Reco : un seul agent édite à la fois, ou se coordonner par ce fichier avant de toucher `BleManager.kt` / `ControlViewModel.kt` / `ControlScreen.kt`.**
 
 ## Version actuelle
-- versionName **1.20.4**, versionCode **72** (installée sur ZY227FZL7W)
+- **BASELINE DE RÉFÉRENCE : v1.20.5 (commit git `0785248`)** — « celle qui fonctionne le mieux » selon l'utilisateur. En cas de régression, revenir à ce commit.
+- v1.21.1 (versionCode 75) : COMPILÉE, PAS ENCORE INSTALLÉE (téléphone débranché). À installer au retour : `adb install -r app\build\outputs\apk\debug\app-debug.apk`.
+- Installée sur l'appareil : v1.21.0 (bulle patterns + enregistreur, sans l'icône).
+
+### v1.21.x (2026-07-02 soir) — nouveautés à TESTER
+- **Boîte Patterns repliable** : toucher « PATTERNS ▾ » → la boîte devient une bulle flottante (62dp) déplaçable partout, qui REFUSE de recouvrir le bouton STOP (esquive auto). Toucher la bulle → la boîte revient. Demandé pour libérer l'écran en mode Live.
+- **Enregistreur de mouvement Live** (`LiveRecState` IDLE→ARMED→RECORDING→PLAYING, un seul bouton) : « Enregistrer » → armer ; toucher le pad → REC (échantillonnage 60 ms dans le ticker) ; lever le doigt → boucle immédiate (silence initial coupé, jonction douce 300 ms) ; bouton devient « Arrêter la boucle » ; toucher le pad pendant la boucle = reprise manuelle. Boucle annulée par Stop/pause/changement de pattern.
+- **Anti-désync gestes rapides (1.20.5)** : rappels de position ±1 alterné toutes les 350 ms (le firmware plante sur 2 positions identiques consécutives) + 2 rappels en fin de geste.
+- **Icône de lanceur** : vraie icône adaptive (drawable/ic_launcher_foreground.xml vector du logo branding, fond #141422) — remplace le placeholder violet. Dans la 1.21.1.
+- Live jugé « beaucoup plus fluide » par l'utilisateur en 1.20.5 ; saccades résiduelles = firmware plafonné en vitesse (speed:80).
 
 ### ⚡ REPRISE IMMÉDIATE (2026-07-02 soir) — état exact et tâches restantes
 **Live (streaming) — état :** fonctionne « légèrement » selon l'utilisateur. Corrigé en 1.20.4 :

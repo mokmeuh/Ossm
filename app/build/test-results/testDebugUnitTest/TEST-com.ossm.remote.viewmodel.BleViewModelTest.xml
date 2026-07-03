@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.ossm.remote.viewmodel.BleViewModelTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-07-03T00:01:35" hostname="MIKOLO" time="2.529">
+<testsuite name="com.ossm.remote.viewmodel.BleViewModelTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-07-03T00:28:23" hostname="MIKOLO" time="6.969">
   <properties/>
-  <testcase name="initial connection state is disconnected" classname="com.ossm.remote.viewmodel.BleViewModelTest" time="2.42"/>
-  <testcase name="disconnect delegates to bleManager" classname="com.ossm.remote.viewmodel.BleViewModelTest" time="0.045"/>
-  <testcase name="connect delegates to bleManager" classname="com.ossm.remote.viewmodel.BleViewModelTest" time="0.016"/>
-  <testcase name="emergencyStop delegates to bleManager" classname="com.ossm.remote.viewmodel.BleViewModelTest" time="0.012"/>
-  <testcase name="startScan delegates to bleManager" classname="com.ossm.remote.viewmodel.BleViewModelTest" time="0.009"/>
-  <testcase name="state reflects bleManager state changes" classname="com.ossm.remote.viewmodel.BleViewModelTest" time="0.026"/>
+  <testcase name="initial connection state is disconnected" classname="com.ossm.remote.viewmodel.BleViewModelTest" time="6.737"/>
+  <testcase name="disconnect delegates to bleManager" classname="com.ossm.remote.viewmodel.BleViewModelTest" time="0.105"/>
+  <testcase name="connect delegates to bleManager" classname="com.ossm.remote.viewmodel.BleViewModelTest" time="0.035"/>
+  <testcase name="emergencyStop delegates to bleManager" classname="com.ossm.remote.viewmodel.BleViewModelTest" time="0.021"/>
+  <testcase name="startScan delegates to bleManager" classname="com.ossm.remote.viewmodel.BleViewModelTest" time="0.018"/>
+  <testcase name="state reflects bleManager state changes" classname="com.ossm.remote.viewmodel.BleViewModelTest" time="0.05"/>
   <system-out><![CDATA[]]></system-out>
   <system-err><![CDATA[]]></system-err>
 </testsuite>

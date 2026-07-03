@@ -406,21 +406,15 @@ public final class DaggerOssmApplication_HiltComponents_SingletonC {
 
     @IdentifierNameString
     private static final class LazyClassKeyProvider {
-      static String com_ossm_remote_viewmodel_DiagnosticsViewModel = "com.ossm.remote.viewmodel.DiagnosticsViewModel";
-
-      static String com_ossm_remote_viewmodel_ProfilesViewModel = "com.ossm.remote.viewmodel.ProfilesViewModel";
-
       static String com_ossm_remote_viewmodel_BleViewModel = "com.ossm.remote.viewmodel.BleViewModel";
 
       static String com_ossm_remote_viewmodel_ControlViewModel = "com.ossm.remote.viewmodel.ControlViewModel";
 
       static String com_ossm_remote_viewmodel_FunscriptViewModel = "com.ossm.remote.viewmodel.FunscriptViewModel";
 
-      @KeepFieldType
-      DiagnosticsViewModel com_ossm_remote_viewmodel_DiagnosticsViewModel2;
+      static String com_ossm_remote_viewmodel_DiagnosticsViewModel = "com.ossm.remote.viewmodel.DiagnosticsViewModel";
 
-      @KeepFieldType
-      ProfilesViewModel com_ossm_remote_viewmodel_ProfilesViewModel2;
+      static String com_ossm_remote_viewmodel_ProfilesViewModel = "com.ossm.remote.viewmodel.ProfilesViewModel";
 
       @KeepFieldType
       BleViewModel com_ossm_remote_viewmodel_BleViewModel2;
@@ -430,6 +424,12 @@ public final class DaggerOssmApplication_HiltComponents_SingletonC {
 
       @KeepFieldType
       FunscriptViewModel com_ossm_remote_viewmodel_FunscriptViewModel2;
+
+      @KeepFieldType
+      DiagnosticsViewModel com_ossm_remote_viewmodel_DiagnosticsViewModel2;
+
+      @KeepFieldType
+      ProfilesViewModel com_ossm_remote_viewmodel_ProfilesViewModel2;
     }
   }
 
@@ -482,30 +482,30 @@ public final class DaggerOssmApplication_HiltComponents_SingletonC {
 
     @IdentifierNameString
     private static final class LazyClassKeyProvider {
-      static String com_ossm_remote_viewmodel_FunscriptViewModel = "com.ossm.remote.viewmodel.FunscriptViewModel";
-
-      static String com_ossm_remote_viewmodel_BleViewModel = "com.ossm.remote.viewmodel.BleViewModel";
-
-      static String com_ossm_remote_viewmodel_ProfilesViewModel = "com.ossm.remote.viewmodel.ProfilesViewModel";
-
       static String com_ossm_remote_viewmodel_ControlViewModel = "com.ossm.remote.viewmodel.ControlViewModel";
 
       static String com_ossm_remote_viewmodel_DiagnosticsViewModel = "com.ossm.remote.viewmodel.DiagnosticsViewModel";
 
-      @KeepFieldType
-      FunscriptViewModel com_ossm_remote_viewmodel_FunscriptViewModel2;
+      static String com_ossm_remote_viewmodel_ProfilesViewModel = "com.ossm.remote.viewmodel.ProfilesViewModel";
 
-      @KeepFieldType
-      BleViewModel com_ossm_remote_viewmodel_BleViewModel2;
+      static String com_ossm_remote_viewmodel_FunscriptViewModel = "com.ossm.remote.viewmodel.FunscriptViewModel";
 
-      @KeepFieldType
-      ProfilesViewModel com_ossm_remote_viewmodel_ProfilesViewModel2;
+      static String com_ossm_remote_viewmodel_BleViewModel = "com.ossm.remote.viewmodel.BleViewModel";
 
       @KeepFieldType
       ControlViewModel com_ossm_remote_viewmodel_ControlViewModel2;
 
       @KeepFieldType
       DiagnosticsViewModel com_ossm_remote_viewmodel_DiagnosticsViewModel2;
+
+      @KeepFieldType
+      ProfilesViewModel com_ossm_remote_viewmodel_ProfilesViewModel2;
+
+      @KeepFieldType
+      FunscriptViewModel com_ossm_remote_viewmodel_FunscriptViewModel2;
+
+      @KeepFieldType
+      BleViewModel com_ossm_remote_viewmodel_BleViewModel2;
     }
 
     private static final class SwitchingProvider<T> implements Provider<T> {

@@ -2,7 +2,9 @@ package com.ossm.remote.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -56,6 +58,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import kotlin.math.roundToInt
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
@@ -91,6 +99,7 @@ import com.ossm.remote.ui.theme.OssmSurface
 import com.ossm.remote.ui.theme.OssmWarning
 import com.ossm.remote.ui.theme.PatternColors
 import com.ossm.remote.viewmodel.ControlUiState
+import com.ossm.remote.viewmodel.LiveRecState
 import com.ossm.remote.viewmodel.GuardedControl
 
 @Composable
@@ -130,13 +139,20 @@ fun ControlScreen(
     onDepthGuardEnabledChange: (Boolean) -> Unit,
     onConfirmPendingChange: (Boolean, Boolean) -> Unit,
     onDismissPendingChange: () -> Unit,
-    onPatternOrderSave: (List<String>) -> Unit
+    onPatternOrderSave: (List<String>) -> Unit,
+    onLiveRecordToggle: () -> Unit
 ) {
     val connected = connectionState is BleConnectionState.Connected
     val machineBusy = machineState.isHoming || machineState.isPreflight
     val slidersEnabled = connected && !machineBusy
     var showSaveDialog by remember { mutableStateOf(false) }
     var showReorderDialog by remember { mutableStateOf(false) }
+    // Boîte Patterns repliable en bulle flottante déplaçable (jamais sur STOP).
+    var patternsCollapsed by remember { mutableStateOf(false) }
+    var bubbleX by remember { mutableFloatStateOf(24f) }
+    var bubbleY by remember { mutableFloatStateOf(500f) }
+    var rootSize by remember { mutableStateOf(IntSize.Zero) }
+    var stopRect by remember { mutableStateOf<Rect?>(null) }
     // Position réelle → fraction 0..1 de la course. Échelle auto-calibrée sur la
     // PLAGE observée (min..max) ; orientée pour que 0 % = home (la borne la plus
     // proche de zéro). Masquée tant que la plage vue est < 5 mm.
@@ -166,6 +182,7 @@ fun ControlScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(Brush.verticalGradient(listOf(OssmBackground, OssmSecondary)))
+            .onSizeChanged { rootSize = it }
     ) {
         // Quand un pad tactile vertical est affiché (Live ou assistant de plage), on
         // désactive le scroll de la page : sinon il vole les glissements du doigt.
@@ -206,7 +223,9 @@ fun ControlScreen(
                     onDepthCheckedChange = onDepthGuardEnabledChange,
                     onInfoClick = { showInfoDialog = true }
                 )
-                StopButton(onClick = onStop)
+                Box(Modifier.onGloballyPositioned { stopRect = it.boundsInRoot() }) {
+                    StopButton(onClick = onStop)
+                }
                 PausePlayButton(
                     isPaused = uiState.isPaused,
                     enabled = connected
@@ -246,18 +265,20 @@ fun ControlScreen(
                 }
             }
 
-            GlassCard(modifier = Modifier.fillMaxWidth()) {
+            if (!patternsCollapsed) GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    // Touche le titre pour replier la boîte en bulle flottante.
                     Text(
-                        "PATTERNS",
+                        "PATTERNS  ▾",
                         color = OssmPrimaryLight,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.5.sp
+                        letterSpacing = 1.5.sp,
+                        modifier = Modifier.clickable { patternsCollapsed = true }
                     )
                     IconButton(onClick = { showReorderDialog = true }) {
                         Text("+", color = OssmAccent, fontSize = 22.sp, fontWeight = FontWeight.Bold)
@@ -420,6 +441,28 @@ fun ControlScreen(
                             onTarget = onStreamTarget,
                             onActive = onStreamActive
                         )
+                        Spacer(Modifier.height(10.dp))
+                        val recLabel = when (uiState.liveRec) {
+                            LiveRecState.IDLE -> "●  Enregistrer un mouvement"
+                            LiveRecState.ARMED -> "Prêt — touche le pad (appuie pour annuler)"
+                            LiveRecState.RECORDING -> "●  REC — lève le doigt pour boucler"
+                            LiveRecState.PLAYING -> "⏸  Arrêter la boucle"
+                        }
+                        val recColor = when (uiState.liveRec) {
+                            LiveRecState.IDLE -> OssmPrimary
+                            LiveRecState.ARMED, LiveRecState.RECORDING -> OssmError
+                            LiveRecState.PLAYING -> OssmWarning
+                        }
+                        Button(
+                            onClick = onLiveRecordToggle,
+                            enabled = connected && uiState.streamingReady,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(52.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = recColor)
+                        ) {
+                            Text(recLabel, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
                     activePattern.mode == PatternControlMode.PROGRESSIVE -> {
                         ProgressiveSpeedBar(
@@ -655,6 +698,44 @@ fun ControlScreen(
             }
 
             Spacer(Modifier.height(24.dp))
+        }
+
+        if (patternsCollapsed) {
+            val bubbleSizePx = with(LocalDensity.current) { 62.dp.toPx() }
+            Box(
+                modifier = Modifier
+                    .offset { IntOffset(bubbleX.roundToInt(), bubbleY.roundToInt()) }
+                    .size(62.dp)
+                    .clip(CircleShape)
+                    .background(OssmPrimary.copy(alpha = 0.94f))
+                    .border(2.dp, OssmPrimaryLight.copy(alpha = 0.7f), CircleShape)
+                    .pointerInput(Unit) {
+                        detectTapGestures { patternsCollapsed = false }
+                    }
+                    .pointerInput(rootSize) {
+                        detectDragGestures { change, amount ->
+                            change.consume()
+                            val maxX = (rootSize.width - bubbleSizePx).coerceAtLeast(0f)
+                            val maxY = (rootSize.height - bubbleSizePx).coerceAtLeast(0f)
+                            bubbleX = (bubbleX + amount.x).coerceIn(0f, maxX)
+                            bubbleY = (bubbleY + amount.y).coerceIn(0f, maxY)
+                            // Interdit de recouvrir le bouton STOP.
+                            stopRect?.let { r ->
+                                val b = Rect(bubbleX, bubbleY, bubbleX + bubbleSizePx, bubbleY + bubbleSizePx)
+                                if (b.overlaps(Rect(r.left - 12f, r.top - 12f, r.right + 12f, r.bottom + 12f))) {
+                                    bubbleY = if ((bubbleY + bubbleSizePx / 2f) < r.center.y) {
+                                        (r.top - bubbleSizePx - 16f).coerceAtLeast(0f)
+                                    } else {
+                                        (r.bottom + 16f).coerceAtMost(maxY)
+                                    }
+                                }
+                            }
+                        }
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Text("▦", color = OssmOnSurface, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+            }
         }
     }
 
