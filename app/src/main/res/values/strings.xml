@@ -58,4 +58,6 @@
     <string name="ctl_random_depth_max">Profondeur — fond aléatoire</string>
     <string name="ctl_random_sensation_low">Sensation aléatoire — retour (0–50)</string>
     <string name="ctl_random_sensation_high">Sensation aléatoire — aller (50–100)</string>
+    <string name="ctl_listening_title">Mode à l\'écoute (micro)</string>
+    <string name="ctl_listening_hint">Le micro fait monter l\'intensité quand tu réagis. Traité sur l\'appareil, jamais enregistré.</string>
 </resources>

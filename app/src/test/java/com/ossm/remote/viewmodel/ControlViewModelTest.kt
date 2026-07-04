@@ -1,6 +1,7 @@
 package com.ossm.remote.viewmodel
 
 import app.cash.turbine.test
+import com.ossm.remote.audio.AudioLevelMonitor
 import com.ossm.remote.ble.BleManager
 import com.ossm.remote.data.repository.ControlSafetySettings
 import com.ossm.remote.data.repository.ControlSafetySettingsRepository
@@ -44,6 +45,7 @@ class ControlViewModelTest {
     private lateinit var bleManager: BleManager
     private lateinit var safetySettingsRepository: ControlSafetySettingsRepository
     private lateinit var userHabitsRepository: UserHabitsRepository
+    private lateinit var audioLevelMonitor: AudioLevelMonitor
     private lateinit var viewModel: ControlViewModel
     private lateinit var patternsFlow: MutableStateFlow<List<OssmPattern>>
     private lateinit var settingsFlow: MutableStateFlow<ControlSafetySettings>
@@ -75,8 +77,11 @@ class ControlViewModelTest {
         coEvery { safetySettingsRepository.setSpeedGuardEnabled(any()) } returns Unit
         coEvery { safetySettingsRepository.setDepthGuardEnabled(any()) } returns Unit
         every { userHabitsRepository.sessionDefaults } returns flowOf(SessionDefaults(null, null, null))
+        every { safetySettingsRepository.listeningModeEnabled } returns MutableStateFlow(false)
+        audioLevelMonitor = mockk(relaxed = true)
+        every { audioLevelMonitor.level } returns MutableStateFlow(0f)
 
-        viewModel = ControlViewModel(bleManager, safetySettingsRepository, userHabitsRepository)
+        viewModel = ControlViewModel(bleManager, safetySettingsRepository, userHabitsRepository, audioLevelMonitor)
         testDispatcher.scheduler.advanceUntilIdle()
     }
 

@@ -144,7 +144,9 @@ fun ControlScreen(
     onDismissPendingChange: () -> Unit,
     onPatternOrderSave: (List<String>) -> Unit,
     onLiveRecordToggle: () -> Unit,
-    onRandomToggle: (RandomTarget, Boolean) -> Unit
+    onRandomToggle: (RandomTarget, Boolean) -> Unit,
+    listeningLevel: Float,
+    onListeningToggle: (Boolean) -> Unit
 ) {
     val connected = connectionState is BleConnectionState.Connected
     val machineBusy = machineState.isHoming || machineState.isPreflight
@@ -705,7 +707,9 @@ fun ControlScreen(
                             RandomModeSection(
                                 uiState = uiState,
                                 showSensation = activePattern.key == "teasingPounding",
-                                onRandomToggle = onRandomToggle
+                                onRandomToggle = onRandomToggle,
+                                listeningLevel = listeningLevel,
+                                onListeningToggle = onListeningToggle
                             )
                         }
                     }
@@ -964,7 +968,9 @@ private fun InfoLine(title: String, description: String) {
 private fun RandomModeSection(
     uiState: ControlUiState,
     showSensation: Boolean,
-    onRandomToggle: (RandomTarget, Boolean) -> Unit
+    onRandomToggle: (RandomTarget, Boolean) -> Unit,
+    listeningLevel: Float,
+    onListeningToggle: (Boolean) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
@@ -1006,6 +1012,56 @@ private fun RandomModeSection(
                 checked = uiState.randSensationHigh,
                 onCheckedChange = { onRandomToggle(RandomTarget.SENSATION_HIGH, it) }
             )
+        }
+
+        // Mode « à l'écoute » : le micro biaise l'aléatoire vers le haut.
+        Spacer(Modifier.height(6.dp))
+        HorizontalDivider(color = OssmGlassBorder)
+        Spacer(Modifier.height(6.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    stringResource(R.string.ctl_listening_title),
+                    color = OssmOnSurface,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    stringResource(R.string.ctl_listening_hint),
+                    color = OssmOnSurface.copy(alpha = 0.6f),
+                    fontSize = 11.sp
+                )
+            }
+            Switch(
+                checked = uiState.listeningMode,
+                onCheckedChange = onListeningToggle,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = OssmAccent,
+                    checkedTrackColor = OssmAccent.copy(alpha = 0.4f)
+                )
+            )
+        }
+        // Témoin de niveau sonore (visible seulement quand le mode est actif).
+        if (uiState.listeningMode) {
+            Spacer(Modifier.height(6.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(OssmOnSurface.copy(alpha = 0.12f))
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(listeningLevel.coerceIn(0f, 1f))
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(OssmAccent)
+                )
+            }
         }
     }
 }

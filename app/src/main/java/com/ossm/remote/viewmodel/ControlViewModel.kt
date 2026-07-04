@@ -2,6 +2,7 @@ package com.ossm.remote.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ossm.remote.audio.AudioLevelMonitor
 import com.ossm.remote.ble.BleManager
 import com.ossm.remote.model.BleConnectionState
 import com.ossm.remote.data.repository.ControlSafetySettingsRepository
@@ -101,6 +102,9 @@ data class ControlUiState(
     val randDepthMax: Boolean = false,
     val randSensationLow: Boolean = false,   // sensation 0–50 %
     val randSensationHigh: Boolean = false,  // sensation 50–100 %
+    // Mode « à l'écoute » : le micro biaise le mode aléatoire vers le haut (plus
+    // fort tu réagis, plus l'intensité monte et reste dans le haut des plages).
+    val listeningMode: Boolean = false,
     // Auto Random mix
     val autoSelectedKeys: Set<String> = setOf("simpleStroke", "teasingPounding", "roboStroke"),
     val autoMaxSpeed: Float = 0.7f,        // speed ceiling for the mix (never exceeded)
@@ -156,11 +160,15 @@ private val RANDOM_CAPABLE_KEYS = setOf(TEASING_POUNDING_KEY, SIMPLE_STROKE_KEY)
 class ControlViewModel @Inject constructor(
     private val bleManager: BleManager,
     private val safetySettingsRepository: ControlSafetySettingsRepository,
-    private val userHabitsRepository: UserHabitsRepository
+    private val userHabitsRepository: UserHabitsRepository,
+    private val audioLevelMonitor: AudioLevelMonitor
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ControlUiState())
     val uiState: StateFlow<ControlUiState> = _uiState.asStateFlow()
+
+    /** Niveau sonore live (0..1) pour le témoin visuel du mode à l'écoute. */
+    val listeningLevel: StateFlow<Float> = audioLevelMonitor.level
 
     private val sessionBypass = mutableSetOf<GuardedControl>()
 
@@ -224,6 +232,13 @@ class ControlViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
+            safetySettingsRepository.listeningModeEnabled.collect { enabled ->
+                _uiState.update { it.copy(listeningMode = enabled) }
+                updateListeningMonitor()
+            }
+        }
+
+        viewModelScope.launch {
             bleManager.streamingReady.collect { ready ->
                 if (ready) {
                     // Le firmware vient de se replacer en position 0 (home) : on
@@ -278,6 +293,7 @@ class ControlViewModel @Inject constructor(
         progressiveJob?.cancel(); progressiveJob = null
         chaosJob?.cancel(); chaosJob = null
         teasingRandomJob?.cancel(); teasingRandomJob = null
+        audioLevelMonitor.stop()
         autoJob?.cancel(); autoJob = null; autoFirmwareMode = null
         // Repart sur des cases décochées à chaque changement de pattern (jamais
         // d'aléatoire surprise en revenant sur Teasing & Pounding).
@@ -496,6 +512,7 @@ class ControlViewModel @Inject constructor(
         progressiveJob?.cancel(); progressiveJob = null
         chaosJob?.cancel(); chaosJob = null
         teasingRandomJob?.cancel(); teasingRandomJob = null
+        audioLevelMonitor.stop()
         autoJob?.cancel(); autoJob = null
         autoFirmwareMode = null
         _uiState.update { it.copy(isRunning = false, isPaused = false, autoRunning = false, autoIntensity = 0f, speed = 0f, pendingManualChange = null) }
@@ -628,6 +645,25 @@ class ControlViewModel @Inject constructor(
         updateTeasingRandomTicker()
     }
 
+    /** Active/désactive le mode « à l'écoute » (persisté). */
+    fun setListeningMode(enabled: Boolean) {
+        viewModelScope.launch { safetySettingsRepository.setListeningModeEnabled(enabled) }
+        // Mise à jour optimiste immédiate (le collect persistera aussi).
+        _uiState.update { it.copy(listeningMode = enabled) }
+        updateListeningMonitor()
+    }
+
+    /** Démarre le micro seulement quand le mode à l'écoute ET le mode aléatoire tournent. */
+    private fun updateListeningMonitor() {
+        val st = _uiState.value
+        val shouldListen = st.listeningMode && teasingRandomJob?.isActive == true
+        if (shouldListen) {
+            audioLevelMonitor.start(viewModelScope)
+        } else {
+            audioLevelMonitor.stop()
+        }
+    }
+
     /** Un pas de marche aléatoire borné : reste proche de [prev] (≤ maxStep), dans [lo, hi]. */
     private fun randomWalkStep(prev: Float, lo: Float, hi: Float, maxStep: Float): Float {
         if (hi <= lo) return lo
@@ -642,6 +678,7 @@ class ControlViewModel @Inject constructor(
             st.anyRandomActive
         if (!active) {
             teasingRandomJob?.cancel(); teasingRandomJob = null
+            audioLevelMonitor.stop()
             // Retour propre aux valeurs des sliders quand on désactive tout.
             if (st.activePattern?.mode == PatternControlMode.STROKE_ENGINE) {
                 sendCurrentStrokeEngineCommand()
@@ -663,24 +700,32 @@ class ControlViewModel @Inject constructor(
                 val baseMin = s.depthMin
                 val baseMax = s.depthMax
 
-                // Vitesse : marche douce entre 0 et le max réglé (pas ≤ 25 % de la plage
-                // pour éviter les grands écarts de vitesse).
+                // Mode à l'écoute : niveau sonore 0..1 (0 si désactivé) → remonte le
+                // PLANCHER de chaque promenade vers le haut (plus tu réagis, plus ça
+                // reste vite/profond, sans jamais dépasser tes maximums réglés).
+                val bias = if (s.listeningMode) audioLevelMonitor.level.value.coerceIn(0f, 1f) else 0f
+
+                // Vitesse : marche douce entre un plancher (0, relevé par le son) et le
+                // max réglé (pas ≤ 25 % de la plage pour éviter les grands écarts).
                 val speed = if (s.randSpeed) {
-                    randWalkSpeed = randomWalkStep(randWalkSpeed, 0f, s.speed, s.speed * 0.25f)
+                    val loSpeed = bias * 0.8f * s.speed
+                    randWalkSpeed = randomWalkStep(randWalkSpeed.coerceIn(loSpeed, s.speed), loSpeed, s.speed, s.speed * 0.25f)
                     randWalkSpeed
                 } else s.speed
 
-                // Retrait : marche douce dans [min réglé, max−5 %] (jamais plus reculé que min).
+                // Retrait : marche douce dans [plancher, max−5 %] (jamais plus reculé que min).
                 val rMin = if (s.randDepthMin) {
                     val hi = (baseMax - minSpan).coerceAtLeast(baseMin)
-                    randWalkMin = randomWalkStep(randWalkMin.coerceIn(baseMin, hi), baseMin, hi, (hi - baseMin) * 0.3f)
+                    val loMin = baseMin + bias * 0.7f * (hi - baseMin)
+                    randWalkMin = randomWalkStep(randWalkMin.coerceIn(loMin, hi), loMin, hi, (hi - baseMin) * 0.3f)
                     randWalkMin
                 } else baseMin
 
-                // Fond : marche douce dans [rMin+5 %, max réglé] (jamais plus profond que max).
+                // Fond : marche douce dans [plancher, max réglé] (jamais plus profond que max).
                 val rMax = if (s.randDepthMax) {
                     val lo = (rMin + minSpan).coerceAtMost(baseMax)
-                    randWalkMax = randomWalkStep(randWalkMax.coerceIn(lo, baseMax), lo, baseMax, (baseMax - lo) * 0.3f)
+                    val loMax = lo + bias * 0.9f * (baseMax - lo)
+                    randWalkMax = randomWalkStep(randWalkMax.coerceIn(loMax, baseMax), loMax, baseMax, (baseMax - lo) * 0.3f)
                     randWalkMax
                 } else baseMax.coerceAtLeast((rMin + minSpan).coerceAtMost(baseMax))
 
@@ -705,6 +750,8 @@ class ControlViewModel @Inject constructor(
                 delay(Random.nextLong(TEASE_RANDOM_MIN_MS, TEASE_RANDOM_MAX_MS))
             }
         }
+        // Démarre le micro si le mode à l'écoute est actif (maintenant que le ticker tourne).
+        updateListeningMonitor()
     }
 
     /**
@@ -778,6 +825,7 @@ class ControlViewModel @Inject constructor(
         progressiveJob?.cancel(); progressiveJob = null
         chaosJob?.cancel(); chaosJob = null
         teasingRandomJob?.cancel(); teasingRandomJob = null
+        audioLevelMonitor.stop()
         autoJob?.cancel(); autoJob = null
         _uiState.update { it.copy(isPaused = true, isRunning = false, liveRec = LiveRecState.IDLE) }
         when (mode) {
@@ -1244,6 +1292,7 @@ class ControlViewModel @Inject constructor(
         progressiveJob?.cancel()
         chaosJob?.cancel()
         teasingRandomJob?.cancel()
+        audioLevelMonitor.stop()
     }
 
     companion object {

@@ -58,4 +58,6 @@
     <string name="ctl_random_depth_max">Depth — random bottom</string>
     <string name="ctl_random_sensation_low">Random sensation — return (0–50)</string>
     <string name="ctl_random_sensation_high">Random sensation — forward (50–100)</string>
+    <string name="ctl_listening_title">Listening mode (mic)</string>
+    <string name="ctl_listening_hint">The mic raises intensity when you react. Processed on-device, never recorded.</string>
 </resources>

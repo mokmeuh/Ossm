@@ -44,6 +44,11 @@ class ControlSafetySettingsRepository @Inject constructor(
         prefs[DEPTH_GUARD_THRESHOLD_PERCENT] ?: 5
     }
 
+    /** Mode « à l'écoute » : le micro biaise le mode aléatoire vers le haut. Désactivé par défaut. */
+    val listeningModeEnabled: Flow<Boolean> = context.controlSafetyDataStore.data.map { prefs ->
+        prefs[LISTENING_MODE_ENABLED] ?: false
+    }
+
     val settings: Flow<ControlSafetySettings> = combine(
         speedGuardEnabled,
         speedGuardThresholdPercent,
@@ -68,10 +73,17 @@ class ControlSafetySettingsRepository @Inject constructor(
         }
     }
 
+    suspend fun setListeningModeEnabled(enabled: Boolean) {
+        context.controlSafetyDataStore.edit { prefs ->
+            prefs[LISTENING_MODE_ENABLED] = enabled
+        }
+    }
+
     companion object {
         private val SPEED_GUARD_ENABLED = booleanPreferencesKey("speed_abrupt_change_guard_enabled")
         private val SPEED_GUARD_THRESHOLD_PERCENT = intPreferencesKey("speed_abrupt_change_guard_threshold_percent")
         private val DEPTH_GUARD_ENABLED = booleanPreferencesKey("depth_abrupt_change_guard_enabled")
         private val DEPTH_GUARD_THRESHOLD_PERCENT = intPreferencesKey("depth_abrupt_change_guard_threshold_percent")
+        private val LISTENING_MODE_ENABLED = booleanPreferencesKey("listening_mode_enabled")
     }
 }

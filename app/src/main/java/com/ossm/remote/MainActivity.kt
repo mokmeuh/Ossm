@@ -48,6 +48,32 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // Mode « à l'écoute » : demande la permission micro au moment où l'utilisateur
+    // l'active (jamais au démarrage), puis active le réglage si accordée.
+    private var pendingListeningEnable = false
+    private val audioPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted && pendingListeningEnable) controlVm.setListeningMode(true)
+        pendingListeningEnable = false
+    }
+
+    private fun toggleListeningMode(enable: Boolean) {
+        if (!enable) {
+            controlVm.setListeningMode(false)
+            return
+        }
+        val granted = androidx.core.content.ContextCompat.checkSelfPermission(
+            this, Manifest.permission.RECORD_AUDIO
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (granted) {
+            controlVm.setListeningMode(true)
+        } else {
+            pendingListeningEnable = true
+            audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -67,7 +93,8 @@ class MainActivity : ComponentActivity() {
                         if (!bleVm.isBluetoothEnabled()) {
                             enableBtLauncher.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE))
                         }
-                    }
+                    },
+                    onListeningToggle = ::toggleListeningMode
                 )
             }
         }
@@ -98,12 +125,14 @@ fun OssmApp(
     diagnosticsVm: DiagnosticsViewModel,
     profilesVm: ProfilesViewModel,
     funscriptVm: FunscriptViewModel,
-    onEnableBluetooth: () -> Unit
+    onEnableBluetooth: () -> Unit,
+    onListeningToggle: (Boolean) -> Unit
 ) {
     val navController = rememberNavController()
 
     val connectionState by bleVm.connectionState.collectAsState()
     val controlUiState by controlVm.uiState.collectAsState()
+    val listeningLevel by controlVm.listeningLevel.collectAsState()
     val diagnosticsLogs by diagnosticsVm.logs.collectAsState()
     val lastCommand by diagnosticsVm.lastCommand.collectAsState()
     val presets by profilesVm.presets.collectAsState()
@@ -206,7 +235,9 @@ fun OssmApp(
                     onDismissPendingChange = controlVm::dismissPendingManualChange,
                     onPatternOrderSave = controlVm::savePatternOrder,
                     onLiveRecordToggle = controlVm::toggleLiveRecord,
-                    onRandomToggle = controlVm::setRandomMode
+                    onRandomToggle = controlVm::setRandomMode,
+                    listeningLevel = listeningLevel,
+                    onListeningToggle = onListeningToggle
                 )
             }
             composable(Screen.Diagnostics.route) {

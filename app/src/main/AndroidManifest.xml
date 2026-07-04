@@ -22,6 +22,9 @@
         android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
 
+    <!-- Micro : mode « à l'écoute » (niveau sonore traité sur l'appareil, jamais enregistré) -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
 
     <application
