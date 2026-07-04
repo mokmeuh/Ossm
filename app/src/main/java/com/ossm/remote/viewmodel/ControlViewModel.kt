@@ -121,6 +121,10 @@ data class ControlUiState(
     // Vrai quand la machine a confirmé le mode streaming avec la bande pleine course
     // (stroke=100/depth=100) : le pad Live n'est actif qu'à ce moment-là.
     val streamingReady: Boolean = false,
+    // Accélération max du mode Live (0..1) : plafonne la vitesse du chariot. Même si
+    // le doigt fonce, la machine ne bouge pas plus vite que cette limite. Bas = très
+    // fluide/doux ; haut = suit le doigt au plus près.
+    val liveMaxAccel: Float = 0.6f,
     // Assistant de plage au toucher (non null = assistant en cours).
     val rangeWizard: RangeWizardState? = null,
     // Ordre personnalisé des patterns (keys) ; vide = ordre naturel.
@@ -1001,6 +1005,11 @@ class ControlViewModel @Inject constructor(
         streamTarget = positionPercent.toFloat().coerceIn(0f, 100f)
     }
 
+    /** Accélération/vitesse max du Live (0..1). Plafonne le pas par tick du chariot. */
+    fun setLiveMaxAccel(value: Float) {
+        _uiState.update { it.copy(liveMaxAccel = value.coerceIn(0.05f, 1f)) }
+    }
+
     fun setStreamActive(active: Boolean) {
         val st = _uiState.value
         if (st.activePattern?.mode != PatternControlMode.STREAMING && st.rangeWizard == null) return
@@ -1034,13 +1043,16 @@ class ControlViewModel @Inject constructor(
                     }
                     val diff = streamTarget - streamSent
                     if (kotlin.math.abs(diff) >= 0.5f) {
-                        // LISSAGE (ease-out) : au lieu de SAUTER à la position brute du
-                        // doigt (bruitée → gros pas tronqués par le firmware → mini
-                        // à-coups), on GLISSE vers elle d'une fraction à chaque tick.
-                        // Résultat : une courbe continue de petits pas → mouvement fluide.
-                        // La vitesse suit toujours le doigt (plus le doigt est loin, plus
-                        // le pas est grand). Snap final pour bien converger.
-                        streamSent += diff * STREAM_SMOOTH_ALPHA
+                        // LISSAGE (ease-out) + PLAFOND D'ACCÉLÉRATION réglable.
+                        // 1) ease-out : on glisse vers le doigt d'une fraction (courbe
+                        //    douce, petits pas continus → pas de gros pas tronqué).
+                        // 2) plafond : le pas est bridé par `liveMaxAccel` (slider). Même
+                        //    si le doigt fonce, le chariot ne dépasse jamais cette vitesse.
+                        //    Bas = très doux/lent ; haut = suit le doigt au plus près.
+                        val maxStep = interpolate(STREAM_MIN_STEP, STREAM_MAX_STEP, _uiState.value.liveMaxAccel)
+                        val eased = diff * STREAM_SMOOTH_ALPHA
+                        val step = eased.coerceIn(-maxStep, maxStep)
+                        streamSent += step
                         if (kotlin.math.abs(streamTarget - streamSent) < 0.5f) streamSent = streamTarget
                         lastSendMs = now
                         bleManager.sendCommand(
@@ -1339,11 +1351,15 @@ class ControlViewModel @Inject constructor(
         // Live streaming : envois rapprochés, durée > cadence pour un mouvement
         // continu (léger chevauchement, file bornée à ~1 commande).
         private const val STREAM_CADENCE_MS = 60L
-        private const val STREAM_MOVE_MS = 90
+        private const val STREAM_MOVE_MS = 110
         // Lissage du Live : fraction de l'écart doigt↔machine parcourue à chaque tick
         // (0 = figé, 1 = saut immédiat = ancien comportement saccadé). ~0.35 = fluide
         // tout en suivant bien le doigt. Baisser = plus lisse mais plus « mou ».
         private const val STREAM_SMOOTH_ALPHA = 0.35f
+        // Pas MAX par tick (% de course), interpolé par le slider « accélération max ».
+        // À 60 ms/tick : 2 % ≈ course pleine en ~3 s (très doux) ; 40 % ≈ ~150 ms (vif).
+        private const val STREAM_MIN_STEP = 2f
+        private const val STREAM_MAX_STEP = 40f
         // Rappels de position (rattrapage du retard sur gestes rapides).
         private const val STREAM_REFRESH_MS = 350L
         private const val STREAM_REFRESH_MOVE_MS = 250

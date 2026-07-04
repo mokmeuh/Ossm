@@ -148,7 +148,8 @@ fun ControlScreen(
     onDepthRandomToggle: (Boolean) -> Unit,
     listeningLevel: Float,
     onListeningToggle: (Boolean) -> Unit,
-    onLiveInvertToggle: (Boolean) -> Unit
+    onLiveInvertToggle: (Boolean) -> Unit,
+    onLiveMaxAccelChange: (Float) -> Unit
 ) {
     val connected = connectionState is BleConnectionState.Connected
     val machineBusy = machineState.isHoming || machineState.isPreflight
@@ -448,6 +449,17 @@ fun ControlScreen(
                             enabled = slidersEnabled && uiState.streamingReady,
                             onTarget = onStreamTarget,
                             onActive = onStreamActive
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        // Accélération max : plafonne la vitesse du chariot (gauche = doux
+                        // et fluide, droite = suit le doigt au plus près).
+                        ControlSlider(
+                            label = stringResource(R.string.ctl_live_max_accel),
+                            value = uiState.liveMaxAccel,
+                            onValueChange = onLiveMaxAccelChange,
+                            onValueCommit = onLiveMaxAccelChange,
+                            enabled = connected,
+                            activeColor = OssmPrimary
                         )
                         Spacer(Modifier.height(10.dp))
                         // Sens du Live réglable : si le chariot part dans le mauvais sens
