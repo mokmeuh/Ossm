@@ -10,11 +10,13 @@ sealed class Screen(val route: String, val label: String, val icon: ImageVector)
     object Diagnostics : Screen("diagnostics", "Diagnostics",  Icons.Default.BugReport)
     object Profiles    : Screen("profiles",    "Préréglages",  Icons.Default.Bookmark)
     object Funscript   : Screen("funscript",   "Funscript",    Icons.Default.PlayCircle)
+    object Remote      : Screen("remote",      "Remote",       Icons.Default.SettingsRemote)
 }
 
 val BottomNavScreens = listOf(
     Screen.Scan,
     Screen.Control,
+    Screen.Remote,
     Screen.Funscript,
     Screen.Profiles,
     Screen.Diagnostics

@@ -35,6 +35,7 @@ class MainActivity : ComponentActivity() {
     private val diagnosticsVm: DiagnosticsViewModel by viewModels()
     private val profilesVm: ProfilesViewModel by viewModels()
     private val funscriptVm: FunscriptViewModel by viewModels()
+    private val remoteVm: RemoteViewModel by viewModels()
 
     private val enableBtLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -89,6 +90,7 @@ class MainActivity : ComponentActivity() {
                     diagnosticsVm = diagnosticsVm,
                     profilesVm = profilesVm,
                     funscriptVm = funscriptVm,
+                    remoteVm = remoteVm,
                     onEnableBluetooth = {
                         if (!bleVm.isBluetoothEnabled()) {
                             enableBtLauncher.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE))
@@ -125,10 +127,12 @@ fun OssmApp(
     diagnosticsVm: DiagnosticsViewModel,
     profilesVm: ProfilesViewModel,
     funscriptVm: FunscriptViewModel,
+    remoteVm: RemoteViewModel,
     onEnableBluetooth: () -> Unit,
     onListeningToggle: (Boolean) -> Unit
 ) {
     val navController = rememberNavController()
+    val remoteUiState by remoteVm.uiState.collectAsState()
 
     val connectionState by bleVm.connectionState.collectAsState()
     val controlUiState by controlVm.uiState.collectAsState()
@@ -240,6 +244,17 @@ fun OssmApp(
                     listeningLevel = listeningLevel,
                     onListeningToggle = onListeningToggle,
                     onLiveInvertToggle = controlVm::setLiveInvert
+                )
+            }
+            composable(Screen.Remote.route) {
+                RemoteScreen(
+                    uiState = remoteUiState,
+                    onStartHosting = remoteVm::startHosting,
+                    onRegenerateCode = remoteVm::regenerateCode,
+                    onCodeInputChange = remoteVm::onCodeInputChange,
+                    onConnect = remoteVm::connectToPeer,
+                    onExclusiveControl = remoteVm::setExclusiveControl,
+                    onEndSession = remoteVm::endSession
                 )
             }
             composable(Screen.Diagnostics.route) {
