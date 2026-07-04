@@ -49,6 +49,11 @@ class ControlSafetySettingsRepository @Inject constructor(
         prefs[LISTENING_MODE_ENABLED] ?: false
     }
 
+    /** Inversion du sens du mode Live (streaming). false = mapping direct (stream:0=home). */
+    val liveInvertEnabled: Flow<Boolean> = context.controlSafetyDataStore.data.map { prefs ->
+        prefs[LIVE_INVERT_ENABLED] ?: false
+    }
+
     val settings: Flow<ControlSafetySettings> = combine(
         speedGuardEnabled,
         speedGuardThresholdPercent,
@@ -79,11 +84,18 @@ class ControlSafetySettingsRepository @Inject constructor(
         }
     }
 
+    suspend fun setLiveInvertEnabled(enabled: Boolean) {
+        context.controlSafetyDataStore.edit { prefs ->
+            prefs[LIVE_INVERT_ENABLED] = enabled
+        }
+    }
+
     companion object {
         private val SPEED_GUARD_ENABLED = booleanPreferencesKey("speed_abrupt_change_guard_enabled")
         private val SPEED_GUARD_THRESHOLD_PERCENT = intPreferencesKey("speed_abrupt_change_guard_threshold_percent")
         private val DEPTH_GUARD_ENABLED = booleanPreferencesKey("depth_abrupt_change_guard_enabled")
         private val DEPTH_GUARD_THRESHOLD_PERCENT = intPreferencesKey("depth_abrupt_change_guard_threshold_percent")
         private val LISTENING_MODE_ENABLED = booleanPreferencesKey("listening_mode_enabled")
+        private val LIVE_INVERT_ENABLED = booleanPreferencesKey("live_invert_enabled")
     }
 }

@@ -105,6 +105,8 @@ data class ControlUiState(
     // Mode « à l'écoute » : le micro biaise le mode aléatoire vers le haut (plus
     // fort tu réagis, plus l'intensité monte et reste dans le haut des plages).
     val listeningMode: Boolean = false,
+    // Inversion du sens du mode Live (réglable par l'utilisateur).
+    val liveInvert: Boolean = false,
     // Auto Random mix
     val autoSelectedKeys: Set<String> = setOf("simpleStroke", "teasingPounding", "roboStroke"),
     val autoMaxSpeed: Float = 0.7f,        // speed ceiling for the mix (never exceeded)
@@ -235,6 +237,13 @@ class ControlViewModel @Inject constructor(
             safetySettingsRepository.listeningModeEnabled.collect { enabled ->
                 _uiState.update { it.copy(listeningMode = enabled) }
                 updateListeningMonitor()
+            }
+        }
+
+        viewModelScope.launch {
+            safetySettingsRepository.liveInvertEnabled.collect { enabled ->
+                bleManager.liveInvert = enabled
+                _uiState.update { it.copy(liveInvert = enabled) }
             }
         }
 
@@ -656,6 +665,13 @@ class ControlViewModel @Inject constructor(
     fun setDepthRandom(enabled: Boolean) {
         _uiState.update { it.copy(randDepthMin = enabled, randDepthMax = enabled) }
         updateTeasingRandomTicker()
+    }
+
+    /** Inverse le sens du mode Live (persisté). Effet immédiat sur les prochaines commandes stream. */
+    fun setLiveInvert(enabled: Boolean) {
+        viewModelScope.launch { safetySettingsRepository.setLiveInvertEnabled(enabled) }
+        bleManager.liveInvert = enabled
+        _uiState.update { it.copy(liveInvert = enabled) }
     }
 
     /** Active/désactive le mode « à l'écoute » (persisté). */

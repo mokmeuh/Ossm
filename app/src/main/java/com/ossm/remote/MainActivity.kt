@@ -238,7 +238,8 @@ fun OssmApp(
                     onRandomToggle = controlVm::setRandomMode,
                     onDepthRandomToggle = controlVm::setDepthRandom,
                     listeningLevel = listeningLevel,
-                    onListeningToggle = onListeningToggle
+                    onListeningToggle = onListeningToggle,
+                    onLiveInvertToggle = controlVm::setLiveInvert
                 )
             }
             composable(Screen.Diagnostics.route) {

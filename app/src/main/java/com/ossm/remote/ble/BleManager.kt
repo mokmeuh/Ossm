@@ -614,6 +614,10 @@ class BleManager @Inject constructor(
 
     private var lastStreamPos: Int = -1
 
+    // Sens du mode Live, réglé depuis les préférences (voir mapping dans sendCommand/Stream).
+    @Volatile
+    var liveInvert: Boolean = false
+
     fun sendCommand(command: OssmCommand) {
         if (command is OssmCommand.Stream) {
             // Jamais de position tant que le setup streaming n'est pas vérifié :
@@ -621,13 +625,12 @@ class BleManager @Inject constructor(
             // (cause du bug « slider 0-100 ≠ 0-100 du home »).
             if (!_streamingReady.value) return
             val rawPos = command.positionPercent.coerceIn(0, 100)
-            // MAPPING DIRECT (doc officielle OSSM + report utilisateur v1.24.2) :
-            // stream:0 = home/rétracté, stream:100 = fond. Le pad est au repos à
-            // logicalPos 0 → on veut le HOME, donc pos = rawPos (slider 0 % = home →
-            // stream:2 ; slider 100 % = fond → stream:98). L'INVERSION (100-rawPos) de
-            // la v1.21.4 envoyait le chariot au FOND au repos (gros coup). Marge 2 %
-            // aux deux butées.
-            val pos = rawPos.coerceIn(2, 98)
+            // Sens du Live réglable par l'utilisateur (fini les rebuilds pour trancher
+            // l'orientation). Défaut = DIRECT (doc officielle OSSM : stream:0=home,
+            // stream:100=fond → pad au repos = home). liveInvert=true → ancienne
+            // inversion (100-rawPos). Marge 2 % aux deux butées.
+            val mapped = if (liveInvert) 100 - rawPos else rawPos
+            val pos = mapped.coerceIn(2, 98)
             // Firmware crashes on division-by-zero if two consecutive stream commands have
             // the same position (streaming.cpp line 57: direction = distance/abs(distance)).
             if (pos == lastStreamPos) return

@@ -61,4 +61,6 @@
     <string name="ctl_random_sensation_high">Sensation aléatoire — aller (50–100)</string>
     <string name="ctl_listening_title">Mode à l\'écoute (micro)</string>
     <string name="ctl_listening_hint">Le micro fait monter l\'intensité quand tu réagis. Traité sur l\'appareil, jamais enregistré.</string>
+    <string name="ctl_live_invert">Inverser le sens du Live</string>
+    <string name="ctl_live_invert_hint">Si le chariot part dans le mauvais sens ou cogne au repos, bascule ceci.</string>
 </resources>
