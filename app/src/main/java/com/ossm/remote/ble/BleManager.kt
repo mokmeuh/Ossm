@@ -626,10 +626,12 @@ class BleManager @Inject constructor(
             if (!_streamingReady.value) return
             val rawPos = command.positionPercent.coerceIn(0, 100)
             // Sens du Live réglable par l'utilisateur (fini les rebuilds pour trancher
-            // l'orientation). Défaut = DIRECT (doc officielle OSSM : stream:0=home,
-            // stream:100=fond → pad au repos = home). liveInvert=true → ancienne
-            // inversion (100-rawPos). Marge 2 % aux deux butées.
-            val mapped = if (liveInvert) 100 - rawPos else rawPos
+            // l'orientation). DÉFAUT = INVERSION (baseline v1.20.5, conforme à la
+            // formule firmware streaming_logic.h : target=-(1-pos/100)*M → stream:0=FOND,
+            // stream:100=HOME). Le pad au repos (logicalPos 0) → pos 100 → HOME.
+            // liveInvert=true → mapping direct (pos=rawPos) si un firmware diffère.
+            // Marge 2 % aux deux butées.
+            val mapped = if (liveInvert) rawPos else 100 - rawPos
             val pos = mapped.coerceIn(2, 98)
             // Firmware crashes on division-by-zero if two consecutive stream commands have
             // the same position (streaming.cpp line 57: direction = distance/abs(distance)).
