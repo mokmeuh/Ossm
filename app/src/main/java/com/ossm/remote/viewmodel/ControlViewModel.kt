@@ -651,6 +651,12 @@ class ControlViewModel @Inject constructor(
     private var randWalkMin = 0f
     private var randWalkMax = 1f
     private var randWalkSens = 0.5f
+    // Vitesse aléatoire par BLOCS (paliers) : on tient une vitesse pendant un bloc de
+    // quelques secondes, jamais 0, et le plancher monte à mesure qu'on est allé haut
+    // (cliquet : une fois monté à 7-8/10, on ne redescend plus sous ~3-5/10).
+    private var speedBlockEndMs = 0L
+    private var currentBlockSpeed = 0f
+    private var maxBlockSpeed = 0f
 
     fun setRandomMode(target: RandomTarget, enabled: Boolean) {
         _uiState.update { st ->
@@ -727,6 +733,10 @@ class ControlViewModel @Inject constructor(
         randWalkMin = st.depthMin
         randWalkMax = st.depthMax
         randWalkSens = st.sensation
+        // Reset des blocs de vitesse (nouveau cliquet).
+        speedBlockEndMs = 0L
+        currentBlockSpeed = st.speed
+        maxBlockSpeed = 0f
         teasingRandomJob = viewModelScope.launch {
             while (isActive) {
                 val s = _uiState.value
@@ -741,12 +751,22 @@ class ControlViewModel @Inject constructor(
                 // reste vite/profond, sans jamais dépasser tes maximums réglés).
                 val bias = if (s.listeningMode) audioLevelMonitor.level.value.coerceIn(0f, 1f) else 0f
 
-                // Vitesse : marche douce entre un plancher (0, relevé par le son) et le
-                // max réglé (pas ≤ 25 % de la plage pour éviter les grands écarts).
+                // Vitesse : par BLOCS (paliers). On tient une vitesse pendant quelques
+                // secondes, puis on en tire une nouvelle. Jamais 0. Le plancher monte
+                // avec le max déjà atteint (cliquet) et avec le son (mode à l'écoute).
                 val speed = if (s.randSpeed) {
-                    val loSpeed = bias * 0.8f * s.speed
-                    randWalkSpeed = randomWalkStep(randWalkSpeed.coerceIn(loSpeed, s.speed), loSpeed, s.speed, s.speed * 0.25f)
-                    randWalkSpeed
+                    val ceiling = s.speed
+                    val nowMs = System.currentTimeMillis()
+                    if (nowMs >= speedBlockEndMs && ceiling > 0.05f) {
+                        val absMin = ceiling * 0.15f                    // jamais 0 / ne s'arrête pas
+                        val ratchetFloor = maxBlockSpeed * SPEED_RATCHET // cliquet : monté haut → reste haut
+                        val biasFloor = bias * 0.8f * ceiling            // mode à l'écoute
+                        val floor = maxOf(absMin, ratchetFloor, biasFloor).coerceIn(0f, ceiling)
+                        currentBlockSpeed = (floor + Random.nextFloat() * (ceiling - floor)).coerceIn(0.05f, ceiling)
+                        if (currentBlockSpeed > maxBlockSpeed) maxBlockSpeed = currentBlockSpeed
+                        speedBlockEndMs = nowMs + Random.nextLong(SPEED_BLOCK_MIN_MS, SPEED_BLOCK_MAX_MS)
+                    }
+                    currentBlockSpeed.coerceAtMost(ceiling)
                 } else s.speed
 
                 // Retrait : marche douce dans [plancher, max−5 %] (jamais plus reculé que min).
@@ -1382,5 +1402,10 @@ class ControlViewModel @Inject constructor(
         // Court + petits pas = promenade fluide sans grands écarts.
         private const val TEASE_RANDOM_MIN_MS = 700L
         private const val TEASE_RANDOM_MAX_MS = 1_900L
+
+        // Vitesse aléatoire par blocs (paliers).
+        private const val SPEED_BLOCK_MIN_MS = 2_000L   // durée mini d'un palier
+        private const val SPEED_BLOCK_MAX_MS = 6_000L   // durée maxi (~5-6 s)
+        private const val SPEED_RATCHET = 0.5f          // plancher = 50 % du max déjà atteint
     }
 }
