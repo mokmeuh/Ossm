@@ -13,8 +13,18 @@ Claude et Codex éditent les MÊMES fichiers en parallèle, ce qui cause des éc
 
 ## Version actuelle
 - **BASELINE DE RÉFÉRENCE : v1.20.5 (commit git `0785248`)** — « celle qui fonctionne le mieux » selon l'utilisateur. En cas de régression, revenir à ce commit.
-- **v1.21.2 (versionCode 76, commit `8ee0922`) : COMPILÉE + TESTS OK, PAS ENCORE INSTALLÉE** (téléphone débranché). À installer au retour : `adb install -r app\build\outputs\apk\debug\app-debug.apk`. Ajoute par rapport à 1.21.1 : logo dans l'écran Scanner, README (rebuild + architecture + faits protocole), i18n FR/EN des chaînes statiques de l'écran Contrôle (~20 clés ctl_* dans strings.xml ; reste à migrer : textes avec interpolation, dialogs, écrans Profils/Diagnostics/Scan).
-- Installée sur l'appareil : v1.21.0 (bulle patterns + enregistreur, sans l'icône).
+- **v1.21.4 (versionCode 78) : COMPILÉE + TESTS OK + INSTALLÉE** sur 'moto g fast - 11' (`build2.log`, puis re-confirmé par `build_result.log`). **PAS ENCORE COMMITÉE** (dernier commit git = `53c6102` / v1.21.3, qui contient encore l'ANCIEN mapping direct — voir §Streaming ci-dessous, à ne pas utiliser comme référence tant que le commit n'est pas fait).
+- v1.21.2 (versionCode 76, commit `8ee0922`) : logo dans l'écran Scanner, README (rebuild + architecture + faits protocole), i18n FR/EN des chaînes statiques de l'écran Contrôle (~20 clés ctl_* dans strings.xml ; reste à migrer : textes avec interpolation, dialogs, écrans Profils/Diagnostics/Scan).
+- Installée sur l'appareil avant 1.21.4 : v1.21.0 (bulle patterns + enregistreur, sans l'icône).
+
+### ⚡ REPRISE IMMÉDIATE (2026-07-03) — v1.21.4 : retour en arrière sur le mapping streaming
+Repris automatiquement après une pause de session. État trouvé sur le disque (non commité) :
+- **`BleManager.kt` (streaming) repassé à l'INVERSION** (`pos = (100 - rawPos).coerceIn(2, 98)`), avec commentaire dans le code : « MAPPING DE LA v1.20.5 (baseline validée sur appareil) — NE PLUS TOUCHER ». Ceci ANNULE le commit `53c6102` (v1.21.3, « mapping DIRECT definitif », `pos = rawPos.coerceIn(2, 98)`), qui n'était donc PAS correct — un nouveau test sur l'appareil a dû reconfirmer la convention inverse.
+- versionCode 77→78, versionName 1.21.3→1.21.4.
+- Build + install déjà exécutés avec succès (`build2.log` 21:48, `build_result.log` 21:52 le 2026-07-02) sur 'moto g fast - 11'. Rien d'autre à builder pour ce changement.
+- **⚠️ Historique du flip-flop sur cette ligne** (à lire avant de la retoucher) : v1.19.8 (§2026-07-02 après-midi ci-dessous) « confirmé » le mapping DIRECT ; la §REPRISE IMMÉDIATE du 2026-07-02 soir (juste en dessous) « confirmé » l'INVERSION ; le commit `53c6102` est reparti sur DIRECT le soir même ; ce commit non-encore-fait repart sur l'INVERSION. Ça a donc oscillé au moins 4 fois en 24h. **Ne pas trancher à nouveau sans un test filmé non-ambigu partagé par l'utilisateur, et vérifier d'abord avec lui quelle version est actuellement sur le téléphone avant de conclure quoi que ce soit.**
+- **Reste à faire** : (1) demander confirmation à l'utilisateur que ce comportement (inversé) est bien le bon avant de committer — ne pas committer à l'aveugle vu l'historique d'oscillations ; (2) si confirmé, `git add app/build.gradle.kts app/src/main/java/com/ossm/remote/ble/BleManager.kt` + commit (message suggéré : `v1.21.4 - streaming: annulation du mapping direct de la 1.21.3, retour a l'inversion confirmee`) ; (3) reprendre la liste "BUGS OUVERTS" ci-dessous, encore non traitée à ma connaissance.
+- Note annexe (non traitée, hors scope de ce retour) : warning de build `ctl_live_hint_ready` — « Multiple substitutions specified in non-positional format » dans `strings.xml`/`strings-en.xml` ligne 36 (`formatted="false"` ou index positionnels à ajouter si l'i18n est repris).
 
 ### v1.21.x (2026-07-02 soir) — nouveautés à TESTER
 - **Boîte Patterns repliable** : toucher « PATTERNS ▾ » → la boîte devient une bulle flottante (62dp) déplaçable partout, qui REFUSE de recouvrir le bouton STOP (esquive auto). Toucher la bulle → la boîte revient. Demandé pour libérer l'écran en mode Live.
