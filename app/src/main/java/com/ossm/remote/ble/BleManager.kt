@@ -640,6 +640,7 @@ class BleManager @Inject constructor(
             val t = command.timeMs.coerceAtLeast(1)
             writeRaw("stream:$pos:$t")
             _lastCommand.value = "stream:$pos:$t (slider=$rawPos%)"
+            log(LogLevel.DEBUG, "STREAM", "stream:$pos:$t (slider=$rawPos%, invert=$liveInvert)")
             return
         }
 
@@ -999,6 +1000,15 @@ class BleManager @Inject constructor(
     private fun toPercent(value: Float): Int = (value * 100f).toInt().coerceIn(0, 100)
 
     private fun log(level: LogLevel, tag: String, message: String) {
+        // Miroir vers logcat (lisible via `adb logcat -s OSSM`) pour diagnostiquer à
+        // distance, en plus de l'écran Diagnostics de l'app.
+        val line = "[$tag] $message"
+        when (level) {
+            LogLevel.ERROR -> android.util.Log.e("OSSM", line)
+            LogLevel.WARNING -> android.util.Log.w("OSSM", line)
+            LogLevel.DEBUG -> android.util.Log.d("OSSM", line)
+            else -> android.util.Log.i("OSSM", line)
+        }
         scope.launch {
             _logs.emit(DiagnosticsLog(level = level, tag = tag, message = message))
         }
