@@ -16,6 +16,12 @@ Claude et Codex éditent les MÊMES fichiers en parallèle, ce qui cause des éc
 - **v1.22.0 (versionCode 79) : COMPILÉE + TESTS OK + INSTALLÉE + COMMITÉE + POUSSÉE** sur `moto g fast - 11`. Branche `claude/okl-ntvicg` (remote `github.com/mokmeuh/Ossm`). Nouveauté : mode aléatoire Teasing & Pounding (voir entrée datée ci-dessous). Mode Live INCHANGÉ (= 1.21.4).
 - **PR à ouvrir** (gh non authentifié) : https://github.com/mokmeuh/Ossm/compare/main...claude/okl-ntvicg?expand=1
 
+### 2026-07-04 — v1.24.2 : FIX mapping Live (DIRECT) + synchro home + mode à l'écoute
+- **MAPPING LIVE REPASSÉ EN DIRECT** (`BleManager.sendCommand`, Stream) : `pos = rawPos.coerceIn(2,98)` (avant : inversion `100-rawPos`). Raison : l'utilisateur a rapporté que l'inversion installée (v1.21.4) envoyait le chariot **au FOND au repos** (pad logicalPos 0 → inversion pos 98 → fond). Donc sur ce firmware `stream:0=home, stream:100=fond` = **doc officielle OSSM** ; le pad au repos (0) doit donner le HOME → mapping direct. ⚠️ Cette ligne a oscillé ~5×, mais cette fois le report utilisateur ET la doc officielle concordent. **À CONFIRMER SUR APPAREIL** (téléphone était débranché à l'install de la 1.24.2 : APK buildé + tests OK mais PAS encore installé — relancer `rebuild_install.bat` téléphone branché).
+- **Synchro douce home à l'entrée streaming** : quand `streamingReady` passe vrai, envoi d'un `Stream(0, timeMs=700)` (mouvement lent) pour aligner machine/slider sans gros coup.
+- **Mode « à l'écoute » (micro)** : `AudioLevelMonitor` (RMS lissé, sur l'appareil, jamais enregistré) ; permission RECORD_AUDIO demandée à l'activation ; biais d'intensité du mode aléatoire vers le haut selon le niveau sonore. Réglage persisté (`listeningModeEnabled`).
+- **Piston aléatoire** : cases « aléatoire » collées sous chaque curseur (Vitesse ; Profondeur = 1 seule case qui promène le piston entre min/max) ; dispo sur Simple Stroke + Teasing & Pounding. Marche aléatoire douce (pas ≤ 25-30 % de la plage, vitesse 0→max). Sensation (Teasing) garde ses 2 demi-cases.
+
 ### 2026-07-03 — v1.22.0 : mode aléatoire « Teasing & Pounding » (5 cases)
 - **Feature** : sous le slider de sensation, uniquement pour `teasingPounding`, section « MODE ALÉATOIRE » avec 5 cases. Chaque case fait varier son paramètre au hasard, **borné par la valeur réglée** (jamais de dépassement) :
   - `randSpeed` : vitesse ∈ [20 % du plafond, plafond].
