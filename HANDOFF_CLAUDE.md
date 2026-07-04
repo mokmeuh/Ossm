@@ -13,7 +13,21 @@ Claude et Codex éditent les MÊMES fichiers en parallèle, ce qui cause des éc
 
 ## Version actuelle
 - **BASELINE DE RÉFÉRENCE : v1.20.5 (commit git `0785248`)** — « celle qui fonctionne le mieux » selon l'utilisateur. En cas de régression, revenir à ce commit.
-- **v1.21.4 (versionCode 78) : COMPILÉE + TESTS OK + INSTALLÉE** sur 'moto g fast - 11' (`build2.log`, puis re-confirmé par `build_result.log`). **PAS ENCORE COMMITÉE** (dernier commit git = `53c6102` / v1.21.3, qui contient encore l'ANCIEN mapping direct — voir §Streaming ci-dessous, à ne pas utiliser comme référence tant que le commit n'est pas fait).
+- **v1.22.0 (versionCode 79) : COMPILÉE + TESTS OK + INSTALLÉE + COMMITÉE + POUSSÉE** sur `moto g fast - 11`. Branche `claude/okl-ntvicg` (remote `github.com/mokmeuh/Ossm`). Nouveauté : mode aléatoire Teasing & Pounding (voir entrée datée ci-dessous). Mode Live INCHANGÉ (= 1.21.4).
+- **PR à ouvrir** (gh non authentifié) : https://github.com/mokmeuh/Ossm/compare/main...claude/okl-ntvicg?expand=1
+
+### 2026-07-03 — v1.22.0 : mode aléatoire « Teasing & Pounding » (5 cases)
+- **Feature** : sous le slider de sensation, uniquement pour `teasingPounding`, section « MODE ALÉATOIRE » avec 5 cases. Chaque case fait varier son paramètre au hasard, **borné par la valeur réglée** (jamais de dépassement) :
+  - `randSpeed` : vitesse ∈ [20 % du plafond, plafond].
+  - `randDepthMin` : retrait ∈ [min réglé, max−5 %] (course jamais rallongée).
+  - `randDepthMax` : fond ∈ [rMin+5 %, max réglé] (jamais plus profond).
+  - `randSensationLow` (0–50) + `randSensationHigh` (50–100), cumulables (les deux = 0–100).
+- **Impl** : `RandomTarget` enum + 5 flags + `anyRandomActive` dans `ControlUiState`. `setRandomMode()` + `updateTeasingRandomTicker()` (job unique, tirage 0,9–2,6 s) dans `ControlViewModel`, envoi `OssmCommand.UpdateStrokeEngine` (depth avant stroke). Ticker annulé sur stop/pause/activatePattern/onCleared, relancé sur resume ; cases remises à zéro à chaque activatePattern. Les sliders ne bougent pas (restent les plafonds ; pas de ligne secondaire — jugée optionnelle par l'utilisateur).
+- **UI** : `RandomModeSection`/`RandomModeRow` dans `ControlScreen` ; `onRandomToggle`→`controlVm::setRandomMode` dans `MainActivity`. **i18n** : clés `ctl_random_*` FR + EN.
+- **Hygiène git** : `.gitignore` Android complet ; `app/build`, `.gradle`, `.kotlin` retirés du suivi (~2500 artefacts).
+- **À tester sur appareil** : cocher en Teasing & Pounding, monter un peu la vitesse, vérifier bornage + aucun coup au fond.
+
+### (historique) v1.21.4 (versionCode 78) : COMPILÉE + TESTS OK + INSTALLÉE, désormais intégrée dans 1.22.0 (mapping streaming inversé conservé tel quel).
 - v1.21.2 (versionCode 76, commit `8ee0922`) : logo dans l'écran Scanner, README (rebuild + architecture + faits protocole), i18n FR/EN des chaînes statiques de l'écran Contrôle (~20 clés ctl_* dans strings.xml ; reste à migrer : textes avec interpolation, dialogs, écrans Profils/Diagnostics/Scan).
 - Installée sur l'appareil avant 1.21.4 : v1.21.0 (bulle patterns + enregistreur, sans l'icône).
 
