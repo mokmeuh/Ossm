@@ -697,11 +697,16 @@ fun ControlScreen(
                                 activeColor = OssmAccent
                             )
                         }
-                        // Mode aléatoire : cases à cocher (Teasing & Pounding uniquement).
-                        // Chaque case fait varier son paramètre dans les bornes réglées.
-                        if (activePattern.key == "teasingPounding") {
+                        // Mode aléatoire / piston : cases à cocher. Teasing & Pounding
+                        // (avec sensation) et Simple Stroke (sans sensation). Chaque case
+                        // fait varier son paramètre dans les bornes réglées.
+                        if (activePattern.key == "teasingPounding" || activePattern.key == "simpleStroke") {
                             Spacer(Modifier.height(16.dp))
-                            RandomModeSection(uiState = uiState, onRandomToggle = onRandomToggle)
+                            RandomModeSection(
+                                uiState = uiState,
+                                showSensation = activePattern.key == "teasingPounding",
+                                onRandomToggle = onRandomToggle
+                            )
                         }
                     }
                 }
@@ -958,6 +963,7 @@ private fun InfoLine(title: String, description: String) {
 @Composable
 private fun RandomModeSection(
     uiState: ControlUiState,
+    showSensation: Boolean,
     onRandomToggle: (RandomTarget, Boolean) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -989,16 +995,18 @@ private fun RandomModeSection(
             checked = uiState.randDepthMax,
             onCheckedChange = { onRandomToggle(RandomTarget.DEPTH_MAX, it) }
         )
-        RandomModeRow(
-            label = stringResource(R.string.ctl_random_sensation_low),
-            checked = uiState.randSensationLow,
-            onCheckedChange = { onRandomToggle(RandomTarget.SENSATION_LOW, it) }
-        )
-        RandomModeRow(
-            label = stringResource(R.string.ctl_random_sensation_high),
-            checked = uiState.randSensationHigh,
-            onCheckedChange = { onRandomToggle(RandomTarget.SENSATION_HIGH, it) }
-        )
+        if (showSensation) {
+            RandomModeRow(
+                label = stringResource(R.string.ctl_random_sensation_low),
+                checked = uiState.randSensationLow,
+                onCheckedChange = { onRandomToggle(RandomTarget.SENSATION_LOW, it) }
+            )
+            RandomModeRow(
+                label = stringResource(R.string.ctl_random_sensation_high),
+                checked = uiState.randSensationHigh,
+                onCheckedChange = { onRandomToggle(RandomTarget.SENSATION_HIGH, it) }
+            )
+        }
     }
 }
 

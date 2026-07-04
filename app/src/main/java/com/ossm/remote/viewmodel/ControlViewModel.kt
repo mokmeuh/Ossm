@@ -146,8 +146,11 @@ data class ControlUiState(
         get() = randSpeed || randDepthMin || randDepthMax || randSensationLow || randSensationHigh
 }
 
-/** Pattern qui expose le mode aléatoire par cases (Teasing & Pounding). */
+/** Patterns qui exposent le mode aléatoire par cases. */
 private const val TEASING_POUNDING_KEY = "teasingPounding"
+private const val SIMPLE_STROKE_KEY = "simpleStroke"
+/** Patterns sur lesquels le mode aléatoire (piston) est disponible. */
+private val RANDOM_CAPABLE_KEYS = setOf(TEASING_POUNDING_KEY, SIMPLE_STROKE_KEY)
 
 @HiltViewModel
 class ControlViewModel @Inject constructor(
@@ -597,12 +600,20 @@ class ControlViewModel @Inject constructor(
         }
     }
 
-    // ---- Mode aléatoire « Teasing & Pounding » (cases à cocher sous la sensation) ----
-    // Fait varier, dans les bornes réglées par l'utilisateur, chaque paramètre coché.
-    // N'écrase PAS les valeurs de slider (qui restent les plafonds/ancres) : envoie
-    // directement des commandes stroke-engine vérifiées (depth avant stroke → jamais
-    // de coup au fond, cf. UpdateStrokeEngine). Tourne uniquement pour teasingPounding.
+    // ---- Mode aléatoire / piston (cases à cocher) — Teasing & Pounding + Simple Stroke ----
+    // Chaque case cochée fait varier son paramètre par une MARCHE ALÉATOIRE DOUCE (petits
+    // pas, pas de saut brusque), dans les bornes réglées par l'utilisateur :
+    //   - vitesse : promenée entre 0 et le max réglé ;
+    //   - retrait / fond : le point se promène entre min et max réglés ;
+    //   - sensation (Teasing seulement) : moitié basse / haute / les deux.
+    // N'écrase PAS les valeurs de slider (qui restent les plafonds/ancres) : envoie des
+    // commandes stroke-engine vérifiées (depth avant stroke → jamais de coup au fond).
     private var teasingRandomJob: Job? = null
+    // Valeurs courantes de la marche aléatoire (conservées entre deux pas pour lisser).
+    private var randWalkSpeed = 0f
+    private var randWalkMin = 0f
+    private var randWalkMax = 1f
+    private var randWalkSens = 0.5f
 
     fun setRandomMode(target: RandomTarget, enabled: Boolean) {
         _uiState.update { st ->
@@ -617,9 +628,16 @@ class ControlViewModel @Inject constructor(
         updateTeasingRandomTicker()
     }
 
+    /** Un pas de marche aléatoire borné : reste proche de [prev] (≤ maxStep), dans [lo, hi]. */
+    private fun randomWalkStep(prev: Float, lo: Float, hi: Float, maxStep: Float): Float {
+        if (hi <= lo) return lo
+        val step = (Random.nextFloat() - 0.5f) * 2f * maxStep   // ∈ [-maxStep, +maxStep]
+        return (prev + step).coerceIn(lo, hi)
+    }
+
     private fun updateTeasingRandomTicker() {
         val st = _uiState.value
-        val active = st.activePatternKey == TEASING_POUNDING_KEY &&
+        val active = st.activePatternKey in RANDOM_CAPABLE_KEYS &&
             st.activePattern?.mode == PatternControlMode.STROKE_ENGINE &&
             st.anyRandomActive
         if (!active) {
@@ -631,36 +649,47 @@ class ControlViewModel @Inject constructor(
             return
         }
         if (teasingRandomJob?.isActive == true) return
+        // Point de départ de la marche = valeurs actuelles des sliders.
+        randWalkSpeed = st.speed
+        randWalkMin = st.depthMin
+        randWalkMax = st.depthMax
+        randWalkSens = st.sensation
         teasingRandomJob = viewModelScope.launch {
             while (isActive) {
                 val s = _uiState.value
-                if (s.activePatternKey != TEASING_POUNDING_KEY || !s.anyRandomActive) break
+                if (s.activePatternKey !in RANDOM_CAPABLE_KEYS || !s.anyRandomActive) break
 
-                // Vitesse : plancher à 20 % du plafond réglé pour éviter les arrêts secs.
-                val speed = if (s.randSpeed) {
-                    val floor = s.speed * 0.2f
-                    (floor + Random.nextFloat() * (s.speed - floor)).coerceIn(0f, s.speed)
-                } else s.speed
-
-                // Profondeur : bornée par la plage réglée. On calcule d'abord le retrait,
-                // puis le fond en garantissant une course minimale de 5 % et rMax ≤ maxRéglé.
                 val minSpan = 0.05f
                 val baseMin = s.depthMin
                 val baseMax = s.depthMax
+
+                // Vitesse : marche douce entre 0 et le max réglé (pas ≤ 25 % de la plage
+                // pour éviter les grands écarts de vitesse).
+                val speed = if (s.randSpeed) {
+                    randWalkSpeed = randomWalkStep(randWalkSpeed, 0f, s.speed, s.speed * 0.25f)
+                    randWalkSpeed
+                } else s.speed
+
+                // Retrait : marche douce dans [min réglé, max−5 %] (jamais plus reculé que min).
                 val rMin = if (s.randDepthMin) {
                     val hi = (baseMax - minSpan).coerceAtLeast(baseMin)
-                    (baseMin + Random.nextFloat() * (hi - baseMin)).coerceIn(baseMin, hi)
+                    randWalkMin = randomWalkStep(randWalkMin.coerceIn(baseMin, hi), baseMin, hi, (hi - baseMin) * 0.3f)
+                    randWalkMin
                 } else baseMin
+
+                // Fond : marche douce dans [rMin+5 %, max réglé] (jamais plus profond que max).
                 val rMax = if (s.randDepthMax) {
                     val lo = (rMin + minSpan).coerceAtMost(baseMax)
-                    (lo + Random.nextFloat() * (baseMax - lo)).coerceIn(lo, baseMax)
+                    randWalkMax = randomWalkStep(randWalkMax.coerceIn(lo, baseMax), lo, baseMax, (baseMax - lo) * 0.3f)
+                    randWalkMax
                 } else baseMax.coerceAtLeast((rMin + minSpan).coerceAtMost(baseMax))
 
                 // Sensation : moitié basse (0–50), moitié haute (50–100), ou les deux.
                 val sensation = if (s.randSensationLow || s.randSensationHigh) {
                     val lo = if (s.randSensationLow) 0f else 0.5f
                     val hi = if (s.randSensationHigh) 1f else 0.5f
-                    (lo + Random.nextFloat() * (hi - lo)).coerceIn(0f, 1f)
+                    randWalkSens = randomWalkStep(randWalkSens.coerceIn(lo, hi), lo, hi, (hi - lo) * 0.3f)
+                    randWalkSens
                 } else s.sensation
 
                 bleManager.sendCommand(
@@ -1240,8 +1269,9 @@ class ControlViewModel @Inject constructor(
         private const val AUTO_HOLD_MIN_MS = 2_500L
         private const val AUTO_HOLD_MAX_MS = 20_000L
 
-        // Mode aléatoire Teasing & Pounding : intervalle entre deux tirages (ms).
-        private const val TEASE_RANDOM_MIN_MS = 900L
-        private const val TEASE_RANDOM_MAX_MS = 2_600L
+        // Mode aléatoire / piston : intervalle entre deux pas de la marche (ms).
+        // Court + petits pas = promenade fluide sans grands écarts.
+        private const val TEASE_RANDOM_MIN_MS = 700L
+        private const val TEASE_RANDOM_MAX_MS = 1_900L
     }
 }
