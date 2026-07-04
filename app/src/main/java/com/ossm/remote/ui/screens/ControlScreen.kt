@@ -145,6 +145,7 @@ fun ControlScreen(
     onPatternOrderSave: (List<String>) -> Unit,
     onLiveRecordToggle: () -> Unit,
     onRandomToggle: (RandomTarget, Boolean) -> Unit,
+    onDepthRandomToggle: (Boolean) -> Unit,
     listeningLevel: Float,
     onListeningToggle: (Boolean) -> Unit
 ) {
@@ -659,6 +660,11 @@ fun ControlScreen(
                         }
                     }
                     else -> {
+                        // Simple Stroke et Teasing & Pounding exposent le mode aléatoire /
+                        // piston : une case « Aléatoire » collée sous chaque curseur.
+                        val isRandomCapable = activePattern.key == "teasingPounding" ||
+                            activePattern.key == "simpleStroke"
+
                         ControlSlider(
                             label = stringResource(R.string.ctl_speed),
                             value = speedDraft,
@@ -670,6 +676,13 @@ fun ControlScreen(
                             enabled = slidersEnabled,
                             activeColor = OssmPrimary
                         )
+                        if (isRandomCapable) {
+                            RandomModeRow(
+                                label = stringResource(R.string.ctl_random_speed),
+                                checked = uiState.randSpeed,
+                                onCheckedChange = { onRandomToggle(RandomTarget.SPEED, it) }
+                            )
+                        }
                         Spacer(Modifier.height(12.dp))
                         DepthRangeEditor(
                             minValue = depthRangeDraft.start,
@@ -685,6 +698,15 @@ fun ControlScreen(
                                 onDepthRangeCommit(min, max)
                             }
                         )
+                        if (isRandomCapable) {
+                            // Une SEULE case pour la profondeur : le piston se promène
+                            // entre le min et le max réglés.
+                            RandomModeRow(
+                                label = stringResource(R.string.ctl_random_depth),
+                                checked = uiState.randDepthMin || uiState.randDepthMax,
+                                onCheckedChange = { onDepthRandomToggle(it) }
+                            )
+                        }
                         if (activePattern.mode == PatternControlMode.STROKE_ENGINE && activePattern.key != "simpleStroke") {
                             Spacer(Modifier.height(12.dp))
                             ControlSlider(
@@ -698,18 +720,25 @@ fun ControlScreen(
                                 enabled = slidersEnabled,
                                 activeColor = OssmAccent
                             )
+                            // Sensation aléatoire : moitié retour (0–50) et/ou aller (50–100).
+                            RandomModeRow(
+                                label = stringResource(R.string.ctl_random_sensation_low),
+                                checked = uiState.randSensationLow,
+                                onCheckedChange = { onRandomToggle(RandomTarget.SENSATION_LOW, it) }
+                            )
+                            RandomModeRow(
+                                label = stringResource(R.string.ctl_random_sensation_high),
+                                checked = uiState.randSensationHigh,
+                                onCheckedChange = { onRandomToggle(RandomTarget.SENSATION_HIGH, it) }
+                            )
                         }
-                        // Mode aléatoire / piston : cases à cocher. Teasing & Pounding
-                        // (avec sensation) et Simple Stroke (sans sensation). Chaque case
-                        // fait varier son paramètre dans les bornes réglées.
-                        if (activePattern.key == "teasingPounding" || activePattern.key == "simpleStroke") {
+                        // Pied de section : mode à l'écoute (micro).
+                        if (isRandomCapable) {
                             Spacer(Modifier.height(16.dp))
-                            RandomModeSection(
-                                uiState = uiState,
-                                showSensation = activePattern.key == "teasingPounding",
-                                onRandomToggle = onRandomToggle,
-                                listeningLevel = listeningLevel,
-                                onListeningToggle = onListeningToggle
+                            ListeningModeFooter(
+                                enabled = uiState.listeningMode,
+                                level = listeningLevel,
+                                onToggle = onListeningToggle
                             )
                         }
                     }
@@ -965,57 +994,12 @@ private fun InfoLine(title: String, description: String) {
 }
 
 @Composable
-private fun RandomModeSection(
-    uiState: ControlUiState,
-    showSensation: Boolean,
-    onRandomToggle: (RandomTarget, Boolean) -> Unit,
-    listeningLevel: Float,
-    onListeningToggle: (Boolean) -> Unit
+private fun ListeningModeFooter(
+    enabled: Boolean,
+    level: Float,
+    onToggle: (Boolean) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        Text(
-            stringResource(R.string.ctl_random_title),
-            color = OssmPrimaryLight,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 1.sp
-        )
-        Text(
-            stringResource(R.string.ctl_random_hint),
-            color = OssmOnSurface.copy(alpha = 0.6f),
-            fontSize = 11.sp,
-            modifier = Modifier.padding(top = 2.dp, bottom = 6.dp)
-        )
-        RandomModeRow(
-            label = stringResource(R.string.ctl_random_speed),
-            checked = uiState.randSpeed,
-            onCheckedChange = { onRandomToggle(RandomTarget.SPEED, it) }
-        )
-        RandomModeRow(
-            label = stringResource(R.string.ctl_random_depth_min),
-            checked = uiState.randDepthMin,
-            onCheckedChange = { onRandomToggle(RandomTarget.DEPTH_MIN, it) }
-        )
-        RandomModeRow(
-            label = stringResource(R.string.ctl_random_depth_max),
-            checked = uiState.randDepthMax,
-            onCheckedChange = { onRandomToggle(RandomTarget.DEPTH_MAX, it) }
-        )
-        if (showSensation) {
-            RandomModeRow(
-                label = stringResource(R.string.ctl_random_sensation_low),
-                checked = uiState.randSensationLow,
-                onCheckedChange = { onRandomToggle(RandomTarget.SENSATION_LOW, it) }
-            )
-            RandomModeRow(
-                label = stringResource(R.string.ctl_random_sensation_high),
-                checked = uiState.randSensationHigh,
-                onCheckedChange = { onRandomToggle(RandomTarget.SENSATION_HIGH, it) }
-            )
-        }
-
-        // Mode « à l'écoute » : le micro biaise l'aléatoire vers le haut.
-        Spacer(Modifier.height(6.dp))
         HorizontalDivider(color = OssmGlassBorder)
         Spacer(Modifier.height(6.dp))
         Row(
@@ -1036,8 +1020,8 @@ private fun RandomModeSection(
                 )
             }
             Switch(
-                checked = uiState.listeningMode,
-                onCheckedChange = onListeningToggle,
+                checked = enabled,
+                onCheckedChange = onToggle,
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = OssmAccent,
                     checkedTrackColor = OssmAccent.copy(alpha = 0.4f)
@@ -1045,7 +1029,7 @@ private fun RandomModeSection(
             )
         }
         // Témoin de niveau sonore (visible seulement quand le mode est actif).
-        if (uiState.listeningMode) {
+        if (enabled) {
             Spacer(Modifier.height(6.dp))
             Box(
                 modifier = Modifier
@@ -1056,7 +1040,7 @@ private fun RandomModeSection(
             ) {
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth(listeningLevel.coerceIn(0f, 1f))
+                        .fillMaxWidth(level.coerceIn(0f, 1f))
                         .height(6.dp)
                         .clip(RoundedCornerShape(3.dp))
                         .background(OssmAccent)

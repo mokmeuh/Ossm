@@ -54,6 +54,7 @@
     <string name="ctl_random_title">MODE ALÉATOIRE</string>
     <string name="ctl_random_hint">Chaque case fait varier ce réglage au hasard, sans dépasser ta valeur réglée.</string>
     <string name="ctl_random_speed">Vitesse aléatoire</string>
+    <string name="ctl_random_depth">Profondeur aléatoire</string>
     <string name="ctl_random_depth_min">Profondeur — retrait aléatoire</string>
     <string name="ctl_random_depth_max">Profondeur — fond aléatoire</string>
     <string name="ctl_random_sensation_low">Sensation aléatoire — retour (0–50)</string>

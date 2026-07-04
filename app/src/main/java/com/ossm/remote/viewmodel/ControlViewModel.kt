@@ -645,6 +645,15 @@ class ControlViewModel @Inject constructor(
         updateTeasingRandomTicker()
     }
 
+    /**
+     * Profondeur aléatoire = UNE seule case : le piston se promène entre le min et le
+     * max réglés (on active retrait ET fond ensemble, promenade de toute la fenêtre).
+     */
+    fun setDepthRandom(enabled: Boolean) {
+        _uiState.update { it.copy(randDepthMin = enabled, randDepthMax = enabled) }
+        updateTeasingRandomTicker()
+    }
+
     /** Active/désactive le mode « à l'écoute » (persisté). */
     fun setListeningMode(enabled: Boolean) {
         viewModelScope.launch { safetySettingsRepository.setListeningModeEnabled(enabled) }

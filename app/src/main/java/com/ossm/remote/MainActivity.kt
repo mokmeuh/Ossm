@@ -236,6 +236,7 @@ fun OssmApp(
                     onPatternOrderSave = controlVm::savePatternOrder,
                     onLiveRecordToggle = controlVm::toggleLiveRecord,
                     onRandomToggle = controlVm::setRandomMode,
+                    onDepthRandomToggle = controlVm::setDepthRandom,
                     listeningLevel = listeningLevel,
                     onListeningToggle = onListeningToggle
                 )
