@@ -12,10 +12,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ossm.remote.R
 import com.ossm.remote.model.BleConnectionState
 import com.ossm.remote.model.DiagnosticsLog
 import com.ossm.remote.model.LogLevel
@@ -54,14 +56,14 @@ fun DiagnosticsScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    "DIAGNOSTICS",
+                    stringResource(R.string.diag_title),
                     style = MaterialTheme.typography.titleLarge,
                     color = OssmAccent,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 2.sp
                 )
                 IconButton(onClick = onClear) {
-                    Icon(Icons.Default.Delete, "Effacer logs", tint = OssmError)
+                    Icon(Icons.Default.Delete, stringResource(R.string.diag_clear), tint = OssmError)
                 }
             }
 
@@ -73,11 +75,11 @@ fun DiagnosticsScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {
-                        Text("État BLE", color = OssmPrimaryLight, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.diag_ble_state), color = OssmPrimaryLight, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         BleStatusIndicator(state = connectionState)
                     }
                     Column(horizontalAlignment = Alignment.End) {
-                        Text("Dernière commande", color = OssmPrimaryLight, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.diag_last_cmd), color = OssmPrimaryLight, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         Text(
                             lastCommand.ifBlank { "—" },
                             color = OssmOnSurface,
@@ -91,14 +93,14 @@ fun DiagnosticsScreen(
                     Spacer(Modifier.height(8.dp))
                     Divider(color = OssmGlassBorder)
                     Spacer(Modifier.height(8.dp))
-                    Text("Adresse MAC:", color = OssmPrimaryLight, fontSize = 11.sp)
+                    Text(stringResource(R.string.diag_mac), color = OssmPrimaryLight, fontSize = 11.sp)
                     Text(connectionState.address, color = OssmOnSurface, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
                 }
             }
 
             // Logs
             Text(
-                "${logs.size} entrées",
+                stringResource(R.string.diag_entries, logs.size),
                 color = OssmPrimaryLight,
                 fontSize = 11.sp
             )

@@ -26,10 +26,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ossm.remote.R
 import com.ossm.remote.model.Preset
 import com.ossm.remote.ui.components.GlassCard
 import com.ossm.remote.ui.theme.OssmAccent
@@ -60,7 +62,7 @@ fun ProfilesScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Text(
-                "PROFILS",
+                stringResource(R.string.prof_title),
                 style = MaterialTheme.typography.titleLarge,
                 color = OssmPrimary,
                 fontWeight = FontWeight.Bold,
@@ -80,7 +82,7 @@ fun ProfilesScreen(
                     ) {
                         Icon(Icons.Default.BookmarkBorder, null, tint = OssmPrimaryLight, modifier = Modifier.size(48.dp))
                         Text(
-                            "Aucun profil sauvegarde\n\nUtilisez l'icone de sauvegarde dans l'onglet Controle pour garder vos reglages.",
+                            stringResource(R.string.prof_empty),
                             color = OssmOnSurface.copy(alpha = 0.4f),
                             fontSize = 14.sp,
                             textAlign = TextAlign.Center
@@ -121,17 +123,17 @@ private fun PresetCard(preset: Preset, onApply: () -> Unit, onDelete: () -> Unit
                 Text(preset.name, fontWeight = FontWeight.Bold, color = OssmOnSurface, fontSize = 16.sp)
                 Text(preset.patternName, color = OssmPrimaryLight, fontSize = 12.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    StatChip("Vitesse", "${(preset.speed * 100).toInt()}%", OssmPrimary)
-                    StatChip("Min", "${(preset.depthMin * 100).toInt()}%", OssmAccent)
-                    StatChip("Max", "${(preset.depthMax * 100).toInt()}%", OssmConnected)
+                    StatChip(stringResource(R.string.prof_speed), "${(preset.speed * 100).toInt()}%", OssmPrimary)
+                    StatChip(stringResource(R.string.prof_min), "${(preset.depthMin * 100).toInt()}%", OssmAccent)
+                    StatChip(stringResource(R.string.prof_max), "${(preset.depthMax * 100).toInt()}%", OssmConnected)
                 }
             }
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 IconButton(onClick = onApply) {
-                    Icon(Icons.Default.PlayArrow, "Appliquer", tint = OssmConnected)
+                    Icon(Icons.Default.PlayArrow, stringResource(R.string.prof_apply), tint = OssmConnected)
                 }
                 IconButton(onClick = { confirmDelete = true }) {
-                    Icon(Icons.Default.Delete, "Supprimer", tint = OssmError)
+                    Icon(Icons.Default.Delete, stringResource(R.string.prof_delete), tint = OssmError)
                 }
             }
         }
@@ -141,19 +143,19 @@ private fun PresetCard(preset: Preset, onApply: () -> Unit, onDelete: () -> Unit
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
             containerColor = OssmSurface,
-            title = { Text("Supprimer le profil ?", color = OssmOnSurface) },
-            text = { Text("\"${preset.name}\" sera supprime definitivement.", color = OssmOnSurface.copy(alpha = 0.7f)) },
+            title = { Text(stringResource(R.string.prof_delete_title), color = OssmOnSurface) },
+            text = { Text(stringResource(R.string.prof_delete_msg, preset.name), color = OssmOnSurface.copy(alpha = 0.7f)) },
             confirmButton = {
                 Button(
                     onClick = { onDelete(); confirmDelete = false },
                     colors = ButtonDefaults.buttonColors(containerColor = OssmError)
                 ) {
-                    Text("Supprimer")
+                    Text(stringResource(R.string.prof_delete))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { confirmDelete = false }) {
-                    Text("Annuler", color = OssmPrimaryLight)
+                    Text(stringResource(R.string.ctl_cancel), color = OssmPrimaryLight)
                 }
             }
         )

@@ -63,4 +63,31 @@
     <string name="ctl_listening_hint">The mic raises intensity when you react. Processed on-device, never recorded.</string>
     <string name="ctl_live_invert">Invert Live direction</string>
     <string name="ctl_live_invert_hint">If the carriage moves the wrong way or slams at rest, toggle this.</string>
+
+    <!-- Scan screen -->
+    <string name="scan_stop">Stop scan</string>
+    <string name="scan_devices">Scan BLE devices</string>
+    <string name="scan_found_count">%1$d device(s) found</string>
+    <string name="scan_connected">Connected</string>
+    <string name="scan_connecting">Connecting…</string>
+    <string name="scan_empty_hint">Tap “Scan” to look for\nnearby OSSM devices</string>
+
+    <!-- Profiles screen -->
+    <string name="prof_title">PROFILES</string>
+    <string name="prof_empty">No saved profile\n\nUse the save icon in the Control tab to keep your settings.</string>
+    <string name="prof_speed">Speed</string>
+    <string name="prof_min">Min</string>
+    <string name="prof_max">Max</string>
+    <string name="prof_apply">Apply</string>
+    <string name="prof_delete">Delete</string>
+    <string name="prof_delete_title">Delete profile?</string>
+    <string name="prof_delete_msg">“%1$s” will be permanently deleted.</string>
+
+    <!-- Diagnostics screen -->
+    <string name="diag_title">DIAGNOSTICS</string>
+    <string name="diag_clear">Clear logs</string>
+    <string name="diag_ble_state">BLE state</string>
+    <string name="diag_last_cmd">Last command</string>
+    <string name="diag_mac">MAC address:</string>
+    <string name="diag_entries">%1$d entries</string>
 </resources>

@@ -63,4 +63,31 @@
     <string name="ctl_listening_hint">Le micro fait monter l\'intensité quand tu réagis. Traité sur l\'appareil, jamais enregistré.</string>
     <string name="ctl_live_invert">Inverser le sens du Live</string>
     <string name="ctl_live_invert_hint">Si le chariot part dans le mauvais sens ou cogne au repos, bascule ceci.</string>
+
+    <!-- Ecran Scanner -->
+    <string name="scan_stop">Arrêter le scan</string>
+    <string name="scan_devices">Scanner les appareils BLE</string>
+    <string name="scan_found_count">%1$d appareil(s) trouvé(s)</string>
+    <string name="scan_connected">Connecté</string>
+    <string name="scan_connecting">Connexion en cours…</string>
+    <string name="scan_empty_hint">Appuyez sur « Scanner » pour rechercher\ndes appareils OSSM à proximité</string>
+
+    <!-- Ecran Profils -->
+    <string name="prof_title">PROFILS</string>
+    <string name="prof_empty">Aucun profil sauvegardé\n\nUtilisez l\'icône de sauvegarde dans l\'onglet Contrôle pour garder vos réglages.</string>
+    <string name="prof_speed">Vitesse</string>
+    <string name="prof_min">Min</string>
+    <string name="prof_max">Max</string>
+    <string name="prof_apply">Appliquer</string>
+    <string name="prof_delete">Supprimer</string>
+    <string name="prof_delete_title">Supprimer le profil ?</string>
+    <string name="prof_delete_msg">« %1$s » sera supprimé définitivement.</string>
+
+    <!-- Ecran Diagnostics -->
+    <string name="diag_title">DIAGNOSTICS</string>
+    <string name="diag_clear">Effacer les logs</string>
+    <string name="diag_ble_state">État BLE</string>
+    <string name="diag_last_cmd">Dernière commande</string>
+    <string name="diag_mac">Adresse MAC :</string>
+    <string name="diag_entries">%1$d entrées</string>
 </resources>

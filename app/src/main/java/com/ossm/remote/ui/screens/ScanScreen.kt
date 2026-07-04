@@ -15,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
@@ -112,11 +113,11 @@ fun ScanScreen(
                         strokeWidth = 2.dp
                     )
                     Spacer(Modifier.width(10.dp))
-                    Text("Arrêter le scan", fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.scan_stop), fontWeight = FontWeight.Bold)
                 } else {
                     Icon(Icons.Default.Bluetooth, null, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(10.dp))
-                    Text("Scanner les appareils BLE", fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.scan_devices), fontWeight = FontWeight.Bold)
                 }
             }
 
@@ -124,7 +125,7 @@ fun ScanScreen(
             AnimatedVisibility(visible = devices.isNotEmpty()) {
                 GlassCard(modifier = Modifier.fillMaxWidth(), padding = 12.dp) {
                     Text(
-                        "${devices.size} appareil(s) trouvé(s)",
+                        stringResource(R.string.scan_found_count, devices.size),
                         color = OssmPrimaryLight,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Medium,
@@ -150,7 +151,7 @@ fun ScanScreen(
                             Icon(Icons.Default.CheckCircle, null, tint = OssmConnected, modifier = Modifier.size(24.dp))
                             Spacer(Modifier.width(12.dp))
                             Column {
-                                Text("Connecté", color = OssmConnected, fontWeight = FontWeight.Bold)
+                                Text(stringResource(R.string.scan_connected), color = OssmConnected, fontWeight = FontWeight.Bold)
                                 Text(connectionState.deviceName, color = OssmOnSurface, fontSize = 13.sp)
                             }
                         }
@@ -163,7 +164,7 @@ fun ScanScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = OssmWarning)
                         Spacer(Modifier.width(12.dp))
-                        Text("Connexion en cours...", color = OssmWarning)
+                        Text(stringResource(R.string.scan_connecting), color = OssmWarning)
                     }
                 }
             }
@@ -181,7 +182,7 @@ fun ScanScreen(
             if (!isScanning && devices.isEmpty() && connectionState is BleConnectionState.Disconnected) {
                 Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                     Text(
-                        "Appuyez sur 'Scanner' pour rechercher\ndes appareils OSSM à proximité",
+                        stringResource(R.string.scan_empty_hint),
                         color = OssmOnSurface.copy(0.4f),
                         fontSize = 14.sp,
                         modifier = Modifier.padding(top = 40.dp)
