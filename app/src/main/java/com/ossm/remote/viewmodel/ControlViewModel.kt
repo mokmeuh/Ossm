@@ -320,6 +320,11 @@ class ControlViewModel @Inject constructor(
         _uiState.update {
             it.copy(
                 activePatternKey = pattern.key,
+                // Vitesse FORCÉE à 0 à chaque changement de pattern : la machine ne
+                // bouge JAMAIS toute seule en entrant dans un mode (l'utilisateur monte
+                // la vitesse lui-même). Sinon une vitesse résiduelle du mode précédent
+                // (ex. streaming à 80, ou 1-3 % traînant) faisait cogner le stroke engine.
+                speed = 0f,
                 sensation = defaultSensation,
                 progressiveMaxSpeed = 1f,
                 pendingManualChange = null,
