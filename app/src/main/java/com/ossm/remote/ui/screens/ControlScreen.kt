@@ -1232,9 +1232,17 @@ private fun DepthRangeEditor(
                     )
                 )
                 // Barre rouge = position réelle du chariot (rapportée par la machine).
+                // positionFraction est auto-calibré sur la course OBSERVÉE (0 = point le
+                // plus rétracté vu, 1 = point le plus profond vu). On le recale dans la
+                // plage ABSOLUE des curseurs [min, max] : la barre rouge reste donc
+                // toujours entre le curseur min et le curseur max et ne les dépasse
+                // jamais (la machine ne va jamais plus profond que le max réglé).
                 if (positionFraction != null && sliderWidthPx > 0) {
+                    val absoluteFraction =
+                        (minValue + positionFraction.coerceIn(0f, 1f) * (maxValue - minValue))
+                            .coerceIn(0f, 1f)
                     val xDp = with(LocalDensity.current) {
-                        (sliderWidthPx * positionFraction.coerceIn(0f, 1f)).toDp()
+                        (sliderWidthPx * absoluteFraction).toDp()
                     }
                     Box(
                         modifier = Modifier
