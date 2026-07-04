@@ -13,6 +13,16 @@ Claude et Codex éditent les MÊMES fichiers en parallèle, ce qui cause des éc
 
 ## Version actuelle
 - **BASELINE DE RÉFÉRENCE : v1.20.5 (commit git `0785248`)** — « celle qui fonctionne le mieux » selon l'utilisateur. En cas de régression, revenir à ce commit.
+
+### 🟢 2026-07-04 — v1.25.2 : MODE LIVE CONFIRMÉ FONCTIONNEL SUR APPAREIL (par l'utilisateur)
+**NE PLUS TOUCHER AU MAPPING LIVE. La question de la direction est CLOSE.** Vérité de terrain, confirmée par l'utilisateur ET par la formule firmware `streaming_logic.h` :
+- **`stream:0 = FOND` ; `stream:100 = HOME`** (formule `target = -(1-pos/100)*maxStroke`). Le pad Live est au repos à `logicalPos = 0` = **HOME**, donc il faut envoyer `stream:100` au repos → **MAPPING = INVERSION : `pos = (100 - rawPos).coerceIn(2, 98)`** (c'est le mapping de la baseline v1.20.5).
+- **À l'entrée streaming, N'ENVOYER AUCUNE commande `stream:`** (le firmware se remet au home tout seul). Toute commande envoyée à ce moment déplace la machine.
+- Les DEUX régressions qui cassaient le Live entre v1.24.2 et v1.25.0 (toutes deux introduites PUIS retirées) : (1) mapping repassé en DIRECT (`pos=rawPos`) → au repos `stream:0` = FOND ; (2) commande `Stream(0, 700)` ajoutée à l'entrée → plongeait au FOND. Les logs utilisateur (« streaming vérifié → speed 80 → s'accote au fond ») ont tranché.
+- La « doc officielle OSSM » citée précédemment comme disant `stream:0=home` était TROMPEUSE / mal interprétée : la formule firmware réelle donne l'inverse. **Se fier à la formule `streaming_logic.h` + au comportement appareil, pas à une lecture de doc.**
+- Ajout conservé : interrupteur **« Inverser le sens du Live »** (`liveInvert`, persisté, défaut = false = inversion correcte). Si un jour un firmware diffère, l'utilisateur bascule lui-même — plus besoin de rebuild pour la direction.
+- Ajout conservé : **miroir des logs BLE vers logcat** (`adb logcat -s OSSM`), dont chaque `stream:pos:time`. Outil de diagnostic à distance — l'utiliser AVANT de deviner.
+
 - **v1.22.0 (versionCode 79) : COMPILÉE + TESTS OK + INSTALLÉE + COMMITÉE + POUSSÉE** sur `moto g fast - 11`. Branche `claude/okl-ntvicg` (remote `github.com/mokmeuh/Ossm`). Nouveauté : mode aléatoire Teasing & Pounding (voir entrée datée ci-dessous). Mode Live INCHANGÉ (= 1.21.4).
 - **PR à ouvrir** (gh non authentifié) : https://github.com/mokmeuh/Ossm/compare/main...claude/okl-ntvicg?expand=1
 
