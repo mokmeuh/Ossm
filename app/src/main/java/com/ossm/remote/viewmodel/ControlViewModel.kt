@@ -1027,12 +1027,20 @@ class ControlViewModel @Inject constructor(
                     if (_uiState.value.liveRec == LiveRecState.RECORDING) {
                         recSamples.add((now - recStartMs) to streamTarget.toInt())
                     }
-                    if (kotlin.math.abs(streamTarget - streamSent) >= 1f) {
-                        streamSent = streamTarget
+                    val diff = streamTarget - streamSent
+                    if (kotlin.math.abs(diff) >= 0.5f) {
+                        // LISSAGE (ease-out) : au lieu de SAUTER à la position brute du
+                        // doigt (bruitée → gros pas tronqués par le firmware → mini
+                        // à-coups), on GLISSE vers elle d'une fraction à chaque tick.
+                        // Résultat : une courbe continue de petits pas → mouvement fluide.
+                        // La vitesse suit toujours le doigt (plus le doigt est loin, plus
+                        // le pas est grand). Snap final pour bien converger.
+                        streamSent += diff * STREAM_SMOOTH_ALPHA
+                        if (kotlin.math.abs(streamTarget - streamSent) < 0.5f) streamSent = streamTarget
                         lastSendMs = now
                         bleManager.sendCommand(
                             OssmCommand.Stream(
-                                positionPercent = streamTarget.toInt(),
+                                positionPercent = streamSent.toInt(),
                                 // Durée > cadence : les mouvements se CHEVAUCHENT au
                                 // lieu de s'arrêter entre chaque pas (anti-saccades).
                                 timeMs = STREAM_MOVE_MS
@@ -1327,6 +1335,10 @@ class ControlViewModel @Inject constructor(
         // continu (léger chevauchement, file bornée à ~1 commande).
         private const val STREAM_CADENCE_MS = 60L
         private const val STREAM_MOVE_MS = 90
+        // Lissage du Live : fraction de l'écart doigt↔machine parcourue à chaque tick
+        // (0 = figé, 1 = saut immédiat = ancien comportement saccadé). ~0.35 = fluide
+        // tout en suivant bien le doigt. Baisser = plus lisse mais plus « mou ».
+        private const val STREAM_SMOOTH_ALPHA = 0.35f
         // Rappels de position (rattrapage du retard sur gestes rapides).
         private const val STREAM_REFRESH_MS = 350L
         private const val STREAM_REFRESH_MOVE_MS = 250
