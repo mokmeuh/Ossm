@@ -205,7 +205,8 @@ fun OssmApp(
                     onConfirmPendingChange = controlVm::confirmPendingManualChange,
                     onDismissPendingChange = controlVm::dismissPendingManualChange,
                     onPatternOrderSave = controlVm::savePatternOrder,
-                    onLiveRecordToggle = controlVm::toggleLiveRecord
+                    onLiveRecordToggle = controlVm::toggleLiveRecord,
+                    onRandomToggle = controlVm::setRandomMode
                 )
             }
             composable(Screen.Diagnostics.route) {

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_launcher_background">#141422</color>
-    <string name="app_name" translatable="false">OSSM V1.21.4</string>
+    <string name="app_name" translatable="false">OSSM V1.22.0</string>
     <string name="connect">Connecter</string>
     <string name="control">Contrôle</string>
     <string name="ctl_cancel">Annuler</string>
@@ -12,6 +12,13 @@
     <string name="ctl_live_preparing">Préparation du mode Live — la machine confirme la pleine course…</string>
     <string name="ctl_no_patterns">Aucun pattern détecté pour ce firmware.</string>
     <string name="ctl_patterns">PATTERNS  ▾</string>
+    <string name="ctl_random_depth_max">Profondeur — fond aléatoire</string>
+    <string name="ctl_random_depth_min">Profondeur — retrait aléatoire</string>
+    <string name="ctl_random_hint">Chaque case fait varier ce réglage au hasard, sans dépasser ta valeur réglée.</string>
+    <string name="ctl_random_sensation_high">Sensation aléatoire — aller (50–100)</string>
+    <string name="ctl_random_sensation_low">Sensation aléatoire — retour (0–50)</string>
+    <string name="ctl_random_speed">Vitesse aléatoire</string>
+    <string name="ctl_random_title">MODE ALÉATOIRE</string>
     <string name="ctl_rec_armed">Prêt — touche le pad (appuie pour annuler)</string>
     <string name="ctl_rec_idle">●  Enregistrer un mouvement</string>
     <string name="ctl_rec_playing">⏸  Arrêter la boucle</string>

@@ -15,6 +15,13 @@ string ctl_live_knob_hint
 string ctl_live_preparing
 string ctl_no_patterns
 string ctl_patterns
+string ctl_random_depth_max
+string ctl_random_depth_min
+string ctl_random_hint
+string ctl_random_sensation_high
+string ctl_random_sensation_low
+string ctl_random_speed
+string ctl_random_title
 string ctl_rec_armed
 string ctl_rec_idle
 string ctl_rec_playing

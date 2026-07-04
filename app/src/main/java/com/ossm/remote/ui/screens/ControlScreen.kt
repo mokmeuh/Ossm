@@ -103,6 +103,7 @@ import com.ossm.remote.ui.theme.PatternColors
 import com.ossm.remote.viewmodel.ControlUiState
 import com.ossm.remote.viewmodel.LiveRecState
 import com.ossm.remote.viewmodel.GuardedControl
+import com.ossm.remote.viewmodel.RandomTarget
 
 @Composable
 fun ControlScreen(
@@ -142,7 +143,8 @@ fun ControlScreen(
     onConfirmPendingChange: (Boolean, Boolean) -> Unit,
     onDismissPendingChange: () -> Unit,
     onPatternOrderSave: (List<String>) -> Unit,
-    onLiveRecordToggle: () -> Unit
+    onLiveRecordToggle: () -> Unit,
+    onRandomToggle: (RandomTarget, Boolean) -> Unit
 ) {
     val connected = connectionState is BleConnectionState.Connected
     val machineBusy = machineState.isHoming || machineState.isPreflight
@@ -695,6 +697,12 @@ fun ControlScreen(
                                 activeColor = OssmAccent
                             )
                         }
+                        // Mode aléatoire : cases à cocher (Teasing & Pounding uniquement).
+                        // Chaque case fait varier son paramètre dans les bornes réglées.
+                        if (activePattern.key == "teasingPounding") {
+                            Spacer(Modifier.height(16.dp))
+                            RandomModeSection(uiState = uiState, onRandomToggle = onRandomToggle)
+                        }
                     }
                 }
             }
@@ -944,6 +952,79 @@ private fun InfoLine(title: String, description: String) {
     Column {
         Text(title, color = OssmPrimaryLight, fontSize = 13.sp, fontWeight = FontWeight.Bold)
         Text(description, color = OssmOnSurface.copy(alpha = 0.8f), fontSize = 12.sp)
+    }
+}
+
+@Composable
+private fun RandomModeSection(
+    uiState: ControlUiState,
+    onRandomToggle: (RandomTarget, Boolean) -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            stringResource(R.string.ctl_random_title),
+            color = OssmPrimaryLight,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp
+        )
+        Text(
+            stringResource(R.string.ctl_random_hint),
+            color = OssmOnSurface.copy(alpha = 0.6f),
+            fontSize = 11.sp,
+            modifier = Modifier.padding(top = 2.dp, bottom = 6.dp)
+        )
+        RandomModeRow(
+            label = stringResource(R.string.ctl_random_speed),
+            checked = uiState.randSpeed,
+            onCheckedChange = { onRandomToggle(RandomTarget.SPEED, it) }
+        )
+        RandomModeRow(
+            label = stringResource(R.string.ctl_random_depth_min),
+            checked = uiState.randDepthMin,
+            onCheckedChange = { onRandomToggle(RandomTarget.DEPTH_MIN, it) }
+        )
+        RandomModeRow(
+            label = stringResource(R.string.ctl_random_depth_max),
+            checked = uiState.randDepthMax,
+            onCheckedChange = { onRandomToggle(RandomTarget.DEPTH_MAX, it) }
+        )
+        RandomModeRow(
+            label = stringResource(R.string.ctl_random_sensation_low),
+            checked = uiState.randSensationLow,
+            onCheckedChange = { onRandomToggle(RandomTarget.SENSATION_LOW, it) }
+        )
+        RandomModeRow(
+            label = stringResource(R.string.ctl_random_sensation_high),
+            checked = uiState.randSensationHigh,
+            onCheckedChange = { onRandomToggle(RandomTarget.SENSATION_HIGH, it) }
+        )
+    }
+}
+
+@Composable
+private fun RandomModeRow(
+    label: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onCheckedChange(!checked) }
+            .padding(vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Checkbox(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = CheckboxDefaults.colors(
+                checkedColor = OssmAccent,
+                uncheckedColor = OssmOnSurface.copy(alpha = 0.5f)
+            )
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(label, color = OssmOnSurface, fontSize = 14.sp)
     }
 }
 

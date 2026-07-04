@@ -10,6 +10,13 @@
     <string name="ctl_live_preparing">Preparing Live mode — the machine is confirming full range…</string>
     <string name="ctl_no_patterns">No pattern detected for this firmware.</string>
     <string name="ctl_patterns">PATTERNS  ▾</string>
+    <string name="ctl_random_depth_max">Depth — random bottom</string>
+    <string name="ctl_random_depth_min">Depth — random retract</string>
+    <string name="ctl_random_hint">Each box randomises that setting without exceeding your set value.</string>
+    <string name="ctl_random_sensation_high">Random sensation — forward (50–100)</string>
+    <string name="ctl_random_sensation_low">Random sensation — return (0–50)</string>
+    <string name="ctl_random_speed">Random speed</string>
+    <string name="ctl_random_title">RANDOM MODE</string>
     <string name="ctl_rec_armed">Ready — touch the pad (tap to cancel)</string>
     <string name="ctl_rec_idle">●  Record a movement</string>
     <string name="ctl_rec_playing">⏸  Stop the loop</string>

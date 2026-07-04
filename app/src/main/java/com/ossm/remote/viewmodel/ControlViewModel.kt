@@ -35,6 +35,25 @@ enum class GuardedControl {
     DEPTH
 }
 
+/**
+ * Cibles du mode aléatoire du pattern « Teasing & Pounding ». Chaque case activée
+ * fait varier ce paramètre AUTOUR de la valeur réglée par l'utilisateur, sans jamais
+ * dépasser son maximum (bornage de sécurité) :
+ *  - SPEED          : vitesse aléatoire entre un plancher et la vitesse du slider.
+ *  - DEPTH_MIN      : point de RETRAIT aléatoire (jamais plus reculé que réglé → course jamais rallongée).
+ *  - DEPTH_MAX      : FOND aléatoire (jamais plus profond que réglé).
+ *  - SENSATION_LOW  : sensation aléatoire dans la moitié « retour » (0–50 %).
+ *  - SENSATION_HIGH : sensation aléatoire dans la moitié « aller » (50–100 %).
+ * SENSATION_LOW + SENSATION_HIGH cochées ensemble = plage complète 0–100 %.
+ */
+enum class RandomTarget {
+    SPEED,
+    DEPTH_MIN,
+    DEPTH_MAX,
+    SENSATION_LOW,
+    SENSATION_HIGH
+}
+
 data class PendingManualChange(
     val control: GuardedControl,
     val speed: Float,
@@ -73,6 +92,15 @@ data class ControlUiState(
     val sensation: Float = 0f,
     val progressiveMaxSpeed: Float = 1f,   // red ceiling for the Progressif ramp (0..1)
     val chaosAtMax: Boolean = false,       // when ramp hits max: random varied strokes
+    // Mode aléatoire « Teasing & Pounding » : chaque flag fait varier son paramètre
+    // dans les bornes réglées par l'utilisateur (voir RandomTarget). Les valeurs de
+    // slider ci-dessus restent les MAX/ancres ; l'aléatoire est envoyé à la machine
+    // sans écraser ces valeurs affichées.
+    val randSpeed: Boolean = false,
+    val randDepthMin: Boolean = false,
+    val randDepthMax: Boolean = false,
+    val randSensationLow: Boolean = false,   // sensation 0–50 %
+    val randSensationHigh: Boolean = false,  // sensation 50–100 %
     // Auto Random mix
     val autoSelectedKeys: Set<String> = setOf("simpleStroke", "teasingPounding", "roboStroke"),
     val autoMaxSpeed: Float = 0.7f,        // speed ceiling for the mix (never exceeded)
@@ -112,7 +140,14 @@ data class ControlUiState(
 
     val activePatternUsesStrokeEngine: Boolean
         get() = activePattern?.mode == PatternControlMode.STROKE_ENGINE
+
+    /** Au moins une case du mode aléatoire est active. */
+    val anyRandomActive: Boolean
+        get() = randSpeed || randDepthMin || randDepthMax || randSensationLow || randSensationHigh
 }
+
+/** Pattern qui expose le mode aléatoire par cases (Teasing & Pounding). */
+private const val TEASING_POUNDING_KEY = "teasingPounding"
 
 @HiltViewModel
 class ControlViewModel @Inject constructor(
@@ -239,7 +274,16 @@ class ControlViewModel @Inject constructor(
         streamTarget = 0f; streamSent = 0f
         progressiveJob?.cancel(); progressiveJob = null
         chaosJob?.cancel(); chaosJob = null
+        teasingRandomJob?.cancel(); teasingRandomJob = null
         autoJob?.cancel(); autoJob = null; autoFirmwareMode = null
+        // Repart sur des cases décochées à chaque changement de pattern (jamais
+        // d'aléatoire surprise en revenant sur Teasing & Pounding).
+        _uiState.update {
+            it.copy(
+                randSpeed = false, randDepthMin = false, randDepthMax = false,
+                randSensationLow = false, randSensationHigh = false
+            )
+        }
         _uiState.update { it.copy(autoRunning = false, autoIntensity = 0f, pendingAutoStart = false, liveRec = LiveRecState.IDLE) }
         // Sensation always starts at minimum, except Teasing/Pounding where neutral (50%) is the base.
         val defaultSensation = if (pattern.key == "teasingPounding") 0.5f else 0f
@@ -448,6 +492,7 @@ class ControlViewModel @Inject constructor(
         streamJob?.cancel(); streamJob = null
         progressiveJob?.cancel(); progressiveJob = null
         chaosJob?.cancel(); chaosJob = null
+        teasingRandomJob?.cancel(); teasingRandomJob = null
         autoJob?.cancel(); autoJob = null
         autoFirmwareMode = null
         _uiState.update { it.copy(isRunning = false, isPaused = false, autoRunning = false, autoIntensity = 0f, speed = 0f, pendingManualChange = null) }
@@ -552,6 +597,87 @@ class ControlViewModel @Inject constructor(
         }
     }
 
+    // ---- Mode aléatoire « Teasing & Pounding » (cases à cocher sous la sensation) ----
+    // Fait varier, dans les bornes réglées par l'utilisateur, chaque paramètre coché.
+    // N'écrase PAS les valeurs de slider (qui restent les plafonds/ancres) : envoie
+    // directement des commandes stroke-engine vérifiées (depth avant stroke → jamais
+    // de coup au fond, cf. UpdateStrokeEngine). Tourne uniquement pour teasingPounding.
+    private var teasingRandomJob: Job? = null
+
+    fun setRandomMode(target: RandomTarget, enabled: Boolean) {
+        _uiState.update { st ->
+            when (target) {
+                RandomTarget.SPEED -> st.copy(randSpeed = enabled)
+                RandomTarget.DEPTH_MIN -> st.copy(randDepthMin = enabled)
+                RandomTarget.DEPTH_MAX -> st.copy(randDepthMax = enabled)
+                RandomTarget.SENSATION_LOW -> st.copy(randSensationLow = enabled)
+                RandomTarget.SENSATION_HIGH -> st.copy(randSensationHigh = enabled)
+            }
+        }
+        updateTeasingRandomTicker()
+    }
+
+    private fun updateTeasingRandomTicker() {
+        val st = _uiState.value
+        val active = st.activePatternKey == TEASING_POUNDING_KEY &&
+            st.activePattern?.mode == PatternControlMode.STROKE_ENGINE &&
+            st.anyRandomActive
+        if (!active) {
+            teasingRandomJob?.cancel(); teasingRandomJob = null
+            // Retour propre aux valeurs des sliders quand on désactive tout.
+            if (st.activePattern?.mode == PatternControlMode.STROKE_ENGINE) {
+                sendCurrentStrokeEngineCommand()
+            }
+            return
+        }
+        if (teasingRandomJob?.isActive == true) return
+        teasingRandomJob = viewModelScope.launch {
+            while (isActive) {
+                val s = _uiState.value
+                if (s.activePatternKey != TEASING_POUNDING_KEY || !s.anyRandomActive) break
+
+                // Vitesse : plancher à 20 % du plafond réglé pour éviter les arrêts secs.
+                val speed = if (s.randSpeed) {
+                    val floor = s.speed * 0.2f
+                    (floor + Random.nextFloat() * (s.speed - floor)).coerceIn(0f, s.speed)
+                } else s.speed
+
+                // Profondeur : bornée par la plage réglée. On calcule d'abord le retrait,
+                // puis le fond en garantissant une course minimale de 5 % et rMax ≤ maxRéglé.
+                val minSpan = 0.05f
+                val baseMin = s.depthMin
+                val baseMax = s.depthMax
+                val rMin = if (s.randDepthMin) {
+                    val hi = (baseMax - minSpan).coerceAtLeast(baseMin)
+                    (baseMin + Random.nextFloat() * (hi - baseMin)).coerceIn(baseMin, hi)
+                } else baseMin
+                val rMax = if (s.randDepthMax) {
+                    val lo = (rMin + minSpan).coerceAtMost(baseMax)
+                    (lo + Random.nextFloat() * (baseMax - lo)).coerceIn(lo, baseMax)
+                } else baseMax.coerceAtLeast((rMin + minSpan).coerceAtMost(baseMax))
+
+                // Sensation : moitié basse (0–50), moitié haute (50–100), ou les deux.
+                val sensation = if (s.randSensationLow || s.randSensationHigh) {
+                    val lo = if (s.randSensationLow) 0f else 0.5f
+                    val hi = if (s.randSensationHigh) 1f else 0.5f
+                    (lo + Random.nextFloat() * (hi - lo)).coerceIn(0f, 1f)
+                } else s.sensation
+
+                bleManager.sendCommand(
+                    OssmCommand.UpdateStrokeEngine(
+                        StrokeEngineCommand(
+                            speed = speed,
+                            depthMin = rMin,
+                            depthMax = rMax,
+                            sensation = sensation
+                        )
+                    )
+                )
+                delay(Random.nextLong(TEASE_RANDOM_MIN_MS, TEASE_RANDOM_MAX_MS))
+            }
+        }
+    }
+
     /**
      * Estimate one full back-and-forth period (ms) so the ramp increments ONCE per stroke.
      * Firmware (StrokeEngine::_recalcTimeOfStroke): timeOfStroke = 3*stroke / ((speed/100)*maxStepPerSec),
@@ -622,6 +748,7 @@ class ControlViewModel @Inject constructor(
         streamJob?.cancel(); streamJob = null
         progressiveJob?.cancel(); progressiveJob = null
         chaosJob?.cancel(); chaosJob = null
+        teasingRandomJob?.cancel(); teasingRandomJob = null
         autoJob?.cancel(); autoJob = null
         _uiState.update { it.copy(isPaused = true, isRunning = false, liveRec = LiveRecState.IDLE) }
         when (mode) {
@@ -642,6 +769,8 @@ class ControlViewModel @Inject constructor(
             else -> {
                 // Stroke engine / simple penetration: re-send the current speed command
                 sendCurrentStrokeEngineCommand()
+                // Relance le mode aléatoire s'il était actif avant la pause.
+                updateTeasingRandomTicker()
             }
         }
     }
@@ -1085,6 +1214,7 @@ class ControlViewModel @Inject constructor(
         streamJob?.cancel()
         progressiveJob?.cancel()
         chaosJob?.cancel()
+        teasingRandomJob?.cancel()
     }
 
     companion object {
@@ -1109,5 +1239,9 @@ class ControlViewModel @Inject constructor(
         private const val AUTO_BUILDUP_MS = 720_000f
         private const val AUTO_HOLD_MIN_MS = 2_500L
         private const val AUTO_HOLD_MAX_MS = 20_000L
+
+        // Mode aléatoire Teasing & Pounding : intervalle entre deux tirages (ms).
+        private const val TEASE_RANDOM_MIN_MS = 900L
+        private const val TEASE_RANDOM_MAX_MS = 2_600L
     }
 }

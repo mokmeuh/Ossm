@@ -104,7 +104,7 @@
     <integer name="m3c_window_layout_in_display_cutout_mode">1</integer>
     <integer name="status_bar_notification_info_maxnum">999</integer>
     <string name="androidx_startup" translatable="false">androidx.startup</string>
-    <string name="app_name" translatable="false">OSSM V1.21.4</string>
+    <string name="app_name" translatable="false">OSSM V1.22.0</string>
     <string name="call_notification_answer_action">Answer</string>
     <string name="call_notification_answer_video_action">Video</string>
     <string name="call_notification_decline_action">Decline</string>
@@ -124,6 +124,13 @@
     <string name="ctl_live_preparing">Préparation du mode Live — la machine confirme la pleine course…</string>
     <string name="ctl_no_patterns">Aucun pattern détecté pour ce firmware.</string>
     <string name="ctl_patterns">PATTERNS  ▾</string>
+    <string name="ctl_random_depth_max">Profondeur — fond aléatoire</string>
+    <string name="ctl_random_depth_min">Profondeur — retrait aléatoire</string>
+    <string name="ctl_random_hint">Chaque case fait varier ce réglage au hasard, sans dépasser ta valeur réglée.</string>
+    <string name="ctl_random_sensation_high">Sensation aléatoire — aller (50–100)</string>
+    <string name="ctl_random_sensation_low">Sensation aléatoire — retour (0–50)</string>
+    <string name="ctl_random_speed">Vitesse aléatoire</string>
+    <string name="ctl_random_title">MODE ALÉATOIRE</string>
     <string name="ctl_rec_armed">Prêt — touche le pad (appuie pour annuler)</string>
     <string name="ctl_rec_idle">●  Enregistrer un mouvement</string>
     <string name="ctl_rec_playing">⏸  Arrêter la boucle</string>
