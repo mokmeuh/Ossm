@@ -243,9 +243,13 @@ class ControlViewModel @Inject constructor(
                 if (ready) {
                     // Le firmware vient de se replacer en position 0 (home) : on
                     // resynchronise le suivi local pour que slider et machine repartent
-                    // du même point (0 % = home).
+                    // du même point (slider 0 % = home).
                     streamTarget = 0f
                     streamSent = 0f
+                    // Synchro douce : on confirme la position home avec un temps de
+                    // trajet long (mouvement lent) pour ÉVITER TOUT GROS COUP à l'entrée,
+                    // même si la machine avait légèrement dérivé.
+                    bleManager.sendCommand(OssmCommand.Stream(positionPercent = 0, timeMs = 700))
                 }
                 _uiState.update { it.copy(streamingReady = ready) }
             }

@@ -621,11 +621,13 @@ class BleManager @Inject constructor(
             // (cause du bug « slider 0-100 ≠ 0-100 du home »).
             if (!_streamingReady.value) return
             val rawPos = command.positionPercent.coerceIn(0, 100)
-            // MAPPING DE LA v1.20.5 (baseline validée sur appareil) — NE PLUS TOUCHER.
-            // Sur CE firmware : stream:100 = home/début, stream:0 = fond. L'app inverse
-            // donc (slider 0 % = home → stream:98 ; slider 100 % = fond → stream:2).
-            // L'affichage « stream:98 (slider=0%) » est NORMAL. Marge 2 % aux 2 butées.
-            val pos = (100 - rawPos).coerceIn(2, 98)
+            // MAPPING DIRECT (doc officielle OSSM + report utilisateur v1.24.2) :
+            // stream:0 = home/rétracté, stream:100 = fond. Le pad est au repos à
+            // logicalPos 0 → on veut le HOME, donc pos = rawPos (slider 0 % = home →
+            // stream:2 ; slider 100 % = fond → stream:98). L'INVERSION (100-rawPos) de
+            // la v1.21.4 envoyait le chariot au FOND au repos (gros coup). Marge 2 %
+            // aux deux butées.
+            val pos = rawPos.coerceIn(2, 98)
             // Firmware crashes on division-by-zero if two consecutive stream commands have
             // the same position (streaming.cpp line 57: direction = distance/abs(distance)).
             if (pos == lastStreamPos) return
