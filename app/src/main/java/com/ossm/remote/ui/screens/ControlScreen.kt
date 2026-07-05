@@ -462,35 +462,6 @@ fun ControlScreen(
                             activeColor = OssmPrimary
                         )
                         Spacer(Modifier.height(10.dp))
-                        // Sens du Live réglable : si le chariot part dans le mauvais sens
-                        // (ou cogne au repos), bascule ceci — pas besoin de rebuild.
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    stringResource(R.string.ctl_live_invert),
-                                    color = OssmOnSurface,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                Text(
-                                    stringResource(R.string.ctl_live_invert_hint),
-                                    color = OssmOnSurface.copy(alpha = 0.6f),
-                                    fontSize = 11.sp
-                                )
-                            }
-                            Switch(
-                                checked = uiState.liveInvert,
-                                onCheckedChange = onLiveInvertToggle,
-                                colors = SwitchDefaults.colors(
-                                    checkedThumbColor = OssmAccent,
-                                    checkedTrackColor = OssmAccent.copy(alpha = 0.4f)
-                                )
-                            )
-                        }
-                        Spacer(Modifier.height(10.dp))
                         val recLabel = when (uiState.liveRec) {
                             LiveRecState.IDLE -> stringResource(R.string.ctl_rec_idle)
                             LiveRecState.ARMED -> stringResource(R.string.ctl_rec_armed)

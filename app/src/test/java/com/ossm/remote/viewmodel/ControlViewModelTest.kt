@@ -78,6 +78,8 @@ class ControlViewModelTest {
         coEvery { safetySettingsRepository.setDepthGuardEnabled(any()) } returns Unit
         every { userHabitsRepository.sessionDefaults } returns flowOf(SessionDefaults(null, null, null))
         every { safetySettingsRepository.listeningModeEnabled } returns MutableStateFlow(false)
+        every { safetySettingsRepository.liveInvertEnabled } returns MutableStateFlow(false)
+        coEvery { safetySettingsRepository.setLiveInvertEnabled(any()) } returns Unit
         audioLevelMonitor = mockk(relaxed = true)
         every { audioLevelMonitor.level } returns MutableStateFlow(0f)
 

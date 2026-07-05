@@ -245,9 +245,14 @@ class ControlViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
-            safetySettingsRepository.liveInvertEnabled.collect { enabled ->
-                bleManager.liveInvert = enabled
-                _uiState.update { it.copy(liveInvert = enabled) }
+            // Sens du Live VERROUILLÉ sur l'inversion (confirmée correcte : stream:0=fond,
+            // stream:100=home). L'ancien interrupteur a causé des confusions (réglage
+            // persisté à tort sur "direct" → la machine plongeait au fond au repos). On
+            // force le bon sens et on nettoie le réglage sauvegardé s'il traînait à true.
+            bleManager.liveInvert = false
+            _uiState.update { it.copy(liveInvert = false) }
+            if (safetySettingsRepository.liveInvertEnabled.first()) {
+                safetySettingsRepository.setLiveInvertEnabled(false)
             }
         }
 
