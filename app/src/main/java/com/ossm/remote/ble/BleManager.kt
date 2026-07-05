@@ -625,14 +625,11 @@ class BleManager @Inject constructor(
             // (cause du bug « slider 0-100 ≠ 0-100 du home »).
             if (!_streamingReady.value) return
             val rawPos = command.positionPercent.coerceIn(0, 100)
-            // Sens du Live réglable par l'utilisateur (fini les rebuilds pour trancher
-            // l'orientation). DÉFAUT = INVERSION (baseline v1.20.5, conforme à la
-            // formule firmware streaming_logic.h : target=-(1-pos/100)*M → stream:0=FOND,
-            // stream:100=HOME). Le pad au repos (logicalPos 0) → pos 100 → HOME.
-            // liveInvert=true → mapping direct (pos=rawPos) si un firmware diffère.
-            // Marge 2 % aux deux butées.
-            val mapped = if (liveInvert) rawPos else 100 - rawPos
-            val pos = mapped.coerceIn(2, 98)
+            // Mapping DIRECT (choix confirmé par l'utilisateur 2026-07-05) :
+            // stream = slider → slider 10% = stream:10. Firmware : stream:0=FOND,
+            // stream:100=HOME (formule streaming_logic.h). Donc pad BAS (slider 0) =
+            // FOND, pad HAUT (slider 100) = HOME. Marge 2 % aux deux butées.
+            val pos = rawPos.coerceIn(2, 98)
             // Firmware crashes on division-by-zero if two consecutive stream commands have
             // the same position (streaming.cpp line 57: direction = distance/abs(distance)).
             if (pos == lastStreamPos) return
@@ -640,7 +637,7 @@ class BleManager @Inject constructor(
             val t = command.timeMs.coerceAtLeast(1)
             writeRaw("stream:$pos:$t")
             _lastCommand.value = "stream:$pos:$t (slider=$rawPos%)"
-            log(LogLevel.DEBUG, "STREAM", "stream:$pos:$t (slider=$rawPos%, invert=$liveInvert)")
+            log(LogLevel.DEBUG, "STREAM", "stream:$pos:$t (slider=$rawPos%, direct)")
             return
         }
 

@@ -14,6 +14,9 @@ Claude et Codex éditent les MÊMES fichiers en parallèle, ce qui cause des éc
 ## Version actuelle
 - **BASELINE DE RÉFÉRENCE : v1.20.5 (commit git `0785248`)** — « celle qui fonctionne le mieux » selon l'utilisateur. En cas de régression, revenir à ce commit.
 
+### 🟢 2026-07-05 — v1.28.3 : SENS DU LIVE = DIRECT (choix utilisateur, confirmé)
+**Mise à jour qui remplace la conclusion "inversion" du 2026-07-04 ci-dessous.** Après tests sur appareil, l'utilisateur a choisi explicitement (question posée) l'orientation **pad BAS = FOND, pad HAUT = HOME**. Sur ce firmware (`stream:0=fond, stream:100=home`), ça correspond au **MAPPING DIRECT : `pos = rawPos.coerceIn(2,98)`** (slider 10% → stream:10). C'est un CHOIX D'ERGONOMIE de l'utilisateur, pas une correction de bug — le firmware n'a pas changé. L'ancien interrupteur `liveInvert` a été retiré (footgun) ; le var/DataStore restent en place mais inutilisés (VM force false + nettoie le persisté). **Ne pas re-inverser sans un nouveau test explicite de l'utilisateur.**
+
 ### 🟢 2026-07-04 — v1.25.2 : MODE LIVE CONFIRMÉ FONCTIONNEL SUR APPAREIL (par l'utilisateur)
 **NE PLUS TOUCHER AU MAPPING LIVE. La question de la direction est CLOSE.** Vérité de terrain, confirmée par l'utilisateur ET par la formule firmware `streaming_logic.h` :
 - **`stream:0 = FOND` ; `stream:100 = HOME`** (formule `target = -(1-pos/100)*maxStroke`). Le pad Live est au repos à `logicalPos = 0` = **HOME**, donc il faut envoyer `stream:100` au repos → **MAPPING = INVERSION : `pos = (100 - rawPos).coerceIn(2, 98)`** (c'est le mapping de la baseline v1.20.5).
