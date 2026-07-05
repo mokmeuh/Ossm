@@ -17,6 +17,7 @@ import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.SystemClock
 import androidx.core.content.ContextCompat
 import com.ossm.remote.model.BleConnectionState
 import com.ossm.remote.model.BleDevice
@@ -502,11 +503,16 @@ class BleManager @Inject constructor(
                     _machineState.value = newState
                     if (prev.state != newState.state) {
                         log(LogLevel.INFO, "STATE", "${prev.state} → ${newState.state}")
+                        if (newState.state.contains("streaming", ignoreCase = true)) {
+                            traceLive("state:first streaming observe", state = newState)
+                        }
                     }
                     // La machine a quitté le streaming (menu, erreur, long-press physique…):
                     // le mapping live n'est plus garanti, on désarme le pad.
                     if (_streamingReady.value && !newState.state.contains("streaming", ignoreCase = true)) {
                         _streamingReady.value = false
+                        firstStreamAfterReadyLogged = false
+                        traceLive("streamingReady=false", state = newState)
                         log(LogLevel.WARNING, "STATE", "Sortie du streaming — live désarmé")
                     }
                 }
@@ -613,8 +619,10 @@ class BleManager @Inject constructor(
     }
 
     private var lastStreamPos: Int = -1
+    private var firstStreamAfterReadyLogged: Boolean = false
 
-    // Sens du mode Live, réglé depuis les préférences (voir mapping dans sendCommand/Stream).
+    // Ancienne préférence conservée pour compatibilité DataStore seulement.
+    // Le sens Live reste verrouillé côté ViewModel ; ne pas s'en servir pour remapper.
     @Volatile
     var liveInvert: Boolean = false
 
@@ -625,14 +633,22 @@ class BleManager @Inject constructor(
             // (cause du bug « slider 0-100 ≠ 0-100 du home »).
             if (!_streamingReady.value) return
             val rawPos = command.positionPercent.coerceIn(0, 100)
-            // Mapping DIRECT (choix confirmé par l'utilisateur 2026-07-05) :
-            // stream = slider → slider 10% = stream:10. Firmware : stream:0=FOND,
-            // stream:100=HOME (formule streaming_logic.h). Donc pad BAS (slider 0) =
-            // FOND, pad HAUT (slider 100) = HOME. Marge 2 % aux deux butées.
+            // Mapping direct :
+            // slider bas = home, slider haut = fond.
             val pos = rawPos.coerceIn(2, 98)
             // Firmware crashes on division-by-zero if two consecutive stream commands have
             // the same position (streaming.cpp line 57: direction = distance/abs(distance)).
             if (pos == lastStreamPos) return
+            if (!firstStreamAfterReadyLogged) {
+                traceLive(
+                    "premier stream applicatif apres ready",
+                    raw = "stream:$pos:${
+                        command.timeMs.coerceAtLeast(1)
+                    }",
+                    state = _machineState.value
+                )
+                firstStreamAfterReadyLogged = true
+            }
             lastStreamPos = pos
             val t = command.timeMs.coerceAtLeast(1)
             writeRaw("stream:$pos:$t")
@@ -647,6 +663,7 @@ class BleManager @Inject constructor(
 
         when (command) {
             is OssmCommand.Stop -> {
+                cancelPendingModeTransitions()
                 writeRaw("set:speed:0")
                 _lastCommand.value = "set:speed:0"
                 log(LogLevel.INFO, "CMD", "set:speed:0")
@@ -655,14 +672,16 @@ class BleManager @Inject constructor(
                 val pattern = command.pattern
                 when (pattern.mode) {
                     PatternControlMode.SIMPLE_PENETRATION -> {
-                        scope.launch { navigateToMode("simplePenetration") }
+                        launchExclusiveModeTransition("simplePenetration") {
+                            navigateToMode("simplePenetration")
+                        }
                         _lastCommand.value = "menu → simplePenetration"
                         log(LogLevel.INFO, "CMD", "menu → simplePenetration")
                     }
                     PatternControlMode.STROKE_ENGINE, PatternControlMode.PROGRESSIVE -> {
                         val id = pattern.id ?: 0
-                        scope.launch {
-                            navigateToMode("strokeEngine")
+                        launchExclusiveModeTransition("strokeEngine:$id") {
+                            if (!navigateToMode("strokeEngine")) return@launchExclusiveModeTransition
                             writeRaw("set:pattern:$id")
                         }
                         val label = "menu → strokeEngine pattern=$id (${pattern.name})"
@@ -673,10 +692,13 @@ class BleManager @Inject constructor(
                         launchStreamingEntry()
                     }
                     PatternControlMode.AUTO_RANDOM -> {
+                        cancelPendingModeTransitions()
                         log(LogLevel.INFO, "CMD", "Auto Random selected in app; waiting for mix start")
                     }
                     PatternControlMode.LAUNCH_ONLY -> {
-                        scope.launch { navigateToMode(pattern.key) }
+                        launchExclusiveModeTransition(pattern.key) {
+                            navigateToMode(pattern.key)
+                        }
                         val label = "menu → ${pattern.key}"
                         _lastCommand.value = label
                         log(LogLevel.INFO, "CMD", label)
@@ -717,6 +739,28 @@ class BleManager @Inject constructor(
     }
 
     private var streamingEntryJob: Job? = null
+    private var modeTransitionJob: Job? = null
+
+    private fun cancelPendingModeTransitions() {
+        streamingEntryJob?.cancel()
+        streamingEntryJob = null
+        modeTransitionJob?.cancel()
+        modeTransitionJob = null
+    }
+
+    private fun launchExclusiveModeTransition(label: String, block: suspend () -> Unit) {
+        cancelPendingModeTransitions()
+        modeTransitionJob = scope.launch {
+            try {
+                traceLive("modeTransition:start", raw = label, state = _machineState.value)
+                block()
+            } finally {
+                if (modeTransitionJob === coroutineContext[Job]) {
+                    modeTransitionJob = null
+                }
+            }
+        }
+    }
 
     /** Entrée streaming dédupliquée : un seul cycle d'entrée à la fois. */
     /**
@@ -725,17 +769,33 @@ class BleManager @Inject constructor(
      * Retourne vrai si la machine a confirmé l'état cible.
      */
     private suspend fun navigateToMode(target: String): Boolean {
+        val stateReady = awaitMachineState(6_000) { it.state != "unknown" }
+        if (!stateReady) {
+            log(LogLevel.ERROR, "CMD", "Navigation annulée vers $target — état machine toujours unknown")
+            return false
+        }
+        traceLive("navigateToMode:start", raw = "target=$target", state = _machineState.value)
         writeRaw("set:speed:0")
+        traceLive("navigateToMode:write", raw = "set:speed:0", state = _machineState.value)
         delay(60)
         if (!_machineState.value.state.contains("menu", ignoreCase = true)) {
             writeRaw("go:menu")
+            traceLive("navigateToMode:write", raw = "go:menu", state = _machineState.value)
             if (!awaitMachineState(4_000) { it.state.contains("menu", ignoreCase = true) }) {
                 log(LogLevel.WARNING, "CMD", "Menu non confirmé (état=${_machineState.value.state}) — go:$target quand même")
+            } else {
+                traceLive("navigateToMode:menu confirme", state = _machineState.value)
             }
+        } else {
+            traceLive("navigateToMode:deja menu", state = _machineState.value)
         }
         writeRaw("go:$target")
+        traceLive("navigateToMode:write", raw = "go:$target", state = _machineState.value)
         val ok = awaitMachineState(8_000) {
             it.state.contains(target, ignoreCase = true) && !it.isPreflight && !it.isHoming
+        }
+        if (ok) {
+            traceLive("navigateToMode:$target confirme", state = _machineState.value)
         }
         if (!ok) {
             log(LogLevel.WARNING, "CMD", "$target non confirmé (état=${_machineState.value.state}) — si 'preflight', baisser le bouton vitesse physique")
@@ -744,8 +804,16 @@ class BleManager @Inject constructor(
     }
 
     private fun launchStreamingEntry() {
+        modeTransitionJob?.cancel()
+        modeTransitionJob = null
         if (streamingEntryJob?.isActive == true) return
-        streamingEntryJob = scope.launch { triggerStreamingEntry() }
+        streamingEntryJob = scope.launch {
+            try {
+                triggerStreamingEntry()
+            } finally {
+                streamingEntryJob = null
+            }
+        }
     }
 
     // Entrée en mode streaming pilotée par l'ÉTAT RÉEL de la machine (doc BLE
@@ -781,19 +849,24 @@ class BleManager @Inject constructor(
             @Suppress("DEPRECATION") char.writeType = writeType
             @Suppress("DEPRECATION") activeGatt.writeCharacteristic(char)
         }
+        traceLive("writeSpeedKnobIndependent", raw = "speedKnob=false", state = _machineState.value)
         log(LogLevel.INFO, "GATT", "Speed knob → independent (BLE speed non plafonné)")
     }
 
     private suspend fun sendStreamingSetup() {
-        // speed = PLAFOND de vitesse des moves streaming : 100 pour que la machine
-        // puisse suivre les gestes rapides (la vitesse réelle vient de pos+time).
+        // Base plus prudente : la bande reste 0-100, mais on évite le plafond
+        // ultra agressif qui a déjà produit des entrées/sorties dangereuses.
         writeRaw("set:speed:80")
+        traceLive("sendStreamingSetup:write", raw = "set:speed:80", state = _machineState.value)
         delay(60)
         writeRaw("set:sensation:50")
+        traceLive("sendStreamingSetup:write", raw = "set:sensation:50", state = _machineState.value)
         delay(60)
         writeRaw("set:stroke:100")
+        traceLive("sendStreamingSetup:write", raw = "set:stroke:100", state = _machineState.value)
         delay(60)
         writeRaw("set:depth:100")
+        traceLive("sendStreamingSetup:write", raw = "set:depth:100", state = _machineState.value)
         delay(60)
     }
 
@@ -804,6 +877,14 @@ class BleManager @Inject constructor(
     private suspend fun triggerStreamingEntry() {
         _streamingReady.value = false
         lastStreamPos = -1
+        firstStreamAfterReadyLogged = false
+        traceLive("triggerStreamingEntry:start", state = _machineState.value)
+
+        val stateReady = awaitMachineState(6_000) { it.state != "unknown" }
+        if (!stateReady) {
+            log(LogLevel.ERROR, "CMD", "Entrée streaming annulée — état machine toujours unknown")
+            return
+        }
 
         _lastCommand.value = "go:menu (→ streaming)"
         val inStreaming = navigateToMode("streaming")
@@ -830,6 +911,7 @@ class BleManager @Inject constructor(
             attempt++
             // L'entrée dans un mode peut réinitialiser les réglages : on repousse le
             // setup une fois DANS streaming, puis on revérifie via l'état NOTIFY.
+            traceLive("triggerStreamingEntry:setup essai $attempt", state = _machineState.value)
             sendStreamingSetup()
             verified = awaitMachineState(2_500, ::bandVerified)
             if (!verified) {
@@ -843,7 +925,9 @@ class BleManager @Inject constructor(
 
         if (verified) {
             _streamingReady.value = true
+            firstStreamAfterReadyLogged = false
             _lastCommand.value = "streaming prêt (stroke=100 depth=100)"
+            traceLive("streamingReady=true", state = _machineState.value)
             log(LogLevel.INFO, "CMD", "Streaming vérifié : plage live 0-100 = home→fond (speed=${_machineState.value.speed})")
         } else {
             val stt = _machineState.value
@@ -862,9 +946,15 @@ class BleManager @Inject constructor(
      */
     fun applyStrokeEngineVerified(command: StrokeEngineCommand) {
         scope.launch {
+            val stateReady = awaitMachineState(6_000) { it.state != "unknown" }
+            if (!stateReady) {
+                log(LogLevel.ERROR, "CMD", "Paramètres strokeEngine annulés — état machine toujours unknown")
+                return@launch
+            }
             val inMode = awaitMachineState(5_000) { it.state.contains("strokeEngine", ignoreCase = true) }
             if (!inMode) {
-                log(LogLevel.WARNING, "CMD", "strokeEngine non confirmé (état=${_machineState.value.state}) — envoi des paramètres quand même")
+                log(LogLevel.ERROR, "CMD", "strokeEngine non confirmé (état=${_machineState.value.state}) — paramètres annulés")
+                return@launch
             }
             val speed = toPercent(command.speed)
             val depthMax = toPercent(command.depthMax)
@@ -995,6 +1085,15 @@ class BleManager @Inject constructor(
     }
 
     private fun toPercent(value: Float): Int = (value * 100f).toInt().coerceIn(0, 100)
+
+    private fun liveStateSnapshot(state: MachineState = _machineState.value): String =
+        "state=${state.state},preflight=${state.isPreflight},homing=${state.isHoming},speed=${state.speed},stroke=${state.stroke},depth=${state.depth}"
+
+    private fun traceLive(step: String, raw: String? = null, state: MachineState = _machineState.value) {
+        val ts = SystemClock.elapsedRealtime()
+        val rawSuffix = raw?.let { " raw=$it" } ?: ""
+        log(LogLevel.INFO, "LIVE_TRACE", "t=$ts step=$step$rawSuffix ${liveStateSnapshot(state)}")
+    }
 
     private fun log(level: LogLevel, tag: String, message: String) {
         // Miroir vers logcat (lisible via `adb logcat -s OSSM`) pour diagnostiquer à

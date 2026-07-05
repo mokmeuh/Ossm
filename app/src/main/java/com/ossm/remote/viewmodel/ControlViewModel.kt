@@ -124,7 +124,7 @@ data class ControlUiState(
     // Accélération max du mode Live (0..1) : plafonne la vitesse du chariot. Même si
     // le doigt fonce, la machine ne bouge pas plus vite que cette limite. Bas = très
     // fluide/doux ; haut = suit le doigt au plus près.
-    val liveMaxAccel: Float = 0.6f,
+    val liveMaxAccel: Float = 0.35f,
     // Assistant de plage au toucher (non null = assistant en cours).
     val rangeWizard: RangeWizardState? = null,
     // Ordre personnalisé des patterns (keys) ; vide = ordre naturel.
@@ -177,6 +177,15 @@ class ControlViewModel @Inject constructor(
     val listeningLevel: StateFlow<Float> = audioLevelMonitor.level
 
     private val sessionBypass = mutableSetOf<GuardedControl>()
+    // ---- Etat Live déclaré AVANT init : les collecteurs lancés dans init peuvent
+    // déclencher un cleanup immédiatement au démarrage.
+    private var streamTarget: Float = 0f          // position voulue par le doigt (0..100)
+    private var streamSent: Float = 0f            // dernière position envoyée
+    private var streamJob: Job? = null            // (plus de ticker ; conservé pour les cancel)
+    private val recSamples = ArrayList<Pair<Long, Int>>()
+    private var recStartMs = 0L
+    private var liveLoopJob: Job? = null
+    private var liveTailSendJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -264,8 +273,11 @@ class ControlViewModel @Inject constructor(
                     // du même point (pad au repos = home). ON N'ENVOIE AUCUNE COMMANDE
                     // ICI (comportement baseline v1.20.5) : le firmware est déjà au home,
                     // et tout stream: envoyé maintenant risquerait de le déplacer.
+                    cancelLiveMotion(resetTarget = true, resetLiveRec = false)
                     streamTarget = 0f
                     streamSent = 0f
+                } else {
+                    cancelLiveMotion(resetTarget = false, resetLiveRec = true)
                 }
                 _uiState.update { it.copy(streamingReady = ready) }
             }
@@ -304,12 +316,14 @@ class ControlViewModel @Inject constructor(
     }
 
     fun activatePattern(patternKey: String) {
+        val previousMode = _uiState.value.activePattern?.mode
         val pattern = _uiState.value.availablePatterns.firstOrNull { it.key == patternKey } ?: return
         viewModelScope.launch { userHabitsRepository.recordPatternHabit(pattern.key) }
         // Leaving any previous live/progressive session: stop the tickers.
-        liveLoopJob?.cancel(); liveLoopJob = null
-        streamJob?.cancel(); streamJob = null
-        streamTarget = 0f; streamSent = 0f
+        cancelLiveMotion(resetTarget = true)
+        if (previousMode == PatternControlMode.STREAMING && pattern.mode != PatternControlMode.STREAMING) {
+            bleManager.liveSet("speed", 0)
+        }
         progressiveJob?.cancel(); progressiveJob = null
         chaosJob?.cancel(); chaosJob = null
         teasingRandomJob?.cancel(); teasingRandomJob = null
@@ -364,6 +378,9 @@ class ControlViewModel @Inject constructor(
             }
             else -> {
                 bleManager.sendCommand(OssmCommand.ActivatePattern(pattern))
+                if (previousMode == PatternControlMode.STREAMING) {
+                    return
+                }
                 // Le firmware réinitialise ses réglages à l'entrée du mode : application
                 // VÉRIFIÉE par l'état réel (remplace l'ancien délai aveugle de 1200 ms
                 // dont l'envoi pouvait être perdu → plage réelle ≠ plage affichée).
@@ -531,9 +548,10 @@ class ControlViewModel @Inject constructor(
     }
 
     fun stop() {
-        liveLoopJob?.cancel(); liveLoopJob = null
-        _uiState.update { it.copy(liveRec = LiveRecState.IDLE) }
-        streamJob?.cancel(); streamJob = null
+        cancelLiveMotion(resetTarget = true)
+        if (_uiState.value.activePattern?.mode == PatternControlMode.STREAMING || _uiState.value.rangeWizard != null) {
+            bleManager.liveSet("speed", 0)
+        }
         progressiveJob?.cancel(); progressiveJob = null
         chaosJob?.cancel(); chaosJob = null
         teasingRandomJob?.cancel(); teasingRandomJob = null
@@ -881,8 +899,7 @@ class ControlViewModel @Inject constructor(
         val st = _uiState.value
         if (!st.isRunning || st.isPaused) return
         val mode = st.activePattern?.mode ?: return
-        liveLoopJob?.cancel(); liveLoopJob = null
-        streamJob?.cancel(); streamJob = null
+        cancelLiveMotion(resetTarget = false)
         progressiveJob?.cancel(); progressiveJob = null
         chaosJob?.cancel(); chaosJob = null
         teasingRandomJob?.cancel(); teasingRandomJob = null
@@ -1013,18 +1030,25 @@ class ControlViewModel @Inject constructor(
         return min + (max - min) * amount.coerceIn(0f, 1f)
     }
 
-    // ---- Live streaming : envoi DIRECT position + temps réel écoulé ----
+    // ---- Live streaming : suivi du pad, avec inversion appliquée plus bas dans BleManager ----
     // La vitesse du chariot suit la vitesse du doigt : le firmware calcule
     // vitesse = distance / temps pour chaque stream:pos:time. L'ancien ticker à
     // rampe (2,5 %/35 ms) datait de l'époque où la liaison était peu fiable — il
     // rendait tout mouvement uniformément lent, peu importe le geste.
-    private var streamTarget: Float = 0f          // position voulue par le doigt (0..100)
-    private var streamSent: Float = 0f            // dernière position envoyée
-    private var streamJob: Job? = null            // (plus de ticker ; conservé pour les cancel)
-    // Enregistreur Live : échantillons (t relatif ms, position 0-100).
-    private val recSamples = ArrayList<Pair<Long, Int>>()
-    private var recStartMs = 0L
-    private var liveLoopJob: Job? = null
+
+    private fun cancelLiveMotion(resetTarget: Boolean, resetLiveRec: Boolean = true) {
+        liveTailSendJob?.cancel(); liveTailSendJob = null
+        liveLoopJob?.cancel(); liveLoopJob = null
+        streamJob?.cancel(); streamJob = null
+        if (resetTarget) {
+            streamTarget = 0f
+            streamSent = 0f
+        }
+        if (resetLiveRec) {
+            recSamples.clear()
+            _uiState.update { it.copy(liveRec = LiveRecState.IDLE) }
+        }
+    }
 
     fun setStreamTarget(positionPercent: Int) {
         streamTarget = positionPercent.toFloat().coerceIn(0f, 100f)
@@ -1039,6 +1063,9 @@ class ControlViewModel @Inject constructor(
         val st = _uiState.value
         if (st.activePattern?.mode != PatternControlMode.STREAMING && st.rangeWizard == null) return
         if (active) {
+            val liveReady = st.streamingReady || st.rangeWizard != null
+            if (!liveReady) return
+            liveTailSendJob?.cancel(); liveTailSendJob = null
             // Toucher le pad pendant une boucle = reprendre la main.
             if (st.liveRec == LiveRecState.PLAYING) stopLiveLoop()
             if (st.liveRec == LiveRecState.ARMED) {
@@ -1047,9 +1074,8 @@ class ControlViewModel @Inject constructor(
                 _uiState.update { it.copy(liveRec = LiveRecState.RECORDING) }
             }
             if (streamJob?.isActive == true) return
-            // Un Stop/pause précédent a pu mettre speed=0 : en streaming le firmware
-            // ignore silencieusement tout stream:pos:time si speed=0 — on restaure au
-            // plafond pour ne pas brider les gestes rapides.
+            // On restaure le plafond Live prudent pour éviter les coups trop secs
+            // tout en laissant la glisse rester continue.
             if ((bleManager.machineState.value.speed ?: 0) < 80) {
                 bleManager.liveSet("speed", 80)
             }
@@ -1071,10 +1097,15 @@ class ControlViewModel @Inject constructor(
                         // LISSAGE (ease-out) + PLAFOND D'ACCÉLÉRATION réglable.
                         // 1) ease-out : on glisse vers le doigt d'une fraction (courbe
                         //    douce, petits pas continus → pas de gros pas tronqué).
-                        // 2) plafond : le pas est bridé par `liveMaxAccel` (slider). Même
-                        //    si le doigt fonce, le chariot ne dépasse jamais cette vitesse.
-                        //    Bas = très doux/lent ; haut = suit le doigt au plus près.
-                        val maxStep = interpolate(STREAM_MIN_STEP, STREAM_MAX_STEP, _uiState.value.liveMaxAccel)
+                        // 2) plafond : le pas est bridé par `liveMaxAccel` (slider), mais
+                        //    avec une courbe non linéaire. Le milieu du slider reste donc
+                        //    nettement plus doux qu'avant au lieu d'autoriser déjà de gros
+                        //    bonds (~25 % de course), qui donnaient l'impression de 4 coups
+                        //    pour traverser la plage 0→100.
+                        val accelCurve = _uiState.value.liveMaxAccel *
+                            _uiState.value.liveMaxAccel *
+                            _uiState.value.liveMaxAccel
+                        val maxStep = interpolate(STREAM_MIN_STEP, STREAM_MAX_STEP, accelCurve)
                         val eased = diff * STREAM_SMOOTH_ALPHA
                         val step = eased.coerceIn(-maxStep, maxStep)
                         streamSent += step
@@ -1103,6 +1134,7 @@ class ControlViewModel @Inject constructor(
                 }
             }
         } else {
+            liveTailSendJob?.cancel(); liveTailSendJob = null
             streamJob?.cancel()
             streamJob = null
             if (_uiState.value.liveRec == LiveRecState.RECORDING) {
@@ -1112,13 +1144,14 @@ class ControlViewModel @Inject constructor(
             }
             // Fin de geste : rejoint la position finale, avec deux rappels espacés
             // pour rattraper un éventuel retard (mouvements raccourcis par le firmware).
-            viewModelScope.launch {
+            liveTailSendJob = viewModelScope.launch {
                 streamSent = streamTarget
                 bleManager.sendCommand(OssmCommand.Stream(streamTarget.toInt(), timeMs = 200))
                 delay(300)
                 bleManager.sendCommand(OssmCommand.Stream((streamTarget + 1f).coerceIn(0f, 100f).toInt(), timeMs = 300))
                 delay(300)
                 bleManager.sendCommand(OssmCommand.Stream((streamTarget - 1f).coerceAtLeast(0f).toInt(), timeMs = 300))
+                liveTailSendJob = null
             }
         }
     }
@@ -1138,6 +1171,7 @@ class ControlViewModel @Inject constructor(
     }
 
     private fun stopLiveLoop() {
+        liveTailSendJob?.cancel(); liveTailSendJob = null
         liveLoopJob?.cancel(); liveLoopJob = null
         _uiState.update { it.copy(liveRec = LiveRecState.IDLE) }
     }
@@ -1160,6 +1194,7 @@ class ControlViewModel @Inject constructor(
             return
         }
         _uiState.update { it.copy(liveRec = LiveRecState.PLAYING) }
+        liveTailSendJob?.cancel(); liveTailSendJob = null
         liveLoopJob?.cancel()
         liveLoopJob = viewModelScope.launch {
             // Rejoint le point de départ en douceur avant la première itération.
@@ -1195,12 +1230,10 @@ class ControlViewModel @Inject constructor(
         val mode = current.activePattern?.mode ?: return
         if (mode == PatternControlMode.STREAMING || mode == PatternControlMode.LAUNCH_ONLY) return
         // Stoppe toute activité en cours avant de passer la machine en suivi de position.
-        liveLoopJob?.cancel(); liveLoopJob = null
-        streamJob?.cancel(); streamJob = null
+        cancelLiveMotion(resetTarget = true)
         progressiveJob?.cancel(); progressiveJob = null
         chaosJob?.cancel(); chaosJob = null
         autoJob?.cancel(); autoJob = null; autoFirmwareMode = null
-        streamTarget = 0f; streamSent = 0f
         _uiState.update {
             it.copy(
                 rangeWizard = RangeWizardState(returnPatternKey = it.activePatternKey),
@@ -1229,13 +1262,13 @@ class ControlViewModel @Inject constructor(
 
     fun cancelRangeWizard() {
         val wiz = _uiState.value.rangeWizard ?: return
-        streamJob?.cancel(); streamJob = null
+        cancelLiveMotion(resetTarget = true)
         _uiState.update { it.copy(rangeWizard = null) }
         activatePattern(wiz.returnPatternKey)
     }
 
     private fun finishRangeWizard(lo: Float, hi: Float, returnKey: String) {
-        streamJob?.cancel(); streamJob = null
+        cancelLiveMotion(resetTarget = true)
         _uiState.update {
             it.copy(rangeWizard = null, depthMin = lo, depthMax = hi, pendingManualChange = null)
         }
@@ -1364,8 +1397,7 @@ class ControlViewModel @Inject constructor(
 
     override fun onCleared() {
         super.onCleared()
-        liveLoopJob?.cancel()
-        streamJob?.cancel()
+        cancelLiveMotion(resetTarget = false)
         progressiveJob?.cancel()
         chaosJob?.cancel()
         teasingRandomJob?.cancel()
@@ -1376,15 +1408,17 @@ class ControlViewModel @Inject constructor(
         // Live streaming : envois rapprochés, durée > cadence pour un mouvement
         // continu (léger chevauchement, file bornée à ~1 commande).
         private const val STREAM_CADENCE_MS = 60L
-        private const val STREAM_MOVE_MS = 110
+        private const val STREAM_MOVE_MS = 90
         // Lissage du Live : fraction de l'écart doigt↔machine parcourue à chaque tick
-        // (0 = figé, 1 = saut immédiat = ancien comportement saccadé). ~0.35 = fluide
-        // tout en suivant bien le doigt. Baisser = plus lisse mais plus « mou ».
-        private const val STREAM_SMOOTH_ALPHA = 0.35f
+        // (0 = figé, 1 = saut immédiat = ancien comportement saccadé). Plus bas qu'avant
+        // pour privilégier une glisse continue aux grands sauts quand le doigt bouge vite.
+        private const val STREAM_SMOOTH_ALPHA = 0.28f
         // Pas MAX par tick (% de course), interpolé par le slider « accélération max ».
-        // À 60 ms/tick : 2 % ≈ course pleine en ~3 s (très doux) ; 40 % ≈ ~150 ms (vif).
-        private const val STREAM_MIN_STEP = 2f
-        private const val STREAM_MAX_STEP = 40f
+        // Réduit encore : les logs montraient qu'en haut du slider les sauts pouvaient
+        // encore monter à ~7-13 points par tick, perçus comme "fluide + saccadé".
+        // On garde un haut de slider utile, mais sans grands escaliers.
+        private const val STREAM_MIN_STEP = 1f
+        private const val STREAM_MAX_STEP = 12f
         // Rappels de position (rattrapage du retard sur gestes rapides).
         private const val STREAM_REFRESH_MS = 350L
         private const val STREAM_REFRESH_MOVE_MS = 250
