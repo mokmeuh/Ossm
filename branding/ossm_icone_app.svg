@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- OSSM Remote — icône d'application (adaptive icon Android).
+       Le motif est réduit pour rester dans la zone sûre (66 %) des masques ronds/squircle. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#141422"/>
+      <stop offset="1" stop-color="#0A0A0F"/>
+    </linearGradient>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7C4DFF"/>
+      <stop offset="1" stop-color="#00E5FF"/>
+    </linearGradient>
+    <linearGradient id="g2" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#00E5FF"/>
+      <stop offset="1" stop-color="#B39DDB"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.42" r="0.6">
+      <stop offset="0" stop-color="#7C4DFF" stop-opacity="0.4"/>
+      <stop offset="1" stop-color="#7C4DFF" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <circle cx="256" cy="256" r="250" fill="url(#glow)"/>
+
+  <g transform="translate(256 256) scale(0.62) translate(-256 -256)">
+    <path d="M 199 98 A 175 175 0 0 0 199 414" fill="none" stroke="url(#g)"
+          stroke-width="34" stroke-linecap="round"/>
+    <path d="M 313 414 A 175 175 0 0 0 313 98" fill="none" stroke="url(#g)"
+          stroke-width="34" stroke-linecap="round"/>
+    <line x1="256" y1="120" x2="256" y2="392" stroke="url(#g2)"
+          stroke-width="30" stroke-linecap="round"/>
+    <path d="M 210 160 L 256 104 L 302 160" fill="none" stroke="url(#g2)"
+          stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M 210 352 L 256 408 L 302 352" fill="none" stroke="url(#g2)"
+          stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M 400 212 A 60 60 0 0 1 400 300" fill="none" stroke="#00E5FF"
+          stroke-width="20" stroke-linecap="round" opacity="0.85"/>
+    <path d="M 440 184 A 100 100 0 0 1 440 328" fill="none" stroke="#00E5FF"
+          stroke-width="20" stroke-linecap="round" opacity="0.45"/>
+  </g>
+</svg>

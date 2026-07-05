@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="warning_title">⚠ Avertissement</string>
+    <string name="warning_body">Cette application contrôle un appareil OSSM/OFFM via Bluetooth Low Energy.\n\nL\'API Bluetooth OSSM est expérimentale. Des comportements inattendus peuvent se produire.\n\nAssurez-vous que le bouton STOP physique est accessible à tout moment.\n\nUtilisez en toute sécurité et de manière responsable.</string>
+    <string name="warning_accept">J\'ai compris, continuer</string>
+    <string name="stop">STOP</string>
+    <string name="scan">Scanner</string>
+    <string name="connect">Connecter</string>
+    <string name="disconnect">Déconnecter</string>
+    <string name="control">Contrôle</string>
+    <string name="diagnostics">Diagnostics</string>
+    <string name="profiles">Profils</string>
+    <string name="funscript">Funscript</string>
+
+    <!-- Ecran Funscript -->
+    <string name="funscript_title">FUNSCRIPT</string>
+    <string name="funscript_file_label">Fichier Funscript</string>
+    <string name="funscript_no_file">Aucun fichier chargé</string>
+    <string name="funscript_open">Ouvrir</string>
+    <string name="funscript_actions_count">%1$d actions</string>
+    <string name="funscript_action">Action</string>
+    <string name="funscript_depth_range">Plage de profondeur</string>
+    <string name="funscript_depth_range_value">%1$d%% – %2$d%%</string>
+    <string name="funscript_speed">Vitesse de lecture</string>
+    <string name="funscript_speed_value">%1$s×</string>
+    <string name="funscript_play">Lecture</string>
+    <string name="funscript_pause">Pause</string>
+    <string name="funscript_not_connected">Connectez-vous à un OSSM pour lancer la lecture</string>
+    <string name="funscript_paused">⏸ En pause — appuyez sur ▶ pour reprendre</string>
+    <string name="funscript_preparing">Préparation (homing en cours)…</string>
+    <string name="funscript_streaming">▶ Streaming en cours…</string>
+    <string name="ctl_connect_prompt">Connectez-vous à un OSSM pour activer les commandes</string>
+    <string name="ctl_patterns">PATTERNS  ▾</string>
+    <string name="ctl_no_patterns">Aucun pattern détecté pour ce firmware.</string>
+    <string name="ctl_live_hint_ready">Glisse ton doigt dans la zone — la machine suit ta position en direct (0 % = home, 100 % = fond).</string>
+    <string name="ctl_live_preparing">Préparation du mode Live — la machine confirme la pleine course…</string>
+    <string name="ctl_live_knob_hint">→ Baisse le bouton de vitesse physique à 0 pour entrer dans le mode.</string>
+    <string name="ctl_rec_idle">●  Enregistrer un mouvement</string>
+    <string name="ctl_rec_armed">Prêt — touche le pad (appuie pour annuler)</string>
+    <string name="ctl_rec_recording">●  REC — lève le doigt pour boucler</string>
+    <string name="ctl_rec_playing">⏸  Arrêter la boucle</string>
+    <string name="ctl_depth">PROFONDEUR</string>
+    <string name="ctl_speed">Vitesse</string>
+    <string name="ctl_sensation">Sensation</string>
+    <string name="ctl_sensation_ramp">Sensation (vitesse de montée)</string>
+    <string name="ctl_reorder_title">Réorganiser les patterns</string>
+    <string name="ctl_reorder_hint">Appui long puis glisse pour déplacer.</string>
+    <string name="ctl_save">Enregistrer</string>
+    <string name="ctl_cancel">Annuler</string>
+    <string name="ctl_start">Demarrer</string>
+    <string name="ctl_stop_mix">Arreter</string>
+
+    <!-- Mode aléatoire (Teasing & Pounding) -->
+    <string name="ctl_random_title">MODE ALÉATOIRE</string>
+    <string name="ctl_random_hint">Chaque case fait varier ce réglage au hasard, sans dépasser ta valeur réglée.</string>
+    <string name="ctl_random_speed">Vitesse aléatoire</string>
+    <string name="ctl_random_depth">Profondeur aléatoire</string>
+    <string name="ctl_random_depth_min">Profondeur — retrait aléatoire</string>
+    <string name="ctl_random_depth_max">Profondeur — fond aléatoire</string>
+    <string name="ctl_random_sensation_low">Sensation aléatoire — retour (0–50)</string>
+    <string name="ctl_random_sensation_high">Sensation aléatoire — aller (50–100)</string>
+    <string name="ctl_listening_title">Mode à l\'écoute (micro)</string>
+    <string name="ctl_listening_hint">Le micro fait monter l\'intensité quand tu réagis. Traité sur l\'appareil, jamais enregistré.</string>
+    <string name="ctl_live_max_accel">Accélération max</string>
+    <string name="ctl_live_invert">Inverser le sens du Live</string>
+    <string name="ctl_live_invert_hint">Si le chariot part dans le mauvais sens ou cogne au repos, bascule ceci.</string>
+
+    <!-- Ecran Scanner -->
+    <string name="scan_stop">Arrêter le scan</string>
+    <string name="scan_devices">Scanner les appareils BLE</string>
+    <string name="scan_found_count">%1$d appareil(s) trouvé(s)</string>
+    <string name="scan_connected">Connecté</string>
+    <string name="scan_connecting">Connexion en cours…</string>
+    <string name="scan_empty_hint">Appuyez sur « Scanner » pour rechercher\ndes appareils OSSM à proximité</string>
+
+    <!-- Ecran Profils -->
+    <string name="prof_title">PROFILS</string>
+    <string name="prof_empty">Aucun profil sauvegardé\n\nUtilisez l\'icône de sauvegarde dans l\'onglet Contrôle pour garder vos réglages.</string>
+    <string name="prof_speed">Vitesse</string>
+    <string name="prof_min">Min</string>
+    <string name="prof_max">Max</string>
+    <string name="prof_apply">Appliquer</string>
+    <string name="prof_delete">Supprimer</string>
+    <string name="prof_delete_title">Supprimer le profil ?</string>
+    <string name="prof_delete_msg">« %1$s » sera supprimé définitivement.</string>
+
+    <!-- Ecran Diagnostics -->
+    <string name="diag_title">DIAGNOSTICS</string>
+    <string name="diag_clear">Effacer les logs</string>
+    <string name="diag_ble_state">État BLE</string>
+    <string name="diag_last_cmd">Dernière commande</string>
+    <string name="diag_mac">Adresse MAC :</string>
+    <string name="diag_entries">%1$d entrées</string>
+</resources>

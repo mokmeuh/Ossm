@@ -1,0 +1,213 @@
+﻿
+11:17:20.822 | ets Jul 29 2019 12:21:46
+11:17:20.827 | rst:0x1 (POWERON_RESET),boot:0x17 (SPI_FAST_FLASH_BOOT)
+11:17:20.828 | configsip: 0, SPIWP:0xee
+11:17:20.829 | clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+11:17:20.831 | mode:DIO, clock div:2
+11:17:20.832 | load:0x3fff0030,len:4768
+11:17:20.833 | load:0x40078000,len:14584
+11:17:20.834 | load:0x40080400,len:3460
+11:17:20.835 | entry 0x40080638
+11:17:21.512 | I (730) cpu_start: Multicore app
+11:17:21.515 | I (730) cpu_start: Pro cpu up.
+11:17:21.517 | I (731) cpu_start: Starting app cpu, entry point is 0x400840b8
+11:17:21.520 | I (0) cpu_start: App cpu up.
+11:17:21.575 | I (744) cpu_start: Pro cpu start user code
+11:17:21.577 | I (745) cpu_start: cpu freq: 160000000
+11:17:21.578 | I (745) cpu_start: Application information:
+11:17:21.579 | I (746) cpu_start: Project name:     Software
+11:17:21.581 | I (750) cpu_start: App version:      1.0.30-2-g49e9d36-dirty
+11:17:21.583 | I (756) cpu_start: Compile time:     Jun 18 2026 17:31:26
+11:17:21.584 | I (761) cpu_start: ELF file SHA256:  38abd16b...
+11:17:21.585 | I (765) cpu_start: ESP-IDF:          4.4.7
+11:17:21.586 | I (769) cpu_start: Min chip rev:     v0.0
+11:17:21.587 | I (773) cpu_start: Max chip rev:     v3.99 
+11:17:21.637 | I (777) cpu_start: Chip rev:         v3.1
+11:17:21.639 | I (781) heap_init: Initializing. RAM available for dynamic allocation:
+11:17:21.639 | I (787) heap_init: At 3FFAFF10 len 000000F0 (0 KiB): DRAM
+11:17:21.640 | I (792) heap_init: At 3FFB6388 len 00001C78 (7 KiB): DRAM
+11:17:21.641 | I (797) heap_init: At 3FFB9A20 len 00004108 (16 KiB): DRAM
+11:17:21.642 | I (802) heap_init: At 3FFCDD08 len 000122F8 (72 KiB): DRAM
+11:17:21.642 | I (807) heap_init: At 3FFE0440 len 00003AE0 (14 KiB): D/IRAM
+11:17:21.643 | I (813) heap_init: At 3FFE4350 len 0001BCB0 (111 KiB): D/IRAM
+11:17:21.644 | I (818) heap_init: At 4009C1C0 len 00003E40 (15 KiB): IRAM
+11:17:21.645 | I (825) spi_flash: detected chip: generic
+11:17:21.645 | I (827) spi_flash: flash io: dio
+11:17:21.647 | W (830) spi_flash: Detected size(16384k) larger than the size in the binary image header(4096k). Using the size in the binary image header.
+11:17:21.648 | I (845) gpio: GPIO[18]| InputEn: 1| OutputEn: 0| OpenDrain: 0| Pullup: 0| Pulldown: 1| Intr:0 
+11:17:21.650 | I (851) gpio: GPIO[5]| InputEn: 1| OutputEn: 0| OpenDrain: 0| Pullup: 0| Pulldown: 1| Intr:0 
+11:17:21.714 | I (900) gpio: GPIO[35]| InputEn: 1| OutputEn: 0| OpenDrain: 0| Pullup: 1| Pulldown: 0| Intr:0 
+11:17:21.716 | I (902) cpu_start: Starting scheduler on PRO CPU.
+11:17:21.717 | I (0) cpu_start: Starting scheduler on APP CPU.
+11:17:34.998 | I (41) uart:[ 13357][E][Preferences.cpp:50] begin(): nvs_open failed: NOT_FOUND
+11:17:35.000 | I (16666) BTDM_INIT: BT controller compile version [0f0c5a2]
+11:17:35.001 | I (16668) system_api: Base MAC address is not set
+11:17:35.002 | I (16668) system_api: read default base MAC address from EFUSE
+11:17:35.003 | I (16671) BTDM_INIT: Bluetooth MAC: f4:65:0b:d9:4f:36
+11:17:35.004 | I (16679) phy_init: phy_version 4791,2c4672b,Dec 20 2023,16:06:06
+11:17:35.372 | [ 13743][E][Preferences.cpp:50] begin(): nvs_open failed: NOT_FOUND
+11:17:35.374 | [ 13750][E][Preferences.cpp:50] begin(): nvs_open failed: NOT_FOUND
+11:17:35.375 | [ 13760][E][Preferences.cpp:50] begin(): nvs_open failed: NOT_FOUND
+11:17:35.375 | I (17083) wifi:wifi driver task: 3ffe68c8, prio:23, stack:6656, core=0
+11:17:35.434 | I (17100) wifi:wifi firmware version: 1fd20f4
+11:17:35.436 | I (17101) wifi:wifi certification version: v7.0
+11:17:35.437 | I (17101) wifi:config NVS flash: enabled
+11:17:35.442 | I (17102) wifi:config nano formating: disabled
+11:17:35.443 | I (17106) wifi:Init data frame dynamic rx buffer num: 32
+11:17:35.444 | I (17111) wifi:Init static rx mgmt buffer num: 5
+11:17:35.445 | I (17115) wifi:Init management short buffer num: 32
+11:17:35.445 | I (17120) wifi:Init dynamic tx buffer num: 32
+11:17:35.446 | I (17124) wifi:Init static rx buffer size: 1600
+11:17:35.447 | I (17129) wifi:Init static rx buffer num: 10
+11:17:35.512 | I (17132) wifi:Init dynamic rx buffer num: 32
+11:17:35.513 | I (17139) wifi_init: rx ba win: 6
+11:17:35.515 | I (17139) wifi_init: tcpip mbox: 32
+11:17:35.516 | I (17142) wifi_init: udp mbox: 6
+11:17:35.517 | I (17145) wifi_init: tcp mbox: 6
+11:17:35.518 | I (17148) wifi_init: tcp tx win: 5760
+11:17:35.519 | I (17152) wifi_init: tcp rx win: 5760
+11:17:35.519 | I (17155) wifi_init: tcp mss: 1440
+11:17:35.520 | I (17166) wifi:mode : sta (f4:65:0b:d9:4f:34)
+11:17:35.521 | I (17168) wifi:enable tsf
+11:17:35.521 | [ 13870][E][WiFiSTA.cpp:317] begin(): connect failed! 0x300a
+11:17:35.522 | I (17184) wifi:Set ps type: 1
+11:17:37.536 | E (19187) esp-tls: couldn't get hostname for :te9acc16.ala.us-east-1.emqxsl.com: getaddrinfo() returns 202, addrinfo=0x0
+11:17:37.537 | E (19188) esp-tls: Failed to open new connection
+11:17:37.538 | E (19191) TRANSPORT_BASE: Failed to open a new connection
+11:17:37.539 | E (19197) MQTT_CLIENT: Error transport connect
+11:17:52.546 | E (34202) esp-tls: couldn't get hostname for :te9acc16.ala.us-east-1.emqxsl.com: getaddrinfo() returns 202, addrinfo=0x0
+11:17:52.548 | E (34202) esp-tls: Failed to open new connection
+11:17:52.550 | E (34205) TRANSPORT_BASE: Failed to open a new connection
+11:17:52.551 | E (34211) MQTT_CLIENT: Error transport connect
+11:18:07.576 | E (49215) esp-tls: couldn't get hostname for :te9acc16.ala.us-east-1.emqxsl.com: getaddrinfo() returns 202, addrinfo=0x0
+11:18:07.577 | E (49216) esp-tls: Failed to open new connection
+11:18:07.578 | E (49219) TRANSPORT_BASE: Failed to open a new connection
+11:18:07.579 | E (49225) MQTT_CLIENT: Error transport connect
+11:18:22.592 | E (64229) esp-tls: couldn't get hostname for :te9acc16.ala.us-east-1.emqxsl.com: getaddrinfo() returns 202, addrinfo=0x0
+11:18:22.597 | E (64230) esp-tls: Failed to open new connection
+11:18:22.598 | E (64233) TRANSPORT_BASE: Failed to open a new connection
+11:18:22.599 | E (64239) MQTT_CLIENT: Error transport connect
+11:18:37.579 | E (79243) esp-tls: couldn't get hostname for :te9acc16.ala.us-east-1.emqxsl.com: getaddrinfo() returns 202, addrinfo=0x0
+11:18:37.580 | E (79244) esp-tls: Failed to open new connection
+11:18:37.581 | E (79248) TRANSPORT_BASE: Failed to open a new connection
+11:18:37.582 | E (79253) MQTT_CLIENT: Error transport connect
+11:18:52.561 | E (94259) esp-tls: couldn't get hostname for :te9acc16.ala.us-east-1.emqxsl.com: getaddrinfo() returns 202, addrinfo=0x0
+11:18:52.562 | E (94259) esp-tls: Failed to open new connection
+11:18:52.563 | E (94263) TRANSPORT_BASE: Failed to open a new connection
+11:18:52.565 | E (94268) MQTT_CLIENT: Error transport connect
+11:19:07.631 | E (109273) esp-tls: couldn't get hostname for :te9acc16.ala.us-east-1.emqxsl.com: getaddrinfo() returns 202, addrinfo=0x0
+11:19:07.633 | E (109274) esp-tls: Failed to open new connection
+11:19:07.635 | E (109278) TRANSPORT_BASE: Failed to open a new connection
+11:19:07.636 | E (109283) MQTT_CLIENT: Error transport connect
+11:19:22.604 | E (124288) esp-tls: couldn't get hostname for :te9acc16.ala.us-east-1.emqxsl.com: getaddrinfo() returns 202, addrinfo=0x0
+11:19:22.606 | E (124289) esp-tls: Failed to open new connection
+11:19:22.606 | E (124293) TRANSPORT_BASE: Failed to open a new connection
+11:19:22.607 | E (124298) MQTT_CLIENT: Error transport connect
+11:19:37.670 | E (139303) esp-tls: couldn't get hostname for :te9acc16.ala.us-east-1.emqxsl.com: getaddrinfo() returns 202, addrinfo=0x0
+11:19:37.672 | E (139304) esp-tls: Failed to open new connection
+11:19:37.674 | E (139308) TRANSPORT_BASE: Failed to open a new connection
+11:19:37.675 | E (139313) MQTT_CLIENT: Error transport connect
+11:19:52.685 | E (154320) esp-tls: couldn't get hostname for :te9acc16.ala.us-east-1.emqxsl.com: getaddrinfo() returns 202, addrinfo=0x0
+11:19:52.688 | E (154321) esp-tls: Failed to open new connection
+11:19:52.689 | E (154324) TRANSPORT_BASE: Failed to open a new connection
+11:19:52.690 | E (154330) MQTT_CLIENT: Error transport connect
+11:20:07.671 | E (169335) esp-tls: couldn't get hostname for :te9acc16.ala.us-east-1.emqxsl.com: getaddrinfo() returns 202, addrinfo=0x0
+11:20:07.673 | E (169336) esp-tls: Failed to open new connection
+11:20:07.675 | E (169340) TRANSPORT_BASE: Failed to open a new connection
+11:20:07.675 | E (169345) MQTT_CLIENT: Error transport connect
+11:20:22.715 | E (184350) esp-tls: couldn't get hostname for :te9acc16.ala.us-east-1.emqxsl.com: getaddrinfo() returns 202, addrinfo=0x0
+11:20:22.717 | E (184351) esp-tls: Failed to op new connection
+11:20:22.718 | E (184355) TRANSPORT_BASE: Faed to open a new connection
+11:20:22.721 | E (184360) MQTT_CIENT: Error transport cnect
+11:20:37.705 | E (199365) esp-tls: couldn't get hostname for :te9acc16.ala.us-east-1.emqxsl.com: getaddrinfo() returns 202, addrinfo=0x0
+11:20:37.707 | E (199366)esp-tls: Failed to ope new connection
+11:20:37.708 | E (199370) TRANSPORT_BASE: Faled to open a new connection
+11:20:37.709 | E (199375) MQTT_CLIENT: Error transport connect
+11:20:52.720 | E (214380) esp-tls: couldn't get hostname for :te9acc16.ala.us-east-1.emqxsl.com: getaddrinfo() returns 202, addrinfo=0x0
+11:20:52.722 | E (214381) esp-tls: Failed to open new connection
+11:20:52.724 | E (214384) TRANSPORT_BASE: Failed to open a new connection
+11:20:52.725 | E (214390) MQTT_CLIENT: Error transport connect
+11:21:07.762 | E (229395) esp-tls: couldn't get hostname for :te9acc16.ala.us-east-1.emqxsl.com: getaddrinfo() returns 202, addrinfo=0x0
+11:21:07.763 | E (229396) esp-tls: Failed to open new connection
+11:21:07.764 | E (229399) TRANSPORT_BASE: Failed to open a new connection
+11:21:07.765 | E (229405) MQTT_CLIENT: Error transport connect
+11:21:22.720 | E (244410) esp-tls: couldn't get hostname for :te9acc16.ala.us-east-1.emqxsl.com: getaddrinfo() returns 202, addrinfo=0x0
+11:21:22.722 | E (244411) esp-tls: Failed to open new connection
+11:21:22.724 | E (244415) TRANSPORT_BASE: Failed to open a new connection
+11:21:22.725 | E (244420) MQTT_CLIENT: Error transport connect
+11:21:37.741 | E (259426) esp-tls: couldn't get hostname for :te9acc16.ala.us-east-1.emqxsl.com: getaddrinfo() returns 202, addrinfo=0x0
+11:21:37.743 | E (259427) esp-tls: Failed to open new connection
+11:21:37.744 | E (259430) TRANSPORT_BASE: Failed to open a new connection
+11:21:37.745 | E (259436) MQTT_CLIENT: Error transport connect
+11:21:52.796 | E (274441) esp-tls: couldn't get hostname for :te9acc16.ala.us-east-1.emqxsl.com: getaddrinfo() returns 202, addrinfo=0x0
+11:21:52.797 | E (274442) esp-tls: Failed to open new connection
+11:21:52.798 | E (274446) TRANSPORT_BASE: Failed to open a new connection
+11:21:52.798 | E (274452) MQTT_CLIENT: Error transport connect
+11:22:02.822 | E (284457) esp-tls: couldn't get hostname for :te9acc16.ala.us-east-1.emqxsl.com: getaddrinfo() returns 202, addrinfo=0x0
+11:22:02.823 | E (284458) esp-tls: Failed to open new connection
+11:22:02.825 | E (284462) TRANSPORT_BASE: Failed to open a new connection
+11:22:02.826 | E (284467) MQTT_CLIENT: Error transport connect
+11:22:12.837 | E (294474) esp-tls: couldn't get hostname for :te9acc16.ala.us-east-1.emqxsl.com: getaddrinfo() returns 202, addrinfo=0x0
+11:22:12.840 | E (294476) esp-tls: Failed to open new connection
+11:22:12.841 | E (294480) TRANSPORT_BASE: Failed to open a new connection
+11:22:12.842 | E (294485) MQTT_CLIENT: Error transport connect
+11:22:27.830 | E (309491) esp-tls: couldn't get hostname for :te9acc16.ala.us-east-1.emqxsl.com: getaddrinfo() returns 202, addrinfo=0x0
+11:22:27.831 | E (309492) esp-tls: Failed to open new connection
+11:22:27.834 | E (309496) TRANSPORT_BASE: Failed to open a new connection
+11:22:27.835 | E (309501) MQTT_CLIENT: Error transpot connect
+11:22:42.848 | E (324506) esp-tls: couldn't get hostname for :te9acc16.ala.us-east-1.emqxsl.com: getaddrinfo() returns 202, addrinfo=0x0
+11:22:42.849 | E (324507) esp-tls: Failed to open new connection
+11:22:42.850 | E (34511) TRANSPORT_BASE: Failed to open a new connection
+11:22:42.851 | E (324516) MQTCLIENT: Error transport connect
+11:22:57.849 | E (339521) esp-tls: couldn't get hostname for :te9acc16.ala.us-east-1.emqxsl.com: getaddrinfo() returns 202, addrinfo=0x0
+11:22:57.850 | E (339522) esp-tls: Failed to open new connection
+11:22:57.851 | E (339526) TRANSPORT_BASE: Failed to open a new connection
+11:22:57.854 | E (339531) MQTT_CLIENT: Error transport connect
+11:23:12.893 | E (354537) esp-tls: couldn't get hostname for :te9acc16.ala.us-east-1.emqxsl.com: getaddrinfo() returns 202, addrinfo=0x0
+11:23:12.896 | E (354538) esp-tls: Failed to open new connection
+11:23:12.897 | E (354541) TRANSPORT_BASE: Failed to open a new connection
+11:23:12.898 | E (354547) MQTT_CLIENT: Error transport connect
+11:23:27.916 | E (369552) esp-tls: couldn't get hostname for :te9acc16.ala.us-east-1.emqxsl.com: getaddrinfo() returns 202, addrinfo=0x0
+11:23:27.918 | E (369553) esp-tls: Failed to open new connection
+11:23:27.919 | E (369556) TRANSPORT_BASE: Failed to open a new connection
+11:23:27.920 | E (369562) MQTT_CLIENT: Error transport connect
+11:23:42.929 | E (384567) esp-tls: couldn't get hostname for :te9acc16.ala.us-east-1.emqxsl.com: getaddrinfo() returns 202, addrinfo=0x0
+11:23:42.931 | E (384568) esp-tls: Failed to open new connection
+11:23:42.933 | E (384572) TRANSPORT_BASE: Failed to open a new connection
+11:23:42.934 | E (384577) MQTT_CLIENT: Error transport connect
+11:23:57.914 | E (399582) esp-tls: couldn't get hostname for :te9acc16.ala.us-east-1.emqxsl.com: getaddrinfo() returns 202, addrinfo=0x0
+11:23:57.916 | E (399583) esp-tls: Failed to open new connection
+11:23:57.917 | E (399587) TRANSPORT_BASE: Failed to open a new connection
+11:23:57.917 | E (399592) MQTT_CLIENT: Error transport connect
+11:24:12.951 | E (414597) esp-tls: couldn't get hostname for :te9acc16.ala.us-east-1.emqxsl.com: getaddrinfo() returns 202, addrinfo=0x0
+11:24:12.953 | E (414598) esp-tls: Failed to open new connection
+11:24:12.954 | E (414602) TRANSPORT_BASE: Failed to open a new connection
+11:24:12.954 | E (414607) MQTT_CLIENT: Error transport connect
+11:24:27.952 | E (429612) esp-tls: couldn't get hostname for :te9acc16.ala.us-east-1.emqxsl.com: getaddrinfo() returns 202, addrinfo=0x0
+11:24:27.953 | E (429612) esp-tls: Failed to open new connection
+11:24:27.954 | E (429616) TRANSPORT_BASE: Failed to open a new connection
+11:24:27.955 | E (429622) MQTT_CLIENT: Error transport connect
+11:24:42.981 | E (444627) esp-tls: couldn't get hostname for :te9acc16.ala.us-east-1.emqxsl.com: getaddrinfo() returns 202, addrinfo=0x0
+11:24:42.983 | E (444627) esp-tls: Failed to open new connection
+11:24:42.984 | E (444631) TRANSPORT_BASE: Failed to open a new connection
+11:24:42.984 | E (444637) MQTT_CLIENT: Error transport connect
+11:24:58.005 | E (459642) esp-tls: couldn't get hostname for :te9acc16.ala.us-east-1.emqxsl.com: getaddrinfo() returns 202, addrinfo=0x0
+11:24:58.006 | E (459643) esp-tls: Failed to open new connection
+11:24:58.007 | E (459646) TRANSPORT_BASE: Failed to open a new connection
+11:24:58.008 | E (459652) MQTT_CLIENT: Error transport connect
+11:25:13.041 | E (474657) esp-tls: couldn't get hostname for :te9acc16.ala.us-east-1.emqxsl.com: getaddrinfo() returns 202, addrinfo=0x0
+11:25:13.042 | E (474658) esp-tls: Failed to open new connection
+11:25:13.043 | E (474661) TRANSPORT_BASE: Failed to open a new connection
+11:25:13.044 | E (474667) MQTT_CLIENT: Error transport connect
+11:25:28.007 | E (489672) esp-tls: couldn't get hostname for :te9acc16.ala.us-east-1.emqxsl.com: getaddrinfo() returns 202, addrinfo=0x0
+11:25:28.008 | E (489673) esp-tls: Failed to open new connection
+11:25:28.010 | E (489676) TRANSPORT_BASE: Failed to open a new connection
+11:25:28.011 | E (489682) MQTT_CLIENT: Error transport connect
+11:25:43.042 | E (504687) esp-tls: couldn't get hostname for :te9acc16.ala.us-east-1.emqxsl.com: getaddrinfo() returns 202, addrinfo=0x0
+11:25:43.044 | E (504688) esp-tls: Failed to open new connection
+11:25:43.045 | E (504691) TRANSPORT_BASE: Failed to open a new connection
+11:25:43.046 | E (504697) MQTT_CLIENT: Error transport connect
+11:25:58.019 | E (519702) esp-tls: couldn't get hostname for :te9acc16.ala.us-east-1.emqxsl.com: getaddrinfo() returns 202, addrinfo=0x0
+11:25:58.023 | E (519703) esp-tls: Failed to open new connection
+11:25:58.026 | E (519707) TRANSPORT_BASE: Failed to open a new connection
+11:25:58.028 | E (519713) MQTT_CLIENT: Error transport connect

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- OSSM Remote — variante monochrome (1 couleur, fond transparent).
+       Utilisable en blanc sur sombre ou recolorée via currentColor. -->
+  <g fill="none" stroke="currentColor" color="#FFFFFF">
+    <path d="M 199 98 A 175 175 0 0 0 199 414" stroke-width="30" stroke-linecap="round"/>
+    <path d="M 313 414 A 175 175 0 0 0 313 98" stroke-width="30" stroke-linecap="round"/>
+    <line x1="256" y1="120" x2="256" y2="392" stroke-width="26" stroke-linecap="round"/>
+    <path d="M 214 156 L 256 106 L 298 156" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M 214 356 L 256 406 L 298 356" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M 396 216 A 56 56 0 0 1 396 296" stroke-width="16" stroke-linecap="round" opacity="0.85"/>
+    <path d="M 432 190 A 92 92 0 0 1 432 322" stroke-width="16" stroke-linecap="round" opacity="0.45"/>
+  </g>
+</svg>

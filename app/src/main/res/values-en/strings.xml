@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="warning_title">⚠ Warning</string>
+    <string name="warning_body">This application controls an OSSM/OFFM device over Bluetooth Low Energy.\n\nThe OSSM Bluetooth API is experimental. Unexpected behaviour may occur.\n\nMake sure the physical STOP button is reachable at all times.\n\nUse safely and responsibly.</string>
+    <string name="warning_accept">I understand, continue</string>
+    <string name="stop">STOP</string>
+    <string name="scan">Scan</string>
+    <string name="connect">Connect</string>
+    <string name="disconnect">Disconnect</string>
+    <string name="control">Control</string>
+    <string name="diagnostics">Diagnostics</string>
+    <string name="profiles">Profiles</string>
+    <string name="funscript">Funscript</string>
+
+    <!-- Funscript screen -->
+    <string name="funscript_title">FUNSCRIPT</string>
+    <string name="funscript_file_label">Funscript file</string>
+    <string name="funscript_no_file">No file loaded</string>
+    <string name="funscript_open">Open</string>
+    <string name="funscript_actions_count">%1$d actions</string>
+    <string name="funscript_action">Action</string>
+    <string name="funscript_depth_range">Depth range</string>
+    <string name="funscript_depth_range_value">%1$d%% – %2$d%%</string>
+    <string name="funscript_speed">Playback speed</string>
+    <string name="funscript_speed_value">%1$s×</string>
+    <string name="funscript_play">Play</string>
+    <string name="funscript_pause">Pause</string>
+    <string name="funscript_not_connected">Connect to an OSSM to start playback</string>
+    <string name="funscript_paused">⏸ Paused — press ▶ to resume</string>
+    <string name="funscript_preparing">Preparing (homing in progress)…</string>
+    <string name="funscript_streaming">▶ Streaming…</string>
+    <string name="ctl_connect_prompt">Connect to an OSSM to enable the controls</string>
+    <string name="ctl_patterns">PATTERNS  ▾</string>
+    <string name="ctl_no_patterns">No pattern detected for this firmware.</string>
+    <string name="ctl_live_hint_ready">Slide your finger in the zone — the machine follows your position live (0% = home, 100% = deep end).</string>
+    <string name="ctl_live_preparing">Preparing Live mode — the machine is confirming full range…</string>
+    <string name="ctl_live_knob_hint">→ Turn the physical speed knob down to 0 to enter the mode.</string>
+    <string name="ctl_rec_idle">●  Record a movement</string>
+    <string name="ctl_rec_armed">Ready — touch the pad (tap to cancel)</string>
+    <string name="ctl_rec_recording">●  REC — lift your finger to loop</string>
+    <string name="ctl_rec_playing">⏸  Stop the loop</string>
+    <string name="ctl_depth">DEPTH</string>
+    <string name="ctl_speed">Speed</string>
+    <string name="ctl_sensation">Sensation</string>
+    <string name="ctl_sensation_ramp">Sensation (ramp-up rate)</string>
+    <string name="ctl_reorder_title">Reorder patterns</string>
+    <string name="ctl_reorder_hint">Long-press then drag to move.</string>
+    <string name="ctl_save">Save</string>
+    <string name="ctl_cancel">Cancel</string>
+    <string name="ctl_start">Start</string>
+    <string name="ctl_stop_mix">Stop</string>
+
+    <!-- Random mode (Teasing & Pounding) -->
+    <string name="ctl_random_title">RANDOM MODE</string>
+    <string name="ctl_random_hint">Each box randomises that setting without exceeding your set value.</string>
+    <string name="ctl_random_speed">Random speed</string>
+    <string name="ctl_random_depth">Random depth</string>
+    <string name="ctl_random_depth_min">Depth — random retract</string>
+    <string name="ctl_random_depth_max">Depth — random bottom</string>
+    <string name="ctl_random_sensation_low">Random sensation — return (0–50)</string>
+    <string name="ctl_random_sensation_high">Random sensation — forward (50–100)</string>
+    <string name="ctl_listening_title">Listening mode (mic)</string>
+    <string name="ctl_listening_hint">The mic raises intensity when you react. Processed on-device, never recorded.</string>
+    <string name="ctl_live_max_accel">Max acceleration</string>
+    <string name="ctl_live_invert">Invert Live direction</string>
+    <string name="ctl_live_invert_hint">If the carriage moves the wrong way or slams at rest, toggle this.</string>
+
+    <!-- Scan screen -->
+    <string name="scan_stop">Stop scan</string>
+    <string name="scan_devices">Scan BLE devices</string>
+    <string name="scan_found_count">%1$d device(s) found</string>
+    <string name="scan_connected">Connected</string>
+    <string name="scan_connecting">Connecting…</string>
+    <string name="scan_empty_hint">Tap “Scan” to look for\nnearby OSSM devices</string>
+
+    <!-- Profiles screen -->
+    <string name="prof_title">PROFILES</string>
+    <string name="prof_empty">No saved profile\n\nUse the save icon in the Control tab to keep your settings.</string>
+    <string name="prof_speed">Speed</string>
+    <string name="prof_min">Min</string>
+    <string name="prof_max">Max</string>
+    <string name="prof_apply">Apply</string>
+    <string name="prof_delete">Delete</string>
+    <string name="prof_delete_title">Delete profile?</string>
+    <string name="prof_delete_msg">“%1$s” will be permanently deleted.</string>
+
+    <!-- Diagnostics screen -->
+    <string name="diag_title">DIAGNOSTICS</string>
+    <string name="diag_clear">Clear logs</string>
+    <string name="diag_ble_state">BLE state</string>
+    <string name="diag_last_cmd">Last command</string>
+    <string name="diag_mac">MAC address:</string>
+    <string name="diag_entries">%1$d entries</string>
+</resources>
