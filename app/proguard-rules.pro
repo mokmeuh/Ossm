@@ -1,0 +1,4 @@
+-keep class com.ossm.remote.model.** { *; }
+-keep class com.ossm.remote.ble.** { *; }
+-keepattributes *Annotation*
+-dontwarn javax.annotation.**

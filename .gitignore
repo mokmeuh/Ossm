@@ -1,0 +1,35 @@
+# Fichiers de config locale
+local.properties
+
+# Artefacts de build Gradle / Android
+.gradle/
+.kotlin/
+build/
+app/build/
+*/build/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# APK / mapping
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# IDE
+.idea/
+*.iml
+.DS_Store
+
+# Logs de build/install (journaux Cowork)
+video_*.mp4
+build_result.log
+install*.log
+phone_screen.png
+build-err.log
+build-out.log
+build_err.txt
+build_out.txt
+compile-*.log
+ksp-*.log
