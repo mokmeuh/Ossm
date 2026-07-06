@@ -14,15 +14,14 @@ android {
         applicationId = "com.ossm.remote"
         minSdk = 26
         targetSdk = 35
-        versionCode = 73
-        versionName = "1.20.5"
+        versionCode = 109
+        versionName = "1.28.17"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         resValue("string", "app_name", "OSSM V$versionName")
     }
 
     buildTypes {
         debug {
-            applicationIdSuffix = ".debug"
             isDebuggable = true
             isMinifyEnabled = false
         }

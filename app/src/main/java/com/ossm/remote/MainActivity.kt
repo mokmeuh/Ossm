@@ -204,7 +204,10 @@ fun OssmApp(
                     onDepthGuardEnabledChange = controlVm::setDepthGuardEnabled,
                     onConfirmPendingChange = controlVm::confirmPendingManualChange,
                     onDismissPendingChange = controlVm::dismissPendingManualChange,
-                    onPatternOrderSave = controlVm::savePatternOrder
+                    onPatternOrderSave = controlVm::savePatternOrder,
+                    onRandomToggle = controlVm::setRandomMode,
+                    onDepthRandomToggle = controlVm::setDepthRandom,
+                    onLiveMaxAccelChange = controlVm::setLiveMaxAccel
                 )
             }
             composable(Screen.Diagnostics.route) {

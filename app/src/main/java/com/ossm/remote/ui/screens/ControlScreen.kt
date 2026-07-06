@@ -92,6 +92,7 @@ import com.ossm.remote.ui.theme.OssmWarning
 import com.ossm.remote.ui.theme.PatternColors
 import com.ossm.remote.viewmodel.ControlUiState
 import com.ossm.remote.viewmodel.GuardedControl
+import com.ossm.remote.viewmodel.RandomTarget
 
 @Composable
 fun ControlScreen(
@@ -130,7 +131,10 @@ fun ControlScreen(
     onDepthGuardEnabledChange: (Boolean) -> Unit,
     onConfirmPendingChange: (Boolean, Boolean) -> Unit,
     onDismissPendingChange: () -> Unit,
-    onPatternOrderSave: (List<String>) -> Unit
+    onPatternOrderSave: (List<String>) -> Unit,
+    onRandomToggle: (RandomTarget, Boolean) -> Unit,
+    onDepthRandomToggle: (Boolean) -> Unit,
+    onLiveMaxAccelChange: (Float) -> Unit
 ) {
     val connected = connectionState is BleConnectionState.Connected
     val machineBusy = machineState.isHoming || machineState.isPreflight
@@ -420,6 +424,15 @@ fun ControlScreen(
                             onTarget = onStreamTarget,
                             onActive = onStreamActive
                         )
+                        Spacer(Modifier.height(10.dp))
+                        ControlSlider(
+                            label = "Acceleration max du Live",
+                            value = uiState.liveMaxAccel,
+                            onValueChange = onLiveMaxAccelChange,
+                            onValueCommit = onLiveMaxAccelChange,
+                            enabled = connected,
+                            activeColor = OssmPrimary
+                        )
                     }
                     activePattern.mode == PatternControlMode.PROGRESSIVE -> {
                         ProgressiveSpeedBar(
@@ -610,6 +623,8 @@ fun ControlScreen(
                         }
                     }
                     else -> {
+                        val isRandomCapable = activePattern.key == "teasingPounding" ||
+                            activePattern.key == "simpleStroke"
                         ControlSlider(
                             label = "Vitesse",
                             value = speedDraft,
@@ -621,6 +636,13 @@ fun ControlScreen(
                             enabled = slidersEnabled,
                             activeColor = OssmPrimary
                         )
+                        if (isRandomCapable) {
+                            RandomModeRow(
+                                label = "Mode aleatoire vitesse",
+                                checked = uiState.randSpeed,
+                                onCheckedChange = { onRandomToggle(RandomTarget.SPEED, it) }
+                            )
+                        }
                         Spacer(Modifier.height(12.dp))
                         DepthRangeEditor(
                             minValue = depthRangeDraft.start,
@@ -636,6 +658,13 @@ fun ControlScreen(
                                 onDepthRangeCommit(min, max)
                             }
                         )
+                        if (isRandomCapable) {
+                            RandomModeRow(
+                                label = "Mode aleatoire profondeur",
+                                checked = uiState.randDepthMin || uiState.randDepthMax,
+                                onCheckedChange = { onDepthRandomToggle(it) }
+                            )
+                        }
                         if (activePattern.mode == PatternControlMode.STROKE_ENGINE && activePattern.key != "simpleStroke") {
                             Spacer(Modifier.height(12.dp))
                             ControlSlider(
@@ -648,6 +677,16 @@ fun ControlScreen(
                                 },
                                 enabled = slidersEnabled,
                                 activeColor = OssmAccent
+                            )
+                            RandomModeRow(
+                                label = "Mode aleatoire sensation bas",
+                                checked = uiState.randSensationLow,
+                                onCheckedChange = { onRandomToggle(RandomTarget.SENSATION_LOW, it) }
+                            )
+                            RandomModeRow(
+                                label = "Mode aleatoire sensation haut",
+                                checked = uiState.randSensationHigh,
+                                onCheckedChange = { onRandomToggle(RandomTarget.SENSATION_HIGH, it) }
                             )
                         }
                     }
@@ -708,6 +747,31 @@ fun ControlScreen(
             onConfirm = onAutoConfirmStart,
             onDismiss = onAutoCancelStart
         )
+    }
+}
+
+@Composable
+private fun RandomModeRow(
+    label: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Checkbox(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = CheckboxDefaults.colors(
+                checkedColor = OssmAccent,
+                uncheckedColor = OssmOnSurface.copy(alpha = 0.5f)
+            )
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(label, color = OssmOnSurface, fontSize = 14.sp)
     }
 }
 

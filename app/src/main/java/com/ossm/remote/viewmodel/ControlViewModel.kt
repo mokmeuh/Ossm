@@ -35,6 +35,14 @@ enum class GuardedControl {
     DEPTH
 }
 
+enum class RandomTarget {
+    SPEED,
+    DEPTH_MIN,
+    DEPTH_MAX,
+    SENSATION_LOW,
+    SENSATION_HIGH
+}
+
 data class PendingManualChange(
     val control: GuardedControl,
     val speed: Float,
@@ -70,6 +78,11 @@ data class ControlUiState(
     val sensation: Float = 0f,
     val progressiveMaxSpeed: Float = 1f,   // red ceiling for the Progressif ramp (0..1)
     val chaosAtMax: Boolean = false,       // when ramp hits max: random varied strokes
+    val randSpeed: Boolean = false,
+    val randDepthMin: Boolean = false,
+    val randDepthMax: Boolean = false,
+    val randSensationLow: Boolean = false,
+    val randSensationHigh: Boolean = false,
     // Auto Random mix
     val autoSelectedKeys: Set<String> = setOf("simpleStroke", "teasingPounding", "roboStroke"),
     val autoMaxSpeed: Float = 0.7f,        // speed ceiling for the mix (never exceeded)
@@ -84,6 +97,8 @@ data class ControlUiState(
     // Vrai quand la machine a confirmé le mode streaming avec la bande pleine course
     // (stroke=100/depth=100) : le pad Live n'est actif qu'à ce moment-là.
     val streamingReady: Boolean = false,
+    // Limite la vitesse max du Live. 1.0 = comportement actuel, plus bas = plus doux.
+    val liveMaxAccel: Float = 1f,
     // Assistant de plage au toucher (non null = assistant en cours).
     val rangeWizard: RangeWizardState? = null,
     // Ordre personnalisé des patterns (keys) ; vide = ordre naturel.
@@ -107,7 +122,14 @@ data class ControlUiState(
 
     val activePatternUsesStrokeEngine: Boolean
         get() = activePattern?.mode == PatternControlMode.STROKE_ENGINE
+
+    val anyRandomActive: Boolean
+        get() = randSpeed || randDepthMin || randDepthMax || randSensationLow || randSensationHigh
 }
+
+private const val TEASING_POUNDING_KEY = "teasingPounding"
+private const val SIMPLE_STROKE_KEY = "simpleStroke"
+private val RANDOM_CAPABLE_KEYS = setOf(TEASING_POUNDING_KEY, SIMPLE_STROKE_KEY)
 
 @HiltViewModel
 class ControlViewModel @Inject constructor(
@@ -120,6 +142,11 @@ class ControlViewModel @Inject constructor(
     val uiState: StateFlow<ControlUiState> = _uiState.asStateFlow()
 
     private val sessionBypass = mutableSetOf<GuardedControl>()
+    private var teasingRandomJob: Job? = null
+    private var randWalkSpeed = 0f
+    private var randWalkMin = 0f
+    private var randWalkMax = 1f
+    private var randWalkSens = 0.5f
 
     init {
         viewModelScope.launch {
@@ -183,11 +210,8 @@ class ControlViewModel @Inject constructor(
         viewModelScope.launch {
             bleManager.streamingReady.collect { ready ->
                 if (ready) {
-                    // Le firmware vient de se replacer en position 0 (home) : on
-                    // resynchronise le suivi local pour que slider et machine repartent
-                    // du même point (0 % = home).
-                    streamTarget = 0f
-                    streamSent = 0f
+                    streamTarget = STREAM_RAW_HOME
+                    streamSent = STREAM_RAW_HOME
                 }
                 _uiState.update { it.copy(streamingReady = ready) }
             }
@@ -230,11 +254,23 @@ class ControlViewModel @Inject constructor(
         viewModelScope.launch { userHabitsRepository.recordPatternHabit(pattern.key) }
         // Leaving any previous live/progressive session: stop the tickers.
         streamJob?.cancel(); streamJob = null
-        streamTarget = 0f; streamSent = 0f
+        streamTarget = STREAM_RAW_HOME; streamSent = STREAM_RAW_HOME
         progressiveJob?.cancel(); progressiveJob = null
         chaosJob?.cancel(); chaosJob = null
+        teasingRandomJob?.cancel(); teasingRandomJob = null
         autoJob?.cancel(); autoJob = null; autoFirmwareMode = null
-        _uiState.update { it.copy(autoRunning = false, autoIntensity = 0f, pendingAutoStart = false) }
+        _uiState.update {
+            it.copy(
+                autoRunning = false,
+                autoIntensity = 0f,
+                pendingAutoStart = false,
+                randSpeed = false,
+                randDepthMin = false,
+                randDepthMax = false,
+                randSensationLow = false,
+                randSensationHigh = false
+            )
+        }
         // Sensation always starts at minimum, except Teasing/Pounding where neutral (50%) is the base.
         val defaultSensation = if (pattern.key == "teasingPounding") 0.5f else 0f
         _uiState.update {
@@ -440,6 +476,7 @@ class ControlViewModel @Inject constructor(
         streamJob?.cancel(); streamJob = null
         progressiveJob?.cancel(); progressiveJob = null
         chaosJob?.cancel(); chaosJob = null
+        teasingRandomJob?.cancel(); teasingRandomJob = null
         autoJob?.cancel(); autoJob = null
         autoFirmwareMode = null
         _uiState.update { it.copy(isRunning = false, isPaused = false, autoRunning = false, autoIntensity = 0f, speed = 0f, pendingManualChange = null) }
@@ -458,6 +495,96 @@ class ControlViewModel @Inject constructor(
 
     // ---- Progressif: auto speed-ramp on full strokes ----
     private var progressiveJob: Job? = null
+
+    fun setRandomMode(target: RandomTarget, enabled: Boolean) {
+        _uiState.update { st ->
+            when (target) {
+                RandomTarget.SPEED -> st.copy(randSpeed = enabled)
+                RandomTarget.DEPTH_MIN -> st.copy(randDepthMin = enabled)
+                RandomTarget.DEPTH_MAX -> st.copy(randDepthMax = enabled)
+                RandomTarget.SENSATION_LOW -> st.copy(randSensationLow = enabled)
+                RandomTarget.SENSATION_HIGH -> st.copy(randSensationHigh = enabled)
+            }
+        }
+        updateTeasingRandomTicker()
+    }
+
+    fun setDepthRandom(enabled: Boolean) {
+        _uiState.update { it.copy(randDepthMin = enabled, randDepthMax = enabled) }
+        updateTeasingRandomTicker()
+    }
+
+    private fun randomWalkStep(prev: Float, lo: Float, hi: Float, maxStep: Float): Float {
+        if (hi <= lo) return lo
+        val step = (Random.nextFloat() - 0.5f) * 2f * maxStep
+        return (prev + step).coerceIn(lo, hi)
+    }
+
+    private fun updateTeasingRandomTicker() {
+        val st = _uiState.value
+        val active = st.activePatternKey in RANDOM_CAPABLE_KEYS &&
+            st.activePattern?.mode == PatternControlMode.STROKE_ENGINE &&
+            st.anyRandomActive
+        if (!active) {
+            teasingRandomJob?.cancel(); teasingRandomJob = null
+            if (st.activePattern?.mode == PatternControlMode.STROKE_ENGINE) {
+                sendCurrentStrokeEngineCommand()
+            }
+            return
+        }
+        if (teasingRandomJob?.isActive == true) return
+        randWalkSpeed = st.speed
+        randWalkMin = st.depthMin
+        randWalkMax = st.depthMax
+        randWalkSens = st.sensation
+        teasingRandomJob = viewModelScope.launch {
+            while (isActive) {
+                val s = _uiState.value
+                if (s.activePatternKey !in RANDOM_CAPABLE_KEYS || !s.anyRandomActive) break
+
+                val minSpan = 0.05f
+                val baseMin = s.depthMin
+                val baseMax = s.depthMax
+
+                val speed = if (s.randSpeed) {
+                    val lo = (s.speed * 0.2f).coerceAtMost(s.speed)
+                    randWalkSpeed = randomWalkStep(randWalkSpeed.coerceIn(lo, s.speed), lo, s.speed, (s.speed - lo) * 0.4f)
+                    randWalkSpeed.coerceAtLeast(0.05f)
+                } else s.speed
+
+                val rMin = if (s.randDepthMin) {
+                    val hi = (baseMax - minSpan).coerceAtLeast(baseMin)
+                    randWalkMin = randomWalkStep(randWalkMin.coerceIn(baseMin, hi), baseMin, hi, (hi - baseMin) * 0.3f)
+                    randWalkMin
+                } else baseMin
+
+                val rMax = if (s.randDepthMax) {
+                    val lo = (rMin + minSpan).coerceAtMost(baseMax)
+                    randWalkMax = randomWalkStep(randWalkMax.coerceIn(lo, baseMax), lo, baseMax, (baseMax - lo) * 0.3f)
+                    randWalkMax
+                } else baseMax.coerceAtLeast((rMin + minSpan).coerceAtMost(baseMax))
+
+                val sensation = if (s.randSensationLow || s.randSensationHigh) {
+                    val lo = if (s.randSensationLow) 0f else 0.5f
+                    val hi = if (s.randSensationHigh) 1f else 0.5f
+                    randWalkSens = randomWalkStep(randWalkSens.coerceIn(lo, hi), lo, hi, (hi - lo) * 0.3f)
+                    randWalkSens
+                } else s.sensation
+
+                bleManager.sendCommand(
+                    OssmCommand.UpdateStrokeEngine(
+                        StrokeEngineCommand(
+                            speed = speed,
+                            depthMin = rMin,
+                            depthMax = rMax,
+                            sensation = sensation
+                        )
+                    )
+                )
+                delay(Random.nextLong(TEASE_RANDOM_MIN_MS, TEASE_RANDOM_MAX_MS))
+            }
+        }
+    }
 
     /** User drags the RED ceiling: the purple speed ramps only up to this. */
     fun setProgressiveMaxSpeed(value: Float) {
@@ -613,6 +740,7 @@ class ControlViewModel @Inject constructor(
         streamJob?.cancel(); streamJob = null
         progressiveJob?.cancel(); progressiveJob = null
         chaosJob?.cancel(); chaosJob = null
+        teasingRandomJob?.cancel(); teasingRandomJob = null
         autoJob?.cancel(); autoJob = null
         _uiState.update { it.copy(isPaused = true, isRunning = false) }
         when (mode) {
@@ -633,6 +761,7 @@ class ControlViewModel @Inject constructor(
             else -> {
                 // Stroke engine / simple penetration: re-send the current speed command
                 sendCurrentStrokeEngineCommand()
+                updateTeasingRandomTicker()
             }
         }
     }
@@ -750,6 +879,10 @@ class ControlViewModel @Inject constructor(
         streamTarget = positionPercent.toFloat().coerceIn(0f, 100f)
     }
 
+    fun setLiveMaxAccel(value: Float) {
+        _uiState.update { it.copy(liveMaxAccel = value.coerceIn(0.05f, 1f)) }
+    }
+
     fun setStreamActive(active: Boolean) {
         val st = _uiState.value
         if (st.activePattern?.mode != PatternControlMode.STREAMING && st.rangeWizard == null) return
@@ -771,12 +904,19 @@ class ControlViewModel @Inject constructor(
                 var nudge = false
                 while (isActive) {
                     val now = System.currentTimeMillis()
-                    if (kotlin.math.abs(streamTarget - streamSent) >= 1f) {
-                        streamSent = streamTarget
+                    val diff = streamTarget - streamSent
+                    if (kotlin.math.abs(diff) >= 0.5f) {
+                        val maxStep = interpolate(STREAM_MIN_STEP, STREAM_MAX_STEP, _uiState.value.liveMaxAccel)
+                        val eased = diff * STREAM_SMOOTH_ALPHA
+                        val step = eased.coerceIn(-maxStep, maxStep)
+                        streamSent = (streamSent + step).coerceIn(0f, 100f)
+                        if (kotlin.math.abs(streamTarget - streamSent) < 0.5f) {
+                            streamSent = streamTarget
+                        }
                         lastSendMs = now
                         bleManager.sendCommand(
                             OssmCommand.Stream(
-                                positionPercent = streamTarget.toInt(),
+                                positionPercent = streamSent.toInt(),
                                 // Durée > cadence : les mouvements se CHEVAUCHENT au
                                 // lieu de s'arrêter entre chaque pas (anti-saccades).
                                 timeMs = STREAM_MOVE_MS
@@ -824,7 +964,7 @@ class ControlViewModel @Inject constructor(
         progressiveJob?.cancel(); progressiveJob = null
         chaosJob?.cancel(); chaosJob = null
         autoJob?.cancel(); autoJob = null; autoFirmwareMode = null
-        streamTarget = 0f; streamSent = 0f
+        streamTarget = STREAM_RAW_HOME; streamSent = STREAM_RAW_HOME
         _uiState.update {
             it.copy(
                 rangeWizard = RangeWizardState(returnPatternKey = it.activePatternKey),
@@ -991,16 +1131,23 @@ class ControlViewModel @Inject constructor(
         streamJob?.cancel()
         progressiveJob?.cancel()
         chaosJob?.cancel()
+        teasingRandomJob?.cancel()
     }
 
     companion object {
         // Live streaming : envois rapprochés, durée > cadence pour un mouvement
         // continu (léger chevauchement, file bornée à ~1 commande).
         private const val STREAM_CADENCE_MS = 60L
-        private const val STREAM_MOVE_MS = 90
+        private const val STREAM_MOVE_MS = 110
+        private const val STREAM_SMOOTH_ALPHA = 0.35f
+        private const val STREAM_MIN_STEP = 2f
+        private const val STREAM_MAX_STEP = 18f
         // Rappels de position (rattrapage du retard sur gestes rapides).
         private const val STREAM_REFRESH_MS = 350L
         private const val STREAM_REFRESH_MOVE_MS = 250
+        private const val TEASE_RANDOM_MIN_MS = 700L
+        private const val TEASE_RANDOM_MAX_MS = 1_900L
+        private const val STREAM_RAW_HOME = 100f
 
         // Progressif ramp timing: wait ≈ ONE full back-and-forth between increments.
         // period(ms) = K * strokeFraction / speed%, clamped [MIN, MAX].

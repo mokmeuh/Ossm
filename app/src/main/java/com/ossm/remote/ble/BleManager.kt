@@ -34,6 +34,7 @@ import com.ossm.remote.model.OssmCommand
 import com.ossm.remote.model.OssmPattern
 import com.ossm.remote.model.PatternControlMode
 import com.ossm.remote.model.StrokeEngineCommand
+import com.ossm.remote.model.mapLiveSliderPercentToStreamPosition
 import com.google.gson.JsonParser
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -621,12 +622,7 @@ class BleManager @Inject constructor(
             // (cause du bug « slider 0-100 ≠ 0-100 du home »).
             if (!_streamingReady.value) return
             val rawPos = command.positionPercent.coerceIn(0, 100)
-            // Convention RE-CONFIRMÉE sur l'appareil (test 2026-07-02 soir, sans
-            // ambiguïté : doigt à 0 % → moteur au bout, doigt à 100 % → au début) :
-            // sur CE firmware, stream:100 = home/début et stream:0 = fond — comme
-            // l'analyse d'origine du firmware, CONTRAIREMENT à la doc web. On
-            // inverse donc : slider haut (100 %) = fond. Marge 2 % aux deux butées.
-            val pos = (100 - rawPos).coerceIn(2, 98)
+            val pos = mapLiveSliderPercentToStreamPosition(rawPos)
             // Firmware crashes on division-by-zero if two consecutive stream commands have
             // the same position (streaming.cpp line 57: direction = distance/abs(distance)).
             if (pos == lastStreamPos) return
@@ -634,6 +630,7 @@ class BleManager @Inject constructor(
             val t = command.timeMs.coerceAtLeast(1)
             writeRaw("stream:$pos:$t")
             _lastCommand.value = "stream:$pos:$t (slider=$rawPos%)"
+            log(LogLevel.INFO, "STREAM", "stream:$pos:$t (slider=$rawPos%)")
             return
         }
 

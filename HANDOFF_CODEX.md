@@ -94,3 +94,58 @@
 - Le mix aleatoire est donc plus ajustable qu'avant:
   - plus doux / plus intense
   - plus stable / plus imprevisible
+
+## 2026-07-05 23:35:00 - Fin de tache
+
+### Tache
+- Corriger le mode Live apres validation appareil:
+  - plus de cogne
+  - slider utilisateur a remettre dans le bon sens
+  - vitesse max Live a rendre perceptible
+  - mouvement a rendre moins saccade
+
+### Changements appliques
+- `app/src/main/java/com/ossm/remote/model/LiveStreamMapping.kt`
+  - ajout d'un mapping affichage utilisateur -> valeur raw firmware
+  - convention utilisateur visee:
+    - `0 = home`
+    - `100 = fond`
+
+- `app/src/test/java/com/ossm/remote/model/LiveStreamMappingTest.kt`
+  - ajout du test de semantique d'affichage Live
+
+- `app/src/main/java/com/ossm/remote/ui/components/LiveStreamPad.kt`
+  - le pad garde l'affichage utilisateur `0 = home, 100 = fond`
+  - les cibles envoyees au firmware passent maintenant par l'inversion d'affichage
+
+- `app/src/main/java/com/ossm/remote/viewmodel/ControlViewModel.kt`
+  - re-synchro du Live sur `raw home = 100`
+  - lissage du stream retabli avec easing
+  - plafond de pas Live reduit pour que `Acceleration max du Live` ait plus d'effet
+
+- `app/build.gradle.kts`
+  - version montee a `1.28.17` (`versionCode 109`)
+
+### Verification
+- test cible:
+  - `./gradlew testDebugUnitTest --tests com.ossm.remote.model.LiveStreamMappingTest`
+  - resultat: `BUILD SUCCESSFUL`
+- build:
+  - `./gradlew assembleDebug`
+  - resultat: `BUILD SUCCESSFUL`
+- installation appareil:
+  - `adb -s ZY227FZL7W install -r -d app/build/outputs/apk/debug/app-debug.apk`
+  - resultat: `Success`
+- version confirmee sur appareil:
+  - `versionName=1.28.17`
+  - `versionCode=109`
+- lancement application:
+  - `adb -s ZY227FZL7W shell am start -n com.ossm.remote/.MainActivity`
+  - ecran controle visible sur appareil
+
+### Point a revalider sur machine
+- confirmer physiquement que:
+  - `0` va vers `home`
+  - `100` va vers le `fond`
+  - `Acceleration max du Live` change vraiment la vitesse / douceur
+  - le mouvement Live est moins saccade

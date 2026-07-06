@@ -25,6 +25,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ossm.remote.model.mapLiveDisplayPercentToRawSliderPercent
 import com.ossm.remote.ui.theme.OssmAccent
 import com.ossm.remote.ui.theme.OssmGlass
 import com.ossm.remote.ui.theme.OssmOnSurface
@@ -58,8 +59,6 @@ fun LiveStreamPad(
     var anchorY by remember { mutableFloatStateOf(0f) }
     var anchorPos by remember { mutableFloatStateOf(0f) }
 
-    // Quand le mode (re)devient prêt, la machine vient d'être replacée au home (0 %) :
-    // on repart du même point pour que l'affichage reflète la position réelle.
     LaunchedEffect(enabled) {
         if (enabled) logicalPos = 0f
     }
@@ -101,7 +100,7 @@ fun LiveStreamPad(
                         // Up (smaller y) increases; full pad height == full 0..100 range.
                         val deltaPct = (anchorY - change.position.y) / padHeightPx * 100f
                         logicalPos = (anchorPos + deltaPct).coerceIn(0f, 100f)
-                        onTarget(logicalPos.toInt())
+                        onTarget(mapLiveDisplayPercentToRawSliderPercent(logicalPos.toInt()))
                     },
                     onDragEnd = { onActive(false) },
                     onDragCancel = { onActive(false) }
@@ -132,7 +131,7 @@ fun LiveStreamPad(
             modifier = Modifier.align(Alignment.Center)
         )
         Text(
-            text = if (enabled) "Touche puis glisse — relatif" else "Préparation…",
+            text = if (enabled) "0 = home, 100 = fond" else "Préparation…",
             color = OssmOnSurface.copy(alpha = 0.6f),
             fontSize = 12.sp,
             fontWeight = FontWeight.Medium,
