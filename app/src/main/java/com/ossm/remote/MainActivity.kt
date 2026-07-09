@@ -11,6 +11,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.*
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -21,13 +23,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
-import androidx.navigation.compose.*
+import com.ossm.remote.model.BleConnectionState
 import com.ossm.remote.ui.navigation.BottomNavScreens
 import com.ossm.remote.ui.navigation.Screen
+import com.ossm.remote.ui.navigation.shouldReturnToScanAfterDisconnect
 import com.ossm.remote.ui.screens.*
 import com.ossm.remote.ui.theme.*
 import com.ossm.remote.viewmodel.*
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -130,7 +134,9 @@ fun OssmApp(
     onEnableBluetooth: () -> Unit,
     onListeningToggle: (Boolean) -> Unit
 ) {
-    val navController = rememberNavController()
+    val pagerState = rememberPagerState(pageCount = { BottomNavScreens.size })
+    val scope = rememberCoroutineScope()
+    var previousConnectionState by remember { mutableStateOf<BleConnectionState?>(null) }
 
     val connectionState by bleVm.connectionState.collectAsState()
     val controlUiState by controlVm.uiState.collectAsState()
@@ -142,7 +148,18 @@ fun OssmApp(
     val scannedDevices by bleVm.scannedDevices.collectAsState()
     val machineState by bleVm.machineState.collectAsState()
 
-    val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
+    val currentRoute = BottomNavScreens[pagerState.currentPage].route
+    val scanPageIndex = BottomNavScreens.indexOfFirst { it.route == Screen.Scan.route }
+    val controlPageIndex = BottomNavScreens.indexOfFirst { it.route == Screen.Control.route }
+
+    LaunchedEffect(connectionState) {
+        if (shouldReturnToScanAfterDisconnect(previousConnectionState, connectionState) &&
+            pagerState.currentPage != scanPageIndex
+        ) {
+            pagerState.animateScrollToPage(scanPageIndex)
+        }
+        previousConnectionState = connectionState
+    }
 
     Scaffold(
         containerColor = OssmBackground,
@@ -150,7 +167,6 @@ fun OssmApp(
             NavigationBar(
                 containerColor = OssmSurface.copy(alpha = 0.95f),
                 modifier = Modifier
-                    .navigationBarsPadding()
                     .padding(horizontal = 12.dp, vertical = 8.dp)
                     .clip(RoundedCornerShape(20.dp))
             ) {
@@ -158,10 +174,8 @@ fun OssmApp(
                     NavigationBarItem(
                         selected = currentRoute == screen.route,
                         onClick = {
-                            navController.navigate(screen.route) {
-                                popUpTo(navController.graph.startDestinationId) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
+                            scope.launch {
+                                pagerState.animateScrollToPage(BottomNavScreens.indexOf(screen))
                             }
                         },
                         icon = { Icon(screen.icon, screen.label) },
@@ -186,12 +200,12 @@ fun OssmApp(
             }
         }
     ) { padding ->
-        NavHost(
-            navController = navController,
-            startDestination = Screen.Scan.route,
+        HorizontalPager(
+            state = pagerState,
             modifier = Modifier.padding(padding)
         ) {
-            composable(Screen.Scan.route) {
+            when (BottomNavScreens[it]) {
+                Screen.Scan -> {
                 ScanScreen(
                     connectionState = connectionState,
                     devices = scannedDevices,
@@ -201,12 +215,12 @@ fun OssmApp(
                     },
                     onConnect = { address ->
                         bleVm.connect(address)
-                        navController.navigate(Screen.Control.route)
+                        scope.launch { pagerState.animateScrollToPage(controlPageIndex) }
                     },
                     onStop = bleVm::stopScan
                 )
-            }
-            composable(Screen.Control.route) {
+                }
+                Screen.Control -> {
                 ControlScreen(
                     connectionState = connectionState,
                     machineState = machineState,
@@ -252,26 +266,26 @@ fun OssmApp(
                     onLiveInvertToggle = controlVm::setLiveInvert,
                     onLiveMaxAccelChange = controlVm::setLiveMaxAccel
                 )
-            }
-            composable(Screen.Diagnostics.route) {
+                }
+                Screen.Diagnostics -> {
                 DiagnosticsScreen(
                     logs = diagnosticsLogs,
                     connectionState = connectionState,
                     lastCommand = lastCommand,
                     onClear = diagnosticsVm::clearLogs
                 )
-            }
-            composable(Screen.Profiles.route) {
+                }
+                Screen.Profiles -> {
                 ProfilesScreen(
                     presets = presets,
                     onApply = { preset ->
                         controlVm.applyPreset(preset)
-                        navController.navigate(Screen.Control.route)
+                        scope.launch { pagerState.animateScrollToPage(controlPageIndex) }
                     },
                     onDelete = profilesVm::deletePreset
                 )
-            }
-            composable(Screen.Funscript.route) {
+                }
+                Screen.Funscript -> {
                 FunscriptScreen(
                     uiState = funscriptState,
                     connectionState = connectionState,
@@ -282,6 +296,7 @@ fun OssmApp(
                     onDepthRangeChange = funscriptVm::setDepthRange,
                     onSpeedChange = funscriptVm::setSpeedFactor
                 )
+                }
             }
         }
     }

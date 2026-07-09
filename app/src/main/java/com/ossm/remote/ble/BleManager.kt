@@ -630,7 +630,7 @@ class BleManager @Inject constructor(
             // (cause du bug « slider 0-100 ≠ 0-100 du home »).
             if (!_streamingReady.value) return
             val rawPos = command.positionPercent.coerceIn(0, 100)
-            val pos = rawPos.coerceIn(2, 98)
+            val pos = mapLiveStreamPositionPercent(rawPos, liveInvert)
             // Firmware crashes on division-by-zero if two consecutive stream commands have
             // the same position (streaming.cpp line 57: direction = distance/abs(distance)).
             if (pos == lastStreamPos) return
@@ -638,7 +638,8 @@ class BleManager @Inject constructor(
             val t = command.timeMs.coerceAtLeast(1)
             writeRaw("stream:$pos:$t")
             _lastCommand.value = "stream:$pos:$t (slider=$rawPos%)"
-            log(LogLevel.DEBUG, "STREAM", "stream:$pos:$t (slider=$rawPos%, direct)")
+            val modeLabel = if (liveInvert) "direct" else "inverse"
+            log(LogLevel.DEBUG, "STREAM", "stream:$pos:$t (slider=$rawPos%, $modeLabel)")
             return
         }
 
@@ -786,13 +787,13 @@ class BleManager @Inject constructor(
     }
 
     @SuppressLint("MissingPermission")
-    private fun writeLatencyCompensationDisabled() {
+    private fun writeLatencyCompensationEnabled() {
         val activeGatt = gatt ?: return
         val char = latencyCompensationCharacteristic ?: run {
             log(LogLevel.WARNING, "GATT", "Caractéristique latency-compensation absente")
             return
         }
-        val bytes = "false".toByteArray(Charsets.UTF_8)
+        val bytes = "true".toByteArray(Charsets.UTF_8)
         val writeType = if (char.properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE != 0)
             BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
         else BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
@@ -803,7 +804,7 @@ class BleManager @Inject constructor(
             @Suppress("DEPRECATION") char.writeType = writeType
             @Suppress("DEPRECATION") activeGatt.writeCharacteristic(char)
         }
-        log(LogLevel.INFO, "GATT", "Latency compensation → disabled")
+        log(LogLevel.INFO, "GATT", "Latency compensation → enabled")
     }
 
     private suspend fun sendStreamingSetup() {
@@ -817,7 +818,9 @@ class BleManager @Inject constructor(
         delay(60)
         writeRaw("set:depth:100")
         delay(60)
-        writeLatencyCompensationDisabled()
+        if (isLatencyCompensationEnabledForLive()) {
+            writeLatencyCompensationEnabled()
+        }
         delay(60)
     }
 

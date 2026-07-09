@@ -162,7 +162,7 @@ data class ControlUiState(
     // Accélération max du mode Live (0..1) : plafonne la vitesse du chariot. Même si
     // le doigt fonce, la machine ne bouge pas plus vite que cette limite. Bas = très
     // fluide/doux ; haut = suit le doigt au plus près.
-    val liveMaxAccel: Float = 0.6f,
+    val liveMaxAccel: Float = 0.85f,
     // Assistant de plage au toucher (non null = assistant en cours).
     val rangeWizard: RangeWizardState? = null,
     // Ordre personnalisé des patterns (keys) ; vide = ordre naturel.
@@ -283,10 +283,9 @@ class ControlViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
-            bleManager.liveInvert = false
-            _uiState.update { it.copy(liveInvert = false) }
-            if (safetySettingsRepository.liveInvertEnabled.first()) {
-                safetySettingsRepository.setLiveInvertEnabled(false)
+            safetySettingsRepository.liveInvertEnabled.collect { enabled ->
+                bleManager.liveInvert = enabled
+                _uiState.update { it.copy(liveInvert = enabled) }
             }
         }
 
@@ -1134,7 +1133,7 @@ class ControlViewModel @Inject constructor(
                         nudge = !nudge
                         lastSendMs = now
                         val p = (desiredTarget + if (nudge) 1f else -1f).coerceIn(0f, 100f)
-                        bleManager.sendCommand(OssmCommand.Stream(p.toInt(), timeMs = STREAM_LIVE_TOUCH_MOVE_MS))
+                        bleManager.sendCommand(OssmCommand.Stream(p.toInt(), timeMs = STREAM_REFRESH_MOVE_MS))
                     }
                     delay(STREAM_CADENCE_MS)
                 }
@@ -1150,11 +1149,11 @@ class ControlViewModel @Inject constructor(
             viewModelScope.launch {
                 val finalTarget = latestTouchSample.position.coerceIn(0f, 100f)
                 streamSent = finalTarget
-                bleManager.sendCommand(OssmCommand.Stream(finalTarget.roundToInt(), timeMs = STREAM_LIVE_TOUCH_MOVE_MS))
+                bleManager.sendCommand(OssmCommand.Stream(finalTarget.roundToInt(), timeMs = STREAM_RELEASE_MOVE_MS))
                 delay(180)
-                bleManager.sendCommand(OssmCommand.Stream((finalTarget + 1f).coerceIn(0f, 100f).toInt(), timeMs = STREAM_LIVE_TOUCH_MOVE_MS))
+                bleManager.sendCommand(OssmCommand.Stream((finalTarget + 1f).coerceIn(0f, 100f).toInt(), timeMs = STREAM_REFRESH_MOVE_MS))
                 delay(180)
-                bleManager.sendCommand(OssmCommand.Stream((finalTarget - 1f).coerceAtLeast(0f).toInt(), timeMs = STREAM_LIVE_TOUCH_MOVE_MS))
+                bleManager.sendCommand(OssmCommand.Stream((finalTarget - 1f).coerceAtLeast(0f).toInt(), timeMs = STREAM_REFRESH_MOVE_MS))
             }
         }
     }
@@ -1209,7 +1208,9 @@ class ControlViewModel @Inject constructor(
                     if (wait > 0) delay(wait)
                     if (!isActive) return@launch
                     if (kotlin.math.abs(pos - lastPos) >= 1) {
-                        bleManager.sendCommand(OssmCommand.Stream(pos, timeMs = STREAM_MOVE_MAX_MS))
+                        bleManager.sendCommand(
+                            OssmCommand.Stream(pos, timeMs = STREAM_LIVE_TOUCH_MOVE_MS)
+                        )
                         lastPos = pos
                     }
                 }
@@ -1411,16 +1412,15 @@ class ControlViewModel @Inject constructor(
     }
 
     companion object {
-        private const val STREAM_CADENCE_MS = 20L
-        private const val STREAM_MIN_SEND_DELTA_MS = 12L
-        private const val STREAM_MOVE_MIN_MS = 28
-        private const val STREAM_MOVE_MAX_MS = 52
-        private const val STREAM_SEND_EPSILON = 0.35f
-        private const val STREAM_SNAP_EPSILON = 0.6f
-        private const val STREAM_MIN_VELOCITY_PER_SECOND = 45f
-        private const val STREAM_MAX_VELOCITY_PER_SECOND = 700f
-        private const val STREAM_REFRESH_MS = 160L
-        private const val STREAM_REFRESH_MOVE_MS = 140
+        private const val STREAM_CADENCE_MS = 5L
+        private const val STREAM_MIN_SEND_DELTA_MS = 4L
+        private const val STREAM_RELEASE_MOVE_MS = 5
+        private const val STREAM_SEND_EPSILON = 0.1f
+        private const val STREAM_SNAP_EPSILON = 0.25f
+        private const val STREAM_MIN_VELOCITY_PER_SECOND = 40f
+        private const val STREAM_MAX_VELOCITY_PER_SECOND = 600f
+        private const val STREAM_REFRESH_MS = 60L
+        private const val STREAM_REFRESH_MOVE_MS = 40
         private const val STREAM_LIVE_TOUCH_MOVE_MS = 5
 
         // Progressif ramp timing: wait ≈ ONE full back-and-forth between increments.

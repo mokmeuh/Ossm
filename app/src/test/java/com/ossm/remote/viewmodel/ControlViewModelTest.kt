@@ -227,20 +227,20 @@ class ControlViewModelTest {
     @Test
     fun `live stream step budget scales with accel slider`() {
         val lowBudget = computeLiveStreamStepBudget(
-            deltaMs = 20L,
+            deltaMs = 5L,
             maxAccel = 0.1f,
-            minVelocityPerSecond = 45f,
-            maxVelocityPerSecond = 700f
+            minVelocityPerSecond = 40f,
+            maxVelocityPerSecond = 600f
         )
         val highBudget = computeLiveStreamStepBudget(
-            deltaMs = 20L,
+            deltaMs = 5L,
             maxAccel = 1f,
-            minVelocityPerSecond = 45f,
-            maxVelocityPerSecond = 700f
+            minVelocityPerSecond = 40f,
+            maxVelocityPerSecond = 600f
         )
 
         assertTrue(highBudget > lowBudget)
-        assertEquals(14f, highBudget, 0.001f)
+        assertEquals(3f, highBudget, 0.001f)
     }
 
 }

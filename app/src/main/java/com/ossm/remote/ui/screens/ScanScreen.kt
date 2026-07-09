@@ -42,7 +42,7 @@ fun ScanScreen(
     val isConnected = connectionState is BleConnectionState.Connected
 
     // Auto-start scan on first launch (if not already connected)
-    LaunchedEffect(Unit) {
+    LaunchedEffect(connectionState) {
         if (!isConnected && !isConnecting && !isScanning) onScan()
     }
 
