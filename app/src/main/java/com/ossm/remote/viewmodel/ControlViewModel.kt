@@ -1412,16 +1412,24 @@ class ControlViewModel @Inject constructor(
     }
 
     companion object {
-        private const val STREAM_CADENCE_MS = 5L
-        private const val STREAM_MIN_SEND_DELTA_MS = 4L
-        private const val STREAM_RELEASE_MOVE_MS = 5
+        // Cadence Live : ~33 Hz. Un envoi toutes les ~30 ms est ce que la pile BLE
+        // Android + le firmware peuvent réellement suivre. La cadence 5 ms de la v1.28.5
+        // saturait la connexion BLE (jusqu'à ~200 writes/s, la plupart perdus faute
+        // d'attendre onCharacteristicWrite) → saccades. Voir historique 60/90 « bien
+        // plus fluide ».
+        private const val STREAM_CADENCE_MS = 30L
+        private const val STREAM_MIN_SEND_DELTA_MS = 20L
+        // Retour souple sur lever du doigt (au lieu d'un snap 5 ms brutal).
+        private const val STREAM_RELEASE_MOVE_MS = 60
         private const val STREAM_SEND_EPSILON = 0.1f
         private const val STREAM_SNAP_EPSILON = 0.25f
         private const val STREAM_MIN_VELOCITY_PER_SECOND = 40f
         private const val STREAM_MAX_VELOCITY_PER_SECOND = 600f
-        private const val STREAM_REFRESH_MS = 60L
-        private const val STREAM_REFRESH_MOVE_MS = 40
-        private const val STREAM_LIVE_TOUCH_MOVE_MS = 5
+        private const val STREAM_REFRESH_MS = 90L
+        private const val STREAM_REFRESH_MOVE_MS = 60
+        // Durée de move ≈ 1,5× la cadence : chaque commande dure jusqu'à ce que la
+        // suivante arrive → mouvement continu, sans micro-à-coups « atteindre en 5 ms ».
+        private const val STREAM_LIVE_TOUCH_MOVE_MS = 45
 
         // Progressif ramp timing: wait ≈ ONE full back-and-forth between increments.
         // period(ms) = K * strokeFraction / speed%, clamped [MIN, MAX].
