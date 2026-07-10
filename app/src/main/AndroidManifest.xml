@@ -25,6 +25,9 @@
     <!-- Micro : mode « à l'écoute » (niveau sonore traité sur l'appareil, jamais enregistré) -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
+    <!-- Video/funscript par URL (ExoPlayer streaming + téléchargement funscript) -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
 
     <application

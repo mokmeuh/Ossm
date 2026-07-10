@@ -88,6 +88,10 @@ dependencies {
     // Gson (funscript parsing)
     implementation(libs.gson)
 
+    // Media3 / ExoPlayer (video sync playback)
+    implementation(libs.androidx.media3.exoplayer)
+    implementation(libs.androidx.media3.ui)
+
     // Tests
     testImplementation(libs.junit)
     testImplementation(libs.mockk)
