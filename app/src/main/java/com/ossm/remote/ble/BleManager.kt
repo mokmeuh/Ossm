@@ -893,36 +893,79 @@ class BleManager @Inject constructor(
             if (!inMode) {
                 log(LogLevel.WARNING, "CMD", "strokeEngine non confirmé (état=${_machineState.value.state}) — envoi des paramètres quand même")
             }
-            val speed = toPercent(command.speed)
-            val depthMax = toPercent(command.depthMax)
-            val stroke = toPercent(command.depthMax - command.depthMin)
-            val sensation = toPercent(command.sensation)
-            var attempt = 0
-            while (attempt < 3) {
-                attempt++
-                writeRaw("set:speed:$speed")
-                delay(40)
-                writeRaw("set:depth:$depthMax")
-                delay(40)
-                writeRaw("set:stroke:$stroke")
-                delay(40)
-                writeRaw("set:sensation:$sensation")
-                val verified = awaitMachineState(2_000) {
-                    it.depth == depthMax && it.stroke == stroke
-                }
-                if (verified) {
-                    _lastCommand.value = "params confirmés: depth=$depthMax stroke=$stroke spd=$speed"
-                    log(LogLevel.INFO, "CMD", "Paramètres confirmés par la machine : depth=$depthMax stroke=$stroke")
-                    return@launch
-                }
-                val st = _machineState.value
-                log(
-                    LogLevel.WARNING, "CMD",
-                    "Paramètres non confirmés (essai $attempt/3) — machine: depth=${st.depth} stroke=${st.stroke} état=${st.state}"
-                )
-            }
-            log(LogLevel.ERROR, "CMD", "Paramètres JAMAIS confirmés — la machine n'utilise peut-être pas la plage affichée !")
+            applyStrokeEngineParams(command, reason = "Ré-application stroke-engine")
         }
+    }
+
+    /**
+     * Entrée de mode stroke-engine SÉQUENTIELLE et vérifiée : navigation menu→strokeEngine,
+     * sélection du pattern, PUIS ré-application de depth/stroke — le tout dans UNE SEULE
+     * coroutine. Android n'a PAS de file d'attente GATT : jusqu'ici la navigation
+     * (set:pattern) et l'application des paramètres tournaient dans DEUX coroutines qui se
+     * réveillaient au même instant (dès l'état « strokeEngine »), leurs écritures BLE
+     * collisionnaient et certaines (set:depth / set:stroke) étaient PERDUES. Résultat : la
+     * bande stroke=100/depth=100 héritée du streaming/Live RESTAIT active dans le mode
+     * suivant → « le chariot avance ~10 % puis cogne au fond et n'atteint jamais 50 % ».
+     * En séquençant tout ici, la plage de l'écran est TOUJOURS réappliquée à l'entrée du
+     * mode (aucune fuite d'état possible depuis le streaming).
+     */
+    fun activatePatternVerified(patternId: Int, patternName: String, command: StrokeEngineCommand) {
+        scope.launch {
+            val ok = navigateToMode("strokeEngine")
+            writeRaw("set:pattern:$patternId")
+            delay(80)
+            _lastCommand.value = "menu → strokeEngine pattern=$patternId ($patternName)"
+            log(
+                LogLevel.INFO, "CMD",
+                "menu → strokeEngine pattern=$patternId ($patternName)" + if (!ok) " [état non confirmé]" else ""
+            )
+            applyStrokeEngineParams(
+                command,
+                reason = "Entrée mode '$patternName' (plage ${toPercent(command.depthMin)}-${toPercent(command.depthMax)}%)"
+            )
+        }
+    }
+
+    /**
+     * Envoie les paramètres stroke-engine (depth AVANT stroke — voir UpdateStrokeEngine),
+     * puis VÉRIFIE via l'état NOTIFY, jusqu'à 3 essais. Loggue en INFO/CMD la profondeur et
+     * la course RÉELLEMENT envoyées, visible dans l'écran Diagnostics : c'est la preuve que
+     * la bande streaming 100/100 a bien été écrasée à l'entrée du mode.
+     */
+    private suspend fun applyStrokeEngineParams(command: StrokeEngineCommand, reason: String) {
+        val speed = toPercent(command.speed)
+        val depthMax = toPercent(command.depthMax)
+        val stroke = toPercent(command.depthMax - command.depthMin)
+        val sensation = toPercent(command.sensation)
+        log(
+            LogLevel.INFO, "CMD",
+            "$reason → envoi depth=$depthMax stroke=$stroke spd=$speed sens=$sensation (anti-fuite streaming 100/100)"
+        )
+        var attempt = 0
+        while (attempt < 3) {
+            attempt++
+            writeRaw("set:speed:$speed")
+            delay(40)
+            writeRaw("set:depth:$depthMax")
+            delay(40)
+            writeRaw("set:stroke:$stroke")
+            delay(40)
+            writeRaw("set:sensation:$sensation")
+            val verified = awaitMachineState(2_000) {
+                it.depth == depthMax && it.stroke == stroke
+            }
+            if (verified) {
+                _lastCommand.value = "params confirmés: depth=$depthMax stroke=$stroke spd=$speed"
+                log(LogLevel.INFO, "CMD", "Paramètres confirmés par la machine : depth=$depthMax stroke=$stroke")
+                return
+            }
+            val st = _machineState.value
+            log(
+                LogLevel.WARNING, "CMD",
+                "Paramètres non confirmés (essai $attempt/3) — machine: depth=${st.depth} stroke=${st.stroke} état=${st.state}"
+            )
+        }
+        log(LogLevel.ERROR, "CMD", "Paramètres JAMAIS confirmés — la machine n'utilise peut-être pas la plage affichée !")
     }
 
     /** Attend (avec timeout) que l'état machine notifié satisfasse le prédicat. */

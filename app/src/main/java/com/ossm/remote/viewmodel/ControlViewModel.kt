@@ -396,13 +396,16 @@ class ControlViewModel @Inject constructor(
                 }
             }
             else -> {
-                bleManager.sendCommand(OssmCommand.ActivatePattern(pattern))
-                // Le firmware réinitialise ses réglages à l'entrée du mode : application
-                // VÉRIFIÉE par l'état réel (remplace l'ancien délai aveugle de 1200 ms
-                // dont l'envoi pouvait être perdu → plage réelle ≠ plage affichée).
+                // ENTRÉE DE MODE SÉQUENTIELLE (une seule coroutine) : navigation +
+                // set:pattern + ré-application depth/stroke, dans le bon ordre. Élimine la
+                // collision d'écritures BLE (Android n'a PAS de file GATT) qui faisait perdre
+                // set:depth/set:stroke et laissait la bande streaming 100/100 FUIR dans le mode
+                // suivant → « avance ~10 % puis cogne au fond, n'atteint jamais 50 % ».
                 val st = _uiState.value
-                bleManager.applyStrokeEngineVerified(
-                    StrokeEngineCommand(
+                bleManager.activatePatternVerified(
+                    patternId = pattern.id ?: 0,
+                    patternName = pattern.name,
+                    command = StrokeEngineCommand(
                         speed = st.speed,
                         depthMin = st.depthMin,
                         depthMax = st.depthMax,
