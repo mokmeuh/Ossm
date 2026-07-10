@@ -41,6 +41,7 @@ class MainActivity : ComponentActivity() {
     private val diagnosticsVm: DiagnosticsViewModel by viewModels()
     private val profilesVm: ProfilesViewModel by viewModels()
     private val funscriptVm: FunscriptViewModel by viewModels()
+    private val videoSyncVm: VideoSyncViewModel by viewModels()
 
     private val enableBtLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -95,6 +96,7 @@ class MainActivity : ComponentActivity() {
                     diagnosticsVm = diagnosticsVm,
                     profilesVm = profilesVm,
                     funscriptVm = funscriptVm,
+                    videoSyncVm = videoSyncVm,
                     onEnableBluetooth = {
                         if (!bleVm.isBluetoothEnabled()) {
                             enableBtLauncher.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE))
@@ -131,6 +133,7 @@ fun OssmApp(
     diagnosticsVm: DiagnosticsViewModel,
     profilesVm: ProfilesViewModel,
     funscriptVm: FunscriptViewModel,
+    videoSyncVm: VideoSyncViewModel,
     onEnableBluetooth: () -> Unit,
     onListeningToggle: (Boolean) -> Unit
 ) {
@@ -145,6 +148,7 @@ fun OssmApp(
     val lastCommand by diagnosticsVm.lastCommand.collectAsState()
     val presets by profilesVm.presets.collectAsState()
     val funscriptState by funscriptVm.uiState.collectAsState()
+    val videoSyncState by videoSyncVm.uiState.collectAsState()
     val scannedDevices by bleVm.scannedDevices.collectAsState()
     val machineState by bleVm.machineState.collectAsState()
 
@@ -295,6 +299,22 @@ fun OssmApp(
                     onStop = funscriptVm::stop,
                     onDepthRangeChange = funscriptVm::setDepthRange,
                     onSpeedChange = funscriptVm::setSpeedFactor
+                )
+                }
+                Screen.VideoSync -> {
+                VideoSyncScreen(
+                    uiState = videoSyncState,
+                    connectionState = connectionState,
+                    player = videoSyncVm.getOrCreatePlayer(),
+                    onVideoUri = videoSyncVm::setVideoUri,
+                    onVideoUrl = videoSyncVm::setVideoUrl,
+                    onFunscriptUri = videoSyncVm::loadFunscriptFromUri,
+                    onFunscriptUrl = videoSyncVm::loadFunscriptFromUrl,
+                    onPlayPause = videoSyncVm::togglePlayPause,
+                    onStop = videoSyncVm::stop,
+                    onLatencyChange = videoSyncVm::setLatencyOffset,
+                    onDepthRangeChange = videoSyncVm::setDepthRange,
+                    onGenerateFunscript = videoSyncVm::generateFunscriptFromVideo
                 )
                 }
             }

@@ -14,8 +14,8 @@ android {
         applicationId = "com.ossm.remote"
         minSdk = 26
         targetSdk = 35
-        versionCode = 109
-        versionName = "1.28.17"
+        versionCode = 110
+        versionName = "1.28.18"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         resValue("string", "app_name", "OSSM V$versionName")
     }
@@ -87,6 +87,10 @@ dependencies {
 
     // Gson (funscript parsing)
     implementation(libs.gson)
+
+    // Media3 / ExoPlayer (video sync playback)
+    implementation(libs.androidx.media3.exoplayer)
+    implementation(libs.androidx.media3.ui)
 
     // Tests
     testImplementation(libs.junit)

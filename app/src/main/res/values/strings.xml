@@ -29,6 +29,21 @@
     <string name="funscript_paused">⏸ En pause — appuyez sur ▶ pour reprendre</string>
     <string name="funscript_preparing">Préparation (homing en cours)…</string>
     <string name="funscript_streaming">▶ Streaming en cours…</string>
+
+    <!-- Ecran Video (sync funscript) -->
+    <string name="videosync_title">VIDEO SYNC</string>
+    <string name="videosync_video_source">Source vidéo</string>
+    <string name="videosync_no_video">Aucune vidéo chargée</string>
+    <string name="videosync_pick_video">Choisir une vidéo</string>
+    <string name="videosync_script_source">Funscript</string>
+    <string name="videosync_no_script">Aucun funscript chargé</string>
+    <string name="videosync_pick_script">Choisir un funscript</string>
+    <string name="videosync_url_hint">Coller une URL</string>
+    <string name="videosync_latency">Décalage de latence</string>
+    <string name="videosync_latency_hint">Positif = le mouvement part en avance sur la vidéo (compense la latence BLE).</string>
+    <string name="videosync_generate">Générer funscript (local)</string>
+    <string name="videosync_generate_hint">Analyse le mouvement de la vidéo sur l\'appareil pour créer un script. Expérimental et approximatif.</string>
+    <string name="videosync_analyzing">Analyse du mouvement… %1$d %%</string>
     <string name="ctl_connect_prompt">Connectez-vous à un OSSM pour activer les commandes</string>
     <string name="ctl_patterns">PATTERNS  ▾</string>
     <string name="ctl_no_patterns">Aucun pattern détecté pour ce firmware.</string>
