@@ -1,23 +1,21 @@
 package com.ossm.remote.ui.components
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.FilledTonalIconButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
@@ -29,6 +27,7 @@ import com.ossm.remote.ui.theme.OssmPrimary
 import com.ossm.remote.ui.theme.OssmPrimaryLight
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 @Composable
 fun ControlSlider(
@@ -134,11 +133,9 @@ fun ControlSlider(
 }
 
 /**
- * Bouton +/- avec MAINTIEN progressif : un simple appui = ±1 %. Maintenu, la valeur
- * augmente de plus en plus vite (accélération). Repère visé par l'utilisateur :
- * la courbe atteint ~100 % en ~7 s de maintien continu (douce 0-2 s, plus forte
- * 2-5 s, très forte 5-7 s).
- * S'applique à TOUS les sliders (composant partagé), quel que soit le mode.
+ * Bouton +/- à MAINTIEN progressif. Un simple appui = ±1 % (appliqué SYNCHRONEMENT
+ * dès `onPress` → aucun tap perdu). Maintenu, la valeur s'emballe : ~100 % en ~5 s
+ * (douce 0-2 s, puis de plus en plus vite). S'applique à TOUS les sliders.
  */
 @Composable
 private fun RampButton(
@@ -152,48 +149,57 @@ private fun RampButton(
     onValueChange: (Float) -> Unit,
     onValueCommit: (Float) -> Unit
 ) {
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
+    val scope = rememberCoroutineScope()
 
-    LaunchedEffect(pressed, enabled) {
-        if (!pressed || !enabled) return@LaunchedEffect
-        // Appui immédiat = un pas de 1 % (comportement d'un clic simple).
-        var current = (value + sign * step).coerceIn(valueRange.start, valueRange.endInclusive)
-        onValueChange(current)
-        var heldMs = 0L
-        try {
-            while (isActive) {
-                delay(50)
-                heldMs += 50
-                val heldSec = heldMs / 1000f
-                // Vitesse en %/s : douce au début, s'emballe avec la durée de maintien.
-                val ratePctPerSec = 1.0f + 0.155f * heldSec * heldSec * heldSec
-                val delta = sign * ratePctPerSec * 0.05f * step
-                current = (current + delta).coerceIn(valueRange.start, valueRange.endInclusive)
-                onValueChange(current)
-                if ((sign > 0 && current >= valueRange.endInclusive) ||
-                    (sign < 0 && current <= valueRange.start)
-                ) break
-            }
-        } finally {
-            // Envoi à la machine une seule fois, au relâchement (évite d'inonder le BLE).
-            onValueCommit(current)
-        }
-    }
-
-    FilledTonalIconButton(
-        onClick = {},
-        enabled = enabled,
-        interactionSource = interaction,
-        modifier = Modifier.size(52.dp),
-        shape = CircleShape,
-        colors = IconButtonDefaults.filledTonalIconButtonColors(
-            containerColor = activeColor.copy(alpha = 0.18f),
-            contentColor = activeColor,
-            disabledContainerColor = activeColor.copy(0.06f),
-            disabledContentColor = activeColor.copy(0.3f)
-        )
+    Box(
+        modifier = Modifier
+            .size(52.dp)
+            .clip(CircleShape)
+            .background(
+                if (enabled) activeColor.copy(alpha = 0.18f)
+                else activeColor.copy(alpha = 0.06f)
+            )
+            .pointerInput(enabled, value, valueRange) {
+                if (!enabled) return@pointerInput
+                detectTapGestures(
+                    onPress = {
+                        // Pas immédiat SYNCHRONE : le tap est toujours pris en compte.
+                        var current = (value + sign * step)
+                            .coerceIn(valueRange.start, valueRange.endInclusive)
+                        onValueChange(current)
+                        // Rampe tant que le doigt reste appuyé (accélération).
+                        val rampJob = scope.launch {
+                            var heldMs = 0L
+                            while (isActive) {
+                                delay(50)
+                                heldMs += 50
+                                val heldSec = heldMs / 1000f
+                                // %/s : douce au début, très rapide après quelques secondes
+                                // (~100 % atteint vers 5 s de maintien continu).
+                                val ratePctPerSec = 1.5f + 0.6f * heldSec * heldSec * heldSec
+                                current = (current + sign * ratePctPerSec * 0.05f * step)
+                                    .coerceIn(valueRange.start, valueRange.endInclusive)
+                                onValueChange(current)
+                                if ((sign > 0 && current >= valueRange.endInclusive) ||
+                                    (sign < 0 && current <= valueRange.start)
+                                ) break
+                            }
+                        }
+                        // Suspend jusqu'au relâchement, puis stoppe la rampe et envoie 1× au moteur.
+                        tryAwaitRelease()
+                        rampJob.cancel()
+                        onValueCommit(current)
+                    }
+                )
+            },
+        contentAlignment = Alignment.Center
     ) {
-        Text(symbol, fontSize = 26.sp, fontWeight = FontWeight.Bold, lineHeight = 18.sp)
+        Text(
+            symbol,
+            color = if (enabled) activeColor else activeColor.copy(alpha = 0.3f),
+            fontSize = 26.sp,
+            fontWeight = FontWeight.Bold,
+            lineHeight = 18.sp
+        )
     }
 }
