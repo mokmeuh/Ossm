@@ -12,6 +12,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -150,6 +151,15 @@ private fun RampButton(
     onValueCommit: (Float) -> Unit
 ) {
     val scope = rememberCoroutineScope()
+    // Lit TOUJOURS la valeur/callbacks A JOUR sans re-keyer le pointerInput : sinon soit la
+    // rampe file seule (si on keye sur value), soit +/- repart de la valeur initiale = 1 %
+    // (si la lambda capture un `value` fige). rememberUpdatedState met a jour la reference
+    // a chaque recomposition sans redemarrer le geste.
+    val valueState = rememberUpdatedState(value)
+    val rangeState = rememberUpdatedState(valueRange)
+    val stepState = rememberUpdatedState(step)
+    val onChange = rememberUpdatedState(onValueChange)
+    val onCommit = rememberUpdatedState(onValueCommit)
 
     Box(
         modifier = Modifier
@@ -167,10 +177,13 @@ private fun RampButton(
                 if (!enabled) return@pointerInput
                 detectTapGestures(
                     onPress = {
-                        // Pas immédiat SYNCHRONE : le tap est toujours pris en compte.
-                        var current = (value + sign * step)
-                            .coerceIn(valueRange.start, valueRange.endInclusive)
-                        onValueChange(current)
+                        val range = rangeState.value
+                        val st = stepState.value
+                        // Pas immédiat SYNCHRONE, à partir de la valeur A JOUR : le tap est
+                        // toujours pris et repart de la position réelle du slider.
+                        var current = (valueState.value + sign * st)
+                            .coerceIn(range.start, range.endInclusive)
+                        onChange.value(current)
                         // Rampe tant que le doigt reste appuyé (accélération).
                         val rampJob = scope.launch {
                             var heldMs = 0L
@@ -181,18 +194,18 @@ private fun RampButton(
                                 // %/s : douce au début, très rapide après quelques secondes
                                 // (~100 % atteint vers 5 s de maintien continu).
                                 val ratePctPerSec = 1.5f + 0.6f * heldSec * heldSec * heldSec
-                                current = (current + sign * ratePctPerSec * 0.05f * step)
-                                    .coerceIn(valueRange.start, valueRange.endInclusive)
-                                onValueChange(current)
-                                if ((sign > 0 && current >= valueRange.endInclusive) ||
-                                    (sign < 0 && current <= valueRange.start)
+                                current = (current + sign * ratePctPerSec * 0.05f * st)
+                                    .coerceIn(range.start, range.endInclusive)
+                                onChange.value(current)
+                                if ((sign > 0 && current >= range.endInclusive) ||
+                                    (sign < 0 && current <= range.start)
                                 ) break
                             }
                         }
                         // Suspend jusqu'au relâchement, puis stoppe la rampe et envoie 1× au moteur.
                         tryAwaitRelease()
                         rampJob.cancel()
-                        onValueCommit(current)
+                        onCommit.value(current)
                     }
                 )
             },
