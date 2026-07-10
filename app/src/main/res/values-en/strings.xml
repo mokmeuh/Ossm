@@ -41,6 +41,9 @@
     <string name="videosync_url_hint">Paste a URL</string>
     <string name="videosync_latency">Latency offset</string>
     <string name="videosync_latency_hint">Positive = motion runs ahead of the video (compensates BLE latency).</string>
+    <string name="videosync_generate">Generate funscript (local)</string>
+    <string name="videosync_generate_hint">Analyzes the video motion on-device to create a script. Experimental and approximate.</string>
+    <string name="videosync_analyzing">Analyzing motion… %1$d %%</string>
     <string name="ctl_connect_prompt">Connect to an OSSM to enable the controls</string>
     <string name="ctl_patterns">PATTERNS  ▾</string>
     <string name="ctl_no_patterns">No pattern detected for this firmware.</string>

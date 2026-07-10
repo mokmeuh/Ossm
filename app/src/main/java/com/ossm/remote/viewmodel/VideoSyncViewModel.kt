@@ -8,6 +8,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.google.gson.Gson
+import com.ossm.remote.analysis.VideoMotionAnalyzer
 import com.ossm.remote.ble.BleManager
 import com.ossm.remote.model.Funscript
 import com.ossm.remote.model.FunscriptAction
@@ -45,6 +46,9 @@ data class VideoSyncUiState(
     // Remappe la position brute 0-100 du script dans la plage utilisateur.
     val depthMin: Int = 0,
     val depthMax: Int = 100,
+    // Analyse de mouvement locale (génération de funscript).
+    val isAnalyzing: Boolean = false,
+    val analyzeProgress: Float = 0f,
     val error: String? = null
 )
 
@@ -71,6 +75,11 @@ class VideoSyncViewModel @Inject constructor(
     private var player: ExoPlayer? = null
     private var syncJob: Job? = null
     private var progressJob: Job? = null
+    private var analyzeJob: Job? = null
+
+    // Source vidéo courante, mémorisée pour l'analyse de mouvement locale.
+    private var currentVideoUri: Uri? = null
+    private var currentVideoUrl: String? = null
 
     /** Fournit (en créant si besoin) l'ExoPlayer pour le PlayerView. Thread principal. */
     fun getOrCreatePlayer(): ExoPlayer {
@@ -96,6 +105,8 @@ class VideoSyncViewModel @Inject constructor(
         val p = getOrCreatePlayer()
         p.setMediaItem(MediaItem.fromUri(uri))
         p.prepare()
+        currentVideoUri = uri
+        currentVideoUrl = null
         _uiState.value = _uiState.value.copy(
             videoLabel = displayName,
             hasVideo = true,
@@ -109,6 +120,8 @@ class VideoSyncViewModel @Inject constructor(
         val p = getOrCreatePlayer()
         p.setMediaItem(MediaItem.fromUri(trimmed))
         p.prepare()
+        currentVideoUri = null
+        currentVideoUrl = trimmed
         _uiState.value = _uiState.value.copy(
             videoLabel = trimmed,
             hasVideo = true,
@@ -178,6 +191,63 @@ class VideoSyncViewModel @Inject constructor(
             totalActions = parsed.size,
             error = null
         )
+    }
+
+    /**
+     * Génère un funscript localement en analysant le mouvement de la vidéo
+     * courante (EXPÉRIMENTAL). Tourne hors du thread principal, publie la
+     * progression, puis charge le script généré pour que Play l'utilise.
+     */
+    fun generateFunscriptFromVideo() {
+        if (_uiState.value.isAnalyzing) return
+        val uri = currentVideoUri
+        val url = currentVideoUrl
+        if (uri == null && url.isNullOrBlank()) {
+            _uiState.value = _uiState.value.copy(error = "Charge d'abord une vidéo à analyser")
+            return
+        }
+        analyzeJob?.cancel()
+        analyzeJob = viewModelScope.launch(Dispatchers.Default) {
+            _uiState.value = _uiState.value.copy(isAnalyzing = true, analyzeProgress = 0f, error = null)
+            try {
+                val analyzer = VideoMotionAnalyzer(context)
+                val fs = analyzer.analyze(
+                    uri = uri,
+                    url = url,
+                    progress = { frac ->
+                        // Publie la progression sans saturer (limité par le pas d'analyse).
+                        _uiState.value = _uiState.value.copy(analyzeProgress = frac.coerceIn(0f, 1f))
+                    }
+                )
+                val parsed = fs.actions
+                    .filter { it.atMs >= 0 && it.pos in 0..100 }
+                    .sortedBy { it.atMs }
+                withContext(Dispatchers.Main) {
+                    if (parsed.isEmpty()) {
+                        _uiState.value = _uiState.value.copy(
+                            isAnalyzing = false,
+                            error = "Analyse: aucun mouvement exploitable"
+                        )
+                    } else {
+                        actions = parsed
+                        _uiState.value = _uiState.value.copy(
+                            isAnalyzing = false,
+                            analyzeProgress = 1f,
+                            funscriptName = "Généré (local) — ${parsed.size} pts",
+                            totalActions = parsed.size,
+                            error = null
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    _uiState.value = _uiState.value.copy(
+                        isAnalyzing = false,
+                        error = "Analyse échouée: ${e.message}"
+                    )
+                }
+            }
+        }
     }
 
     /** Remappe une position brute 0-100 du script dans la plage utilisateur [depthMin, depthMax]. */
@@ -298,6 +368,7 @@ class VideoSyncViewModel @Inject constructor(
         super.onCleared()
         syncJob?.cancel()
         progressJob?.cancel()
+        analyzeJob?.cancel()
         bleManager.sendCommand(OssmCommand.Stop)
         player?.release()
         player = null

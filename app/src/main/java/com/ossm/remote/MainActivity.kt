@@ -313,7 +313,8 @@ fun OssmApp(
                     onPlayPause = videoSyncVm::togglePlayPause,
                     onStop = videoSyncVm::stop,
                     onLatencyChange = videoSyncVm::setLatencyOffset,
-                    onDepthRangeChange = videoSyncVm::setDepthRange
+                    onDepthRangeChange = videoSyncVm::setDepthRange,
+                    onGenerateFunscript = videoSyncVm::generateFunscriptFromVideo
                 )
                 }
             }

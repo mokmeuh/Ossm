@@ -46,7 +46,8 @@ fun VideoSyncScreen(
     onPlayPause: () -> Unit,
     onStop: () -> Unit,
     onLatencyChange: (Int) -> Unit,
-    onDepthRangeChange: (Int, Int) -> Unit
+    onDepthRangeChange: (Int, Int) -> Unit,
+    onGenerateFunscript: () -> Unit
 ) {
     val context = LocalContext.current
     val connected = connectionState is BleConnectionState.Connected
@@ -184,6 +185,52 @@ fun VideoSyncScreen(
                     IconButton(onClick = { funscriptLauncher.launch("*/*") }) {
                         Icon(Icons.Default.FolderOpen, stringResource(R.string.videosync_pick_script), tint = OssmPrimary)
                     }
+                }
+            }
+
+            // Génération locale de funscript (analyse de mouvement, expérimental)
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Science, null, tint = OssmAccent, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "EXPÉRIMENTAL",
+                        color = OssmAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    stringResource(R.string.videosync_generate_hint),
+                    color = OssmOnSurface.copy(0.6f), fontSize = 11.sp
+                )
+                Spacer(Modifier.height(10.dp))
+                Button(
+                    onClick = onGenerateFunscript,
+                    enabled = uiState.hasVideo && !uiState.isAnalyzing,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = OssmPrimary)
+                ) {
+                    Icon(Icons.Default.AutoAwesome, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.videosync_generate), fontSize = 13.sp)
+                }
+                if (uiState.isAnalyzing) {
+                    Spacer(Modifier.height(10.dp))
+                    LinearProgressIndicator(
+                        progress = { uiState.analyzeProgress },
+                        modifier = Modifier.fillMaxWidth(),
+                        color = OssmAccent,
+                        trackColor = OssmOnSurface.copy(0.15f)
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        stringResource(
+                            R.string.videosync_analyzing,
+                            (uiState.analyzeProgress * 100).toInt()
+                        ),
+                        color = OssmAccent, fontSize = 11.sp
+                    )
                 }
             }
 
