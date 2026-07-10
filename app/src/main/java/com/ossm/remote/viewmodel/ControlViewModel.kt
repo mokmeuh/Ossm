@@ -346,7 +346,8 @@ class ControlViewModel @Inject constructor(
         progressiveJob?.cancel(); progressiveJob = null
         chaosJob?.cancel(); chaosJob = null
         teasingRandomJob?.cancel(); teasingRandomJob = null
-        audioLevelMonitor.stop()
+        // Le micro suit le mode à l'écoute (pas le ticker) : ne pas le couper ici.
+        updateListeningMonitor()
         autoJob?.cancel(); autoJob = null; autoFirmwareMode = null
         // Repart sur des cases décochées à chaque changement de pattern (jamais
         // d'aléatoire surprise en revenant sur Teasing & Pounding).
@@ -736,11 +737,15 @@ class ControlViewModel @Inject constructor(
         updateListeningMonitor()
     }
 
-    /** Démarre le micro seulement quand le mode à l'écoute ET le mode aléatoire tournent. */
+    /**
+     * Le micro tourne dès que le mode à l'écoute est activé (et la permission accordée),
+     * INDÉPENDAMMENT du ticker aléatoire. Avant, il n'était démarré que pendant le ticker
+     * Teasing & Pounding → « le mode à l'écoute ne fait rien » tant qu'aucun aléatoire ne
+     * tournait, et l'indicateur de niveau restait figé. La permission RECORD_AUDIO est
+     * demandée à l'activation du toggle (MainActivity.toggleListeningMode).
+     */
     private fun updateListeningMonitor() {
-        val st = _uiState.value
-        val shouldListen = st.listeningMode && teasingRandomJob?.isActive == true
-        if (shouldListen) {
+        if (_uiState.value.listeningMode && audioLevelMonitor.hasPermission()) {
             audioLevelMonitor.start(viewModelScope)
         } else {
             audioLevelMonitor.stop()
@@ -755,13 +760,14 @@ class ControlViewModel @Inject constructor(
     }
 
     private fun updateTeasingRandomTicker() {
+        // Le micro suit le mode à l'écoute, jamais l'état du ticker aléatoire.
+        updateListeningMonitor()
         val st = _uiState.value
         val active = st.activePatternKey in RANDOM_CAPABLE_KEYS &&
             st.activePattern?.mode == PatternControlMode.STROKE_ENGINE &&
             st.anyRandomActive
         if (!active) {
             teasingRandomJob?.cancel(); teasingRandomJob = null
-            audioLevelMonitor.stop()
             // Retour propre aux valeurs des sliders quand on désactive tout.
             if (st.activePattern?.mode == PatternControlMode.STROKE_ENGINE) {
                 sendCurrentStrokeEngineCommand()
@@ -936,6 +942,8 @@ class ControlViewModel @Inject constructor(
         if (!st.isPaused) return
         val mode = st.activePattern?.mode ?: return
         _uiState.update { it.copy(isPaused = false, isRunning = true) }
+        // Reprise de session : relance le micro si le mode à l'écoute est resté activé.
+        updateListeningMonitor()
         when (mode) {
             PatternControlMode.STREAMING -> setStreamActive(true)
             PatternControlMode.PROGRESSIVE -> startProgressiveRamp((st.speed * 100f).toInt().coerceAtLeast(1))

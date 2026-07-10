@@ -77,6 +77,15 @@ class BleManager @Inject constructor(
     private var emergencyRestoreJob: Job? = null
     private var scanJob: Job? = null
 
+    // Anti-throttle scan Android : le système ignore SILENCIEUSEMENT les startScan()
+    // au-delà d'environ 5 appels / 30 s (BLE app scan quota). Symptôme : après une
+    // coupure de la machine, les tentatives de reconnexion enchaînent scan→connect
+    // échoué→rescan et épuisent le quota → les scans suivants ne renvoient plus RIEN
+    // → « recherche » perpétuelle jusqu'au redémarrage de l'app. On tient une fenêtre
+    // glissante des démarrages et on attend si on approche la limite.
+    private val recentScanStarts = ArrayDeque<Long>()
+    @Volatile private var isScanning = false
+
     private val _connectionState = MutableStateFlow<BleConnectionState>(BleConnectionState.Disconnected)
     val connectionState: StateFlow<BleConnectionState> = _connectionState.asStateFlow()
 
@@ -126,8 +135,18 @@ class BleManager @Inject constructor(
             // Code 1 (SCAN_FAILED_ALREADY_STARTED) : un scan précédent avec le même
             // callback est encore enregistré — on l'arrête toujours avant de relancer.
             try { bleScanner?.stopScan(scanCallback) } catch (_: Exception) {}
+            isScanning = false
+            // Anti-throttle : attend si on a déjà consommé le quota de scans récents.
+            awaitScanThrottleWindow()
             delay(150)
-            bleScanner?.startScan(scanFilters, scanSettings, scanCallback)
+            recordScanStart()
+            try {
+                bleScanner?.startScan(scanFilters, scanSettings, scanCallback)
+                isScanning = true
+                log(LogLevel.INFO, "SCAN", "Scan actif (${recentScanStarts.size}/$SCAN_THROTTLE_MAX dans la fenêtre 30 s)")
+            } catch (e: Exception) {
+                log(LogLevel.ERROR, "SCAN", "startScan a échoué: ${e.message}")
+            }
             delay(BleConstants.SCAN_TIMEOUT_MS)
             stopScan()
             if (_connectionState.value is BleConnectionState.Scanning) {
@@ -137,8 +156,39 @@ class BleManager @Inject constructor(
         }
     }
 
+    private fun pruneScanWindow(now: Long) {
+        while (recentScanStarts.isNotEmpty() && now - recentScanStarts.first() > SCAN_THROTTLE_WINDOW_MS) {
+            recentScanStarts.removeFirst()
+        }
+    }
+
+    private fun recordScanStart() {
+        val now = System.currentTimeMillis()
+        pruneScanWindow(now)
+        recentScanStarts.addLast(now)
+    }
+
+    /**
+     * Bloque tant qu'on est au plafond du quota de scans Android (fenêtre glissante
+     * de 30 s). Sans ça, un enchaînement scan→connect échoué→rescan (machine qui
+     * redémarre) épuise le quota et les scans suivants renvoient 0 device en silence.
+     */
+    private suspend fun awaitScanThrottleWindow() {
+        val now = System.currentTimeMillis()
+        pruneScanWindow(now)
+        if (recentScanStarts.size >= SCAN_THROTTLE_MAX) {
+            val wait = SCAN_THROTTLE_WINDOW_MS - (now - recentScanStarts.first()) + 250
+            if (wait > 0) {
+                log(LogLevel.WARNING, "SCAN", "Anti-throttle: ${recentScanStarts.size} scans en 30 s, attente ${wait} ms avant relance")
+                delay(wait)
+                pruneScanWindow(System.currentTimeMillis())
+            }
+        }
+    }
+
     fun stopScan() {
-        bleScanner?.stopScan(scanCallback)
+        try { bleScanner?.stopScan(scanCallback) } catch (_: Exception) {}
+        isScanning = false
         scanJob?.cancel()
         if (_connectionState.value is BleConnectionState.Scanning) {
             _connectionState.value = BleConnectionState.Disconnected
@@ -295,20 +345,27 @@ class BleManager @Inject constructor(
                     streamingEntryJob?.cancel()
                     _streamingReady.value = false
                     if (wasConnected) {
-                        log(LogLevel.WARNING, "GATT", "Déconnexion inattendue de $deviceName")
+                        log(LogLevel.WARNING, "GATT", "Déconnexion inattendue de $deviceName — nettoyage GATT et retour scan")
                         _connectionState.value = BleConnectionState.EmergencyStop
                         scope.launch {
                             delay(2000)
-                            _connectionState.value = BleConnectionState.Disconnected
+                            // NE PAS écraser un scan/connexion relancé entre-temps : on ne
+                            // repasse à Disconnected que si on est TOUJOURS en EmergencyStop.
+                            if (_connectionState.value is BleConnectionState.EmergencyStop) {
+                                _connectionState.value = BleConnectionState.Disconnected
+                                log(LogLevel.INFO, "GATT", "Prêt pour un nouveau scan après coupure")
+                            }
                         }
                     } else {
                         _connectionState.value = BleConnectionState.Disconnected
                     }
+                    // Toujours fermer ET libérer le GATT natif : un GATT laissé ouvert bloque
+                    // le prochain connectGatt() (la stack native croit la connexion vivante).
                     this@BleManager.gatt?.close()
                     this@BleManager.gatt = null
                     _availablePatterns.value = KnownFallbackPatterns
                     _machineState.value = MachineState()
-                    log(LogLevel.INFO, "GATT", "Déconnecté (status=$status)")
+                    log(LogLevel.INFO, "GATT", "GATT fermé et libéré (status=$status) — rescan possible sans redémarrer l'app")
                 }
                 status != BluetoothGatt.GATT_SUCCESS -> {
                     log(LogLevel.ERROR, "GATT", "Erreur connexion status=$status")
@@ -1086,5 +1143,9 @@ class BleManager @Inject constructor(
         private const val HEALTH_CHECK_INTERVAL_MS = 3_000L
         private const val HEALTH_CHECK_REPLY_TIMEOUT_MS = 1_500L
         private const val HEALTH_CHECK_MAX_MISSES = 3
+
+        // Quota de scan Android non documenté (~5 startScan / 30 s). On garde une marge.
+        private const val SCAN_THROTTLE_WINDOW_MS = 30_000L
+        private const val SCAN_THROTTLE_MAX = 4
     }
 }
