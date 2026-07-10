@@ -159,7 +159,11 @@ private fun RampButton(
                 if (enabled) activeColor.copy(alpha = 0.18f)
                 else activeColor.copy(alpha = 0.06f)
             )
-            .pointerInput(enabled, value, valueRange) {
+            // IMPORTANT : ne PAS indexer sur `value` — sinon chaque incrément de la rampe
+            // redémarre le détecteur de geste et annule tryAwaitRelease() → le relâchement
+            // n'est jamais vu et la rampe file toute seule jusqu'à 100 %. `value` est lu au
+            // moment de l'appui (capture initiale), l'accumulateur `current` fait le reste.
+            .pointerInput(enabled) {
                 if (!enabled) return@pointerInput
                 detectTapGestures(
                     onPress = {
