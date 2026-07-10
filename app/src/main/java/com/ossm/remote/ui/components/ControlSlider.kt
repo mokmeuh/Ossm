@@ -136,7 +136,8 @@ fun ControlSlider(
 /**
  * Bouton +/- avec MAINTIEN progressif : un simple appui = ±1 %. Maintenu, la valeur
  * augmente de plus en plus vite (accélération). Repère visé par l'utilisateur :
- * ~3 % après 2 s, ~10 % après 5 s, atteint 100 % vers 10 s de maintien continu.
+ * la courbe atteint ~100 % en ~7 s de maintien continu (douce 0-2 s, plus forte
+ * 2-5 s, très forte 5-7 s).
  * S'applique à TOUS les sliders (composant partagé), quel que soit le mode.
  */
 @Composable
@@ -166,7 +167,7 @@ private fun RampButton(
                 heldMs += 50
                 val heldSec = heldMs / 1000f
                 // Vitesse en %/s : douce au début, s'emballe avec la durée de maintien.
-                val ratePctPerSec = 1.0f + 0.036f * heldSec * heldSec * heldSec
+                val ratePctPerSec = 1.0f + 0.155f * heldSec * heldSec * heldSec
                 val delta = sign * ratePctPerSec * 0.05f * step
                 current = (current + delta).coerceIn(valueRange.start, valueRange.endInclusive)
                 onValueChange(current)

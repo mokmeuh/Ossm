@@ -1427,9 +1427,11 @@ class ControlViewModel @Inject constructor(
         private const val STREAM_MAX_VELOCITY_PER_SECOND = 600f
         private const val STREAM_REFRESH_MS = 90L
         private const val STREAM_REFRESH_MOVE_MS = 60
-        // Durée de move ≈ 1,5× la cadence : chaque commande dure jusqu'à ce que la
+        // Durée de move ≈ 2× la cadence : chaque commande dure jusqu'à ce que la
         // suivante arrive → mouvement continu, sans micro-à-coups « atteindre en 5 ms ».
-        private const val STREAM_LIVE_TOUCH_MOVE_MS = 45
+        // Réglage de FLUIDITÉ uniquement (60 vs 45 ms = plus de recouvrement des moves,
+        // moins de jitter résiduel). Le sens/mapping/latence du Live ne changent pas.
+        private const val STREAM_LIVE_TOUCH_MOVE_MS = 60
 
         // Progressif ramp timing: wait ≈ ONE full back-and-forth between increments.
         // period(ms) = K * strokeFraction / speed%, clamped [MIN, MAX].
