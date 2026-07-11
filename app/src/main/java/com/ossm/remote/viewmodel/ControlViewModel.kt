@@ -143,6 +143,9 @@ data class ControlUiState(
     // Mode « à l'écoute » : le micro biaise le mode aléatoire vers le haut (plus
     // fort tu réagis, plus l'intensité monte et reste dans le haut des plages).
     val listeningMode: Boolean = false,
+    // Plafond ROUGE du mode à l'écoute (0..1) : vitesse max que le micro peut piloter.
+    // La vitesse live = niveau sonore (0..1) × ce plafond.
+    val listeningCeiling: Float = 0.6f,
     // Inversion du sens du mode Live (réglable par l'utilisateur).
     val liveInvert: Boolean = false,
     // Auto Random mix
@@ -283,6 +286,12 @@ class ControlViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
+            safetySettingsRepository.listeningCeiling.collect { ceiling ->
+                _uiState.update { it.copy(listeningCeiling = ceiling) }
+            }
+        }
+
+        viewModelScope.launch {
             safetySettingsRepository.liveInvertEnabled.collect { enabled ->
                 bleManager.liveInvert = enabled
                 _uiState.update { it.copy(liveInvert = enabled) }
@@ -374,6 +383,8 @@ class ControlViewModel @Inject constructor(
                 isRunning = false
             )
         }
+        // Le pilotage micro ne vaut que pour les patterns stroke-engine : réévalue.
+        updateListeningSpeedDriver()
         if (pattern.mode == PatternControlMode.AUTO_RANDOM) return
         when (pattern.mode) {
             PatternControlMode.AUTO_RANDOM -> {
@@ -574,6 +585,7 @@ class ControlViewModel @Inject constructor(
         progressiveJob?.cancel(); progressiveJob = null
         chaosJob?.cancel(); chaosJob = null
         teasingRandomJob?.cancel(); teasingRandomJob = null
+        listeningDriveJob?.cancel(); listeningDriveJob = null
         audioLevelMonitor.stop()
         autoJob?.cancel(); autoJob = null
         autoFirmwareMode = null
@@ -738,6 +750,16 @@ class ControlViewModel @Inject constructor(
     }
 
     /**
+     * Plafond ROUGE du mode à l'écoute (persisté) : la vitesse pilotée par le micro
+     * ne dépassera jamais cette valeur. Effet immédiat sur le pilotage live.
+     */
+    fun setListeningCeiling(value: Float) {
+        val v = value.coerceIn(0.01f, 1f)
+        viewModelScope.launch { safetySettingsRepository.setListeningCeiling(v) }
+        _uiState.update { it.copy(listeningCeiling = v) }
+    }
+
+    /**
      * Le micro tourne dès que le mode à l'écoute est activé (et la permission accordée),
      * INDÉPENDAMMENT du ticker aléatoire. Avant, il n'était démarré que pendant le ticker
      * Teasing & Pounding → « le mode à l'écoute ne fait rien » tant qu'aucun aléatoire ne
@@ -749,6 +771,43 @@ class ControlViewModel @Inject constructor(
             audioLevelMonitor.start(viewModelScope)
         } else {
             audioLevelMonitor.stop()
+        }
+        updateListeningSpeedDriver()
+    }
+
+    // ---- Mode à l'écoute : le micro PILOTE la vitesse en direct ----
+    // vitesse live = niveau sonore (0..1) × plafond rouge réglé. Plus tu fais de bruit,
+    // plus ça va vite, sans jamais dépasser ton plafond. Écritures BLE limitées à ~10 Hz
+    // et uniquement sur changement réel (jamais de spam sur le firmware).
+    private var listeningDriveJob: Job? = null
+    private fun updateListeningSpeedDriver() {
+        val st = _uiState.value
+        val shouldDrive = st.listeningMode &&
+            st.activePatternSupportsControls &&
+            st.activePattern?.mode == PatternControlMode.STROKE_ENGINE
+        if (!shouldDrive) {
+            listeningDriveJob?.cancel(); listeningDriveJob = null
+            return
+        }
+        if (listeningDriveJob?.isActive == true) return
+        listeningDriveJob = viewModelScope.launch {
+            var lastSendMs = 0L
+            var lastSentPercent = -1
+            audioLevelMonitor.level.collect { level ->
+                val cur = _uiState.value
+                if (!cur.listeningMode || cur.pendingManualChange != null) return@collect
+                val ceiling = cur.listeningCeiling.coerceIn(0.01f, 1f)
+                val eff = (level.coerceIn(0f, 1f) * ceiling).coerceIn(0f, 1f)
+                // La barre BLUE lit uiState.speed : on la met à jour en continu (fluide).
+                _uiState.update { it.copy(speed = eff, isRunning = true) }
+                val now = System.currentTimeMillis()
+                val pct = (eff * 100f).roundToInt()
+                if (now - lastSendMs >= LISTENING_SEND_MIN_MS && pct != lastSentPercent) {
+                    lastSendMs = now
+                    lastSentPercent = pct
+                    bleManager.liveSet("speed", pct)
+                }
+            }
         }
     }
 
@@ -928,6 +987,7 @@ class ControlViewModel @Inject constructor(
         progressiveJob?.cancel(); progressiveJob = null
         chaosJob?.cancel(); chaosJob = null
         teasingRandomJob?.cancel(); teasingRandomJob = null
+        listeningDriveJob?.cancel(); listeningDriveJob = null
         audioLevelMonitor.stop()
         autoJob?.cancel(); autoJob = null
         _uiState.update { it.copy(isPaused = true, isRunning = false, liveRec = LiveRecState.IDLE) }
@@ -1419,6 +1479,7 @@ class ControlViewModel @Inject constructor(
         progressiveJob?.cancel()
         chaosJob?.cancel()
         teasingRandomJob?.cancel()
+        listeningDriveJob?.cancel()
         audioLevelMonitor.stop()
     }
 
@@ -1462,6 +1523,10 @@ class ControlViewModel @Inject constructor(
         // Court + petits pas = promenade fluide sans grands écarts.
         private const val TEASE_RANDOM_MIN_MS = 700L
         private const val TEASE_RANDOM_MAX_MS = 1_900L
+
+        // Mode à l'écoute : cadence maxi d'envoi BLE de la vitesse pilotée par le micro
+        // (~10 Hz). Le micro n'émet de toute façon qu'un niveau toutes les ~200 ms.
+        private const val LISTENING_SEND_MIN_MS = 100L
 
         // Vitesse aléatoire par blocs (paliers).
         private const val SPEED_BLOCK_MIN_MS = 2_000L   // durée mini d'un palier

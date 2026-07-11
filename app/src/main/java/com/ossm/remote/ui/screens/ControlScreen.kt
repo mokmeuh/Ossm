@@ -149,6 +149,7 @@ fun ControlScreen(
     onDepthRandomToggle: (Boolean) -> Unit,
     listeningLevel: Float,
     onListeningToggle: (Boolean) -> Unit,
+    onListeningCeilingCommit: (Float) -> Unit,
     onLiveInvertToggle: (Boolean) -> Unit,
     onLiveMaxAccelChange: (Float) -> Unit
 ) {
@@ -168,9 +169,15 @@ fun ControlScreen(
     // proche de zéro). Masquée tant que la plage vue est < 5 mm.
     var minPosMm by remember { mutableFloatStateOf(Float.MAX_VALUE) }
     var maxPosMm by remember { mutableFloatStateOf(-Float.MAX_VALUE) }
-    val positionFraction: Float? = machineState.positionMm?.let { raw ->
+    // Calibration de la course dans un effet (jamais d'écriture d'état PENDANT la
+    // composition) : chaque nouvelle position notifiée par la machine recompose la vue
+    // → la barre rouge de position suit le chariot EN TEMPS RÉEL, pas seulement au clic.
+    LaunchedEffect(machineState.positionMm) {
+        val raw = machineState.positionMm ?: return@LaunchedEffect
         if (raw < minPosMm) minPosMm = raw
         if (raw > maxPosMm) maxPosMm = raw
+    }
+    val positionFraction: Float? = machineState.positionMm?.let { raw ->
         val range = maxPosMm - minPosMm
         if (range < 5f) null else {
             val f = ((raw - minPosMm) / range).coerceIn(0f, 1f)
@@ -742,17 +749,31 @@ fun ControlScreen(
                         val isRandomCapable = activePattern.key == "teasingPounding" ||
                             activePattern.key == "simpleStroke"
 
-                        ControlSlider(
-                            label = stringResource(R.string.ctl_speed),
-                            value = speedDraft,
-                            onValueChange = { speedDraft = it; onSpeedLive(it) },
-                            onValueCommit = { committed ->
-                                speedDraft = committed
-                                onSpeedCommit(committed)
-                            },
-                            enabled = slidersEnabled,
-                            activeColor = OssmPrimary
-                        )
+                        if (uiState.listeningMode) {
+                            // Mode à l'écoute : la vitesse est PILOTÉE par le micro. Deux barres,
+                            // comme le mode Progressif : plafond ROUGE réglable (max que le micro
+                            // peut atteindre) + barre BLEUE live = vitesse réelle (niveau × plafond).
+                            ProgressiveSpeedBar(
+                                currentValue = uiState.speed,
+                                maxValue = uiState.listeningCeiling,
+                                enabled = slidersEnabled,
+                                onMaxChange = onListeningCeilingCommit,
+                                label = stringResource(R.string.ctl_speed_listening),
+                                fillColor = OssmAccent
+                            )
+                        } else {
+                            ControlSlider(
+                                label = stringResource(R.string.ctl_speed),
+                                value = speedDraft,
+                                onValueChange = { speedDraft = it; onSpeedLive(it) },
+                                onValueCommit = { committed ->
+                                    speedDraft = committed
+                                    onSpeedCommit(committed)
+                                },
+                                enabled = slidersEnabled,
+                                activeColor = OssmPrimary
+                            )
+                        }
                         if (isRandomCapable) {
                             RandomModeRow(
                                 label = stringResource(R.string.ctl_random_speed),
@@ -1281,6 +1302,9 @@ private fun DepthRangeEditor(
     positionFraction: Float? = null
 ) {
     var sliderWidthPx by remember { mutableIntStateOf(0) }
+    // Dernière barre touchée : true = FOND (max, droite), false = RETRAIT (min, gauche).
+    // Les boutons +/- agissent sur CETTE barre. Défaut = fond (comportement d'avant).
+    var selectedIsMax by remember { mutableStateOf(true) }
 
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(
@@ -1307,9 +1331,15 @@ private fun DepthRangeEditor(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            // − à gauche = recule le MIN ; + à droite = avance le MAX (pas de 1 %).
+            // −/+ agissent sur la DERNIÈRE barre touchée (retrait ou fond), pas de 1 %.
             FilledTonalIconButton(
-                onClick = { onRangeCommit((minValue - 0.01f).coerceIn(0f, maxValue), maxValue) },
+                onClick = {
+                    if (selectedIsMax) {
+                        onRangeCommit(minValue, (maxValue - 0.01f).coerceIn(minValue, 1f))
+                    } else {
+                        onRangeCommit((minValue - 0.01f).coerceIn(0f, maxValue), maxValue)
+                    }
+                },
                 enabled = enabled,
                 modifier = Modifier.size(52.dp),
                 shape = CircleShape,
@@ -1332,7 +1362,10 @@ private fun DepthRangeEditor(
                             if (!enabled || sliderWidthPx <= 0) return@detectTapGestures
                             val fraction = (offset.x / sliderWidthPx.toFloat()).coerceIn(0f, 1f)
                             val tappedValue = fraction
-                            val newRange = if (kotlin.math.abs(tappedValue - minValue) <= kotlin.math.abs(tappedValue - maxValue)) {
+                            val tappedMin = kotlin.math.abs(tappedValue - minValue) <= kotlin.math.abs(tappedValue - maxValue)
+                            // Mémorise la barre touchée pour que +/- agissent dessus.
+                            selectedIsMax = !tappedMin
+                            val newRange = if (tappedMin) {
                                 tappedValue.coerceAtMost(maxValue)..maxValue
                             } else {
                                 minValue..tappedValue.coerceAtLeast(minValue)
@@ -1342,9 +1375,26 @@ private fun DepthRangeEditor(
                         }
                     }
             ) {
+                // Surbrillance discrète du curseur SÉLECTIONNÉ (celui que +/- ajustent).
+                if (sliderWidthPx > 0) {
+                    val selFrac = (if (selectedIsMax) maxValue else minValue).coerceIn(0f, 1f)
+                    val hx = with(LocalDensity.current) { (sliderWidthPx * selFrac).toDp() }
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .offset(x = hx - 15.dp)
+                            .size(30.dp)
+                            .clip(CircleShape)
+                            .background(OssmAccent.copy(alpha = 0.22f))
+                    )
+                }
                 RangeSlider(
                     value = minValue..maxValue,
                     onValueChange = { range ->
+                        // Détecte le curseur déplacé pour cibler les boutons +/-.
+                        val dMin = kotlin.math.abs(range.start - minValue)
+                        val dMax = kotlin.math.abs(range.endInclusive - maxValue)
+                        if (dMin > 0.0001f || dMax > 0.0001f) selectedIsMax = dMax >= dMin
                         onRangeChange(range.start, range.endInclusive)
                     },
                     onValueChangeFinished = {
@@ -1385,7 +1435,13 @@ private fun DepthRangeEditor(
             }
 
             FilledTonalIconButton(
-                onClick = { onRangeCommit(minValue, (maxValue + 0.01f).coerceIn(minValue, 1f)) },
+                onClick = {
+                    if (selectedIsMax) {
+                        onRangeCommit(minValue, (maxValue + 0.01f).coerceIn(minValue, 1f))
+                    } else {
+                        onRangeCommit((minValue + 0.01f).coerceIn(0f, maxValue), maxValue)
+                    }
+                },
                 enabled = enabled,
                 modifier = Modifier.size(52.dp),
                 shape = CircleShape,

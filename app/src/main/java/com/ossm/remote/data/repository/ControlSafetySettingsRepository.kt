@@ -3,6 +3,7 @@ package com.ossm.remote.data.repository
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -54,6 +55,11 @@ class ControlSafetySettingsRepository @Inject constructor(
         prefs[LIVE_INVERT_ENABLED] ?: false
     }
 
+    /** Plafond ROUGE du mode à l'écoute : vitesse max que le micro peut atteindre (0..1). */
+    val listeningCeiling: Flow<Float> = context.controlSafetyDataStore.data.map { prefs ->
+        prefs[LISTENING_CEILING] ?: 0.6f
+    }
+
     val settings: Flow<ControlSafetySettings> = combine(
         speedGuardEnabled,
         speedGuardThresholdPercent,
@@ -90,6 +96,12 @@ class ControlSafetySettingsRepository @Inject constructor(
         }
     }
 
+    suspend fun setListeningCeiling(value: Float) {
+        context.controlSafetyDataStore.edit { prefs ->
+            prefs[LISTENING_CEILING] = value.coerceIn(0.01f, 1f)
+        }
+    }
+
     companion object {
         private val SPEED_GUARD_ENABLED = booleanPreferencesKey("speed_abrupt_change_guard_enabled")
         private val SPEED_GUARD_THRESHOLD_PERCENT = intPreferencesKey("speed_abrupt_change_guard_threshold_percent")
@@ -97,5 +109,6 @@ class ControlSafetySettingsRepository @Inject constructor(
         private val DEPTH_GUARD_THRESHOLD_PERCENT = intPreferencesKey("depth_abrupt_change_guard_threshold_percent")
         private val LISTENING_MODE_ENABLED = booleanPreferencesKey("listening_mode_enabled")
         private val LIVE_INVERT_ENABLED = booleanPreferencesKey("live_invert_enabled")
+        private val LISTENING_CEILING = floatPreferencesKey("listening_ceiling")
     }
 }

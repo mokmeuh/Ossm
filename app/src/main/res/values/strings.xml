@@ -56,6 +56,7 @@
     <string name="ctl_rec_playing">⏸  Arrêter la boucle</string>
     <string name="ctl_depth">PROFONDEUR</string>
     <string name="ctl_speed">Vitesse</string>
+    <string name="ctl_speed_listening">VITESSE (micro)</string>
     <string name="ctl_sensation">Sensation</string>
     <string name="ctl_sensation_ramp">Sensation (vitesse de montée)</string>
     <string name="ctl_reorder_title">Réorganiser les patterns</string>

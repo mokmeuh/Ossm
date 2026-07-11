@@ -56,6 +56,7 @@
     <string name="ctl_rec_playing">⏸  Stop the loop</string>
     <string name="ctl_depth">DEPTH</string>
     <string name="ctl_speed">Speed</string>
+    <string name="ctl_speed_listening">SPEED (mic)</string>
     <string name="ctl_sensation">Sensation</string>
     <string name="ctl_sensation_ramp">Sensation (ramp-up rate)</string>
     <string name="ctl_reorder_title">Reorder patterns</string>

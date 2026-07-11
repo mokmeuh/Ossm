@@ -22,6 +22,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -40,11 +41,13 @@ import com.ossm.remote.ui.theme.OssmPrimaryLight
  */
 @Composable
 fun ProgressiveSpeedBar(
-    currentValue: Float,   // 0..1, the live ramping speed (purple)
+    currentValue: Float,   // 0..1, the live ramping speed (fill)
     maxValue: Float,       // 0..1, the ceiling (red)
     enabled: Boolean,
     onMaxChange: (Float) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    label: String = "VITESSE (auto)",
+    fillColor: Color = OssmPrimary
 ) {
     var widthPx by remember { mutableIntStateOf(0) }
     val density = LocalDensity.current
@@ -63,7 +66,7 @@ fun ProgressiveSpeedBar(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    "VITESSE (auto)",
+                    label,
                     color = OssmPrimaryLight,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
@@ -101,14 +104,14 @@ fun ProgressiveSpeedBar(
                         .clip(RoundedCornerShape(4.dp))
                         .background(OssmPrimary.copy(alpha = 0.18f))
                 )
-                // Purple fill = current speed
+                // Fill = current speed
                 Box(
                     modifier = Modifier
                         .fillMaxWidth(currentValue.coerceIn(0f, 1f))
                         .height(8.dp)
                         .align(Alignment.CenterStart)
                         .clip(RoundedCornerShape(4.dp))
-                        .background(if (enabled) OssmPrimary else OssmPrimary.copy(0.4f))
+                        .background(if (enabled) fillColor else fillColor.copy(0.4f))
                 )
                 // Red ceiling bar (draggable)
                 val redX = with(density) { (widthPx * maxValue.coerceIn(0f, 1f)).toDp() }

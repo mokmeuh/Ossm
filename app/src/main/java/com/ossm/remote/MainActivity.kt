@@ -267,6 +267,7 @@ fun OssmApp(
                     onDepthRandomToggle = controlVm::setDepthRandom,
                     listeningLevel = listeningLevel,
                     onListeningToggle = onListeningToggle,
+                    onListeningCeilingCommit = controlVm::setListeningCeiling,
                     onLiveInvertToggle = controlVm::setLiveInvert,
                     onLiveMaxAccelChange = controlVm::setLiveMaxAccel
                 )
