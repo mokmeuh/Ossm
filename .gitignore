@@ -33,3 +33,9 @@ build_err.txt
 build_out.txt
 compile-*.log
 ksp-*.log
+.codex/
+.omo/
+*.log
+build_install_status.txt
+install_result.txt
+wifi_adb_ip.txt

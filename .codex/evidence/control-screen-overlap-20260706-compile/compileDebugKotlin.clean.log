@@ -1,0 +1,35 @@
+﻿SCENARIO: Compile touched OSSM Android ControlScreen.kt after UI overlap patch
+INVOCATION: .\gradlew.bat :app:compileDebugKotlin --console=plain --no-daemon
+START: 2026-07-06T01:11:28.9321574-04:00
+
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.10.2/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:generateDebugBuildConfig UP-TO-DATE
+> Task :app:checkDebugAarMetadata UP-TO-DATE
+> Task :app:generateDebugResValues UP-TO-DATE
+> Task :app:mapDebugSourceSetPaths UP-TO-DATE
+> Task :app:generateDebugResources UP-TO-DATE
+> Task :app:mergeDebugResources UP-TO-DATE
+> Task :app:packageDebugResources UP-TO-DATE
+> Task :app:parseDebugLocalResources UP-TO-DATE
+> Task :app:createDebugCompatibleScreenManifests UP-TO-DATE
+> Task :app:extractDeepLinksDebug UP-TO-DATE
+> Task :app:processDebugMainManifest UP-TO-DATE
+> Task :app:processDebugManifest UP-TO-DATE
+> Task :app:processDebugManifestForPackage UP-TO-DATE
+> Task :app:processDebugResources UP-TO-DATE
+> Task :app:kspDebugKotlin
+
+> Task :app:compileDebugKotlin
+w: file:///C:/Users/mikae/Documents/Ossm/Ossm/app/src/main/java/com/ossm/remote/ble/BleManager.kt:462:88 'var value: ByteArray!' is deprecated. Deprecated in Java.
+w: file:///C:/Users/mikae/Documents/Ossm/Ossm/app/src/main/java/com/ossm/remote/ble/BleManager.kt:475:88 'var value: ByteArray!' is deprecated. Deprecated in Java.
+
+BUILD SUCCESSFUL in 31s
+16 actionable tasks: 2 executed, 14 up-to-date
+
+END: 2026-07-06T01:12:01.2402030-04:00
+EXIT_CODE: 0
+

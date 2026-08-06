@@ -46,19 +46,26 @@
     <string name="videosync_analyzing">Analyse du mouvement… %1$d %%</string>
     <string name="ctl_connect_prompt">Connectez-vous à un OSSM pour activer les commandes</string>
     <string name="ctl_patterns">PATTERNS  ▾</string>
+    <string name="ctl_patterns_hint">Choisis un mode; cette fenetre se referme apres la selection.</string>
+    <string name="ctl_patterns_collapse">Fermer</string>
+    <string name="ctl_patterns_open">Ouvrir les patterns</string>
     <string name="ctl_no_patterns">Aucun pattern détecté pour ce firmware.</string>
-    <string name="ctl_live_hint_ready">Glisse ton doigt dans la zone — la machine suit ta position en direct (0 % = home, 100 % = fond).</string>
+    <string name="ctl_live_hint_ready">Glisse le slider pour previsualiser, relache pour envoyer une seule position (0 %% = home, 100 %% = fond).</string>
     <string name="ctl_live_preparing">Préparation du mode Live — la machine confirme la pleine course…</string>
     <string name="ctl_live_knob_hint">→ Baisse le bouton de vitesse physique à 0 pour entrer dans le mode.</string>
-    <string name="ctl_rec_idle">●  Enregistrer un mouvement</string>
-    <string name="ctl_rec_armed">Prêt — touche le pad (appuie pour annuler)</string>
-    <string name="ctl_rec_recording">●  REC — lève le doigt pour boucler</string>
-    <string name="ctl_rec_playing">⏸  Arrêter la boucle</string>
+    <string name="ctl_rec_idle">Enregistrer un mouvement</string>
+    <string name="ctl_rec_armed">Pret</string>
+    <string name="ctl_rec_recording">REC</string>
+    <string name="ctl_rec_playing">Arreter la boucle</string>
     <string name="ctl_depth">PROFONDEUR</string>
     <string name="ctl_speed">Vitesse</string>
     <string name="ctl_speed_listening">VITESSE (micro)</string>
-    <string name="ctl_sensation">Sensation</string>
-    <string name="ctl_sensation_ramp">Sensation (vitesse de montée)</string>
+    <string name="ctl_sensation_aller">Aller</string>
+    <string name="ctl_sensation_retour">Retour</string>
+    <string name="ctl_sensation_aller_ramp">Aller (vitesse de montée)</string>
+    <string name="ctl_sensation_retour_ramp">Retour (vitesse de retour)</string>
+    <string name="ctl_sensation_decrease">Diminuer la sensation</string>
+    <string name="ctl_sensation_increase">Augmenter la sensation</string>
     <string name="ctl_reorder_title">Réorganiser les patterns</string>
     <string name="ctl_reorder_hint">Appui long puis glisse pour déplacer.</string>
     <string name="ctl_save">Enregistrer</string>
@@ -73,8 +80,6 @@
     <string name="ctl_random_depth">Profondeur aléatoire</string>
     <string name="ctl_random_depth_min">Profondeur — retrait aléatoire</string>
     <string name="ctl_random_depth_max">Profondeur — fond aléatoire</string>
-    <string name="ctl_random_sensation_low">Sensation aléatoire — retour (0–50)</string>
-    <string name="ctl_random_sensation_high">Sensation aléatoire — aller (50–100)</string>
     <string name="ctl_listening_title">Mode à l\'écoute (micro)</string>
     <string name="ctl_listening_hint">Le micro fait monter l\'intensité quand tu réagis. Traité sur l\'appareil, jamais enregistré.</string>
     <string name="ctl_live_max_accel">Accélération max</string>
@@ -100,6 +105,22 @@
     <string name="prof_delete_title">Supprimer le profil ?</string>
     <string name="prof_delete_msg">« %1$s » sera supprimé définitivement.</string>
 
+    <string name="update_title">MISE À JOUR</string>
+    <string name="update_check_now">Vérifier</string>
+    <string name="update_url_label">URL du manifeste (secours)</string>
+    <string name="update_url_hint">http://serveur:port/update.json</string>
+    <string name="update_url_save">Enregistrer l’URL</string>
+    <string name="update_checking">Recherche d’une mise à jour…</string>
+    <string name="update_current">Application à jour</string>
+    <string name="update_available">Version %1$s disponible</string>
+    <string name="update_download">Télécharger</string>
+    <string name="update_downloading">Téléchargement et vérification…</string>
+    <string name="update_install">Installer la mise à jour</string>
+    <string name="update_error">Impossible de vérifier ou télécharger la mise à jour.</string>
+    <string name="update_periodic_check">Vérification périodique (12 h)</string>
+    <string name="update_notification_channel">Mises à jour disponibles</string>
+    <string name="update_notification_title">Mise à jour disponible</string>
+
     <!-- Ecran Diagnostics -->
     <string name="diag_title">DIAGNOSTICS</string>
     <string name="diag_clear">Effacer les logs</string>
@@ -107,4 +128,77 @@
     <string name="diag_last_cmd">Dernière commande</string>
     <string name="diag_mac">Adresse MAC :</string>
     <string name="diag_entries">%1$d entrées</string>
+
+    <!-- Overlay flottant -->
+    <string name="overlay_title">OVERLAY</string>
+    <string name="overlay_enable">Afficher l\'overlay</string>
+    <string name="overlay_hint">Bulle flottante pour piloter la machine même en arrière-plan.</string>
+    <string name="overlay_permission_hint">Autorisez l\'affichage par-dessus les autres applications dans les réglages système.</string>
+    <string name="overlay_transparency">Transparence</string>
+    <string name="overlay_collapse">Réduire</string>
+    <string name="overlay_close">Fermer l\'overlay</string>
+    <string name="overlay_bubble_logo">Ossm</string>
+    <string name="overlay_emergency_stop">Arrêt d\'urgence</string>
+    <string name="overlay_pending_guard">Changement en attente de confirmation</string>
+    <string name="overlay_notification_channel">Overlay de contrôle</string>
+    <string name="overlay_notification_title">Overlay de contrôle actif</string>
+    <string name="overlay_notification_text">Pilotez vitesse et profondeur depuis la bulle.</string>
+    <string name="overlay_status_error">Erreur</string>
+    <string name="overlay_status_disconnected">Déconnecté</string>
+    <string name="overlay_status_paused">En pause</string>
+    <string name="overlay_status_running">En marche</string>
+    <string name="overlay_status_ready">Prêt</string>
+
+    <!-- Section Statistiques -->
+    <string name="stat_title">STATISTIQUES</string>
+    <string name="stat_total">TOTAL</string>
+    <string name="stat_today">AUJOURD\'HUI</string>
+    <string name="stat_last7">7 JOURS</string>
+    <string name="stat_last30">30 JOURS</string>
+    <string name="stat_sessions">SESSIONS</string>
+    <string name="stat_avg_duration">DURÉE MOYENNE</string>
+    <string name="stat_max_duration">DURÉE MAX</string>
+    <string name="stat_avg_speed">VITESSE MOYENNE</string>
+    <string name="stat_max_speed">VITESSE MAX</string>
+    <string name="stat_history">HISTORIQUE 30 JOURS</string>
+    <string name="stat_cumulated">%1$s cumulés</string>
+    <string name="stat_patterns">PATTERNS UTILISÉS</string>
+    <string name="stat_no_sessions">Aucune session enregistrée</string>
+    <string name="stat_sessions_count">%1$d sessions</string>
+    <string name="stat_export">Exporter</string>
+    <string name="stat_exporting">Export…</string>
+    <string name="stat_import">Importer</string>
+    <string name="stat_importing">Import…</string>
+    <string name="stat_import_error">Import impossible : %1$s</string>
+    <string name="stat_reset">Effacer</string>
+    <string name="stat_reset_title">Effacer les statistiques ?</string>
+    <string name="stat_reset_msg">Toutes les sessions seront supprimées définitivement. Cette action est irréversible.</string>
+    <string name="stat_continue">Continuer</string>
+    <string name="stat_delete_permanently">Supprimer définitivement</string>
+
+    <!-- Mode adaptatif -->
+    <string name="adapt_title">MODE ADAPTATIF</string>
+    <string name="adapt_locked">Verrouillé</string>
+    <string name="adapt_unlocked">Déverrouillé</string>
+    <string name="adapt_locked_hint">Le déblocage se fait en apprenant tes préférences.</string>
+    <string name="adapt_unlocked_hint">Le moteur utilise maintenant ton pattern préféré.</string>
+    <string name="adapt_progression">PROGRESSION</string>
+    <string name="adapt_confidence">CONFIANCE</string>
+    <string name="adapt_sessions">Sessions</string>
+    <string name="adapt_total_active">Temps actif</string>
+    <string name="adapt_distinct_days">Jours distincts</string>
+    <string name="adapt_manual_adjustments">Ajustements manuels</string>
+    <string name="adapt_top_pattern">Pattern préféré</string>
+    <string name="adapt_settings_title">RÉGLAGES ADAPTATIFS</string>
+    <string name="adapt_enabled">Activer le mode adaptatif</string>
+    <string name="adapt_enabled_hint">Le mode choisit lui-même le pattern selon tes préférences apprises.</string>
+    <string name="adapt_pace">RYTHME</string>
+    <string name="adapt_pace_calm">Calme</string>
+    <string name="adapt_pace_moderate">Modéré</string>
+    <string name="adapt_pace_dynamic">Dynamique</string>
+    <string name="adapt_diversity">Diversité</string>
+    <string name="adapt_diversity_hint">Plus c\'est élevé, plus le mode explore de patterns différents.</string>
+    <string name="adapt_start">Démarrer</string>
+    <string name="adapt_stop">Arrêter</string>
+    <string name="adapt_running_hint">Le mix adaptatif est en marche.</string>
 </resources>

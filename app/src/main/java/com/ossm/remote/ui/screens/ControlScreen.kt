@@ -2,15 +2,14 @@ package com.ossm.remote.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -23,10 +22,16 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -41,12 +46,15 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RangeSlider
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -57,14 +65,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.IntSize
-import kotlin.math.roundToInt
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
@@ -72,22 +75,27 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.ossm.remote.R
+import com.ossm.remote.adaptive.AdaptivePace
+import com.ossm.remote.adaptive.AdaptiveUiState
+import com.ossm.remote.data.repository.AdaptiveSettings
 import com.ossm.remote.model.AutoRandomMixablePatterns
 import com.ossm.remote.model.BleConnectionState
+import com.ossm.remote.model.KnownStrokeEnginePatterns
 import com.ossm.remote.model.MachineState
 import com.ossm.remote.model.PatternControlMode
 import com.ossm.remote.model.Preset
-import com.ossm.remote.ui.components.BleStatusIndicator
 import com.ossm.remote.ui.components.ControlSlider
 import com.ossm.remote.ui.components.GlassCard
 import com.ossm.remote.ui.components.HomeButton
-import com.ossm.remote.ui.components.LiveStreamPad
 import com.ossm.remote.ui.components.PatternButton
 import com.ossm.remote.ui.components.ProgressiveSpeedBar
 import com.ossm.remote.ui.components.StopButton
+import com.ossm.remote.ui.components.StreamPositionSlider
 import com.ossm.remote.ui.theme.OssmAccent
 import com.ossm.remote.ui.theme.OssmBackground
 import com.ossm.remote.ui.theme.OssmConnected
@@ -101,8 +109,8 @@ import com.ossm.remote.ui.theme.OssmSecondary
 import com.ossm.remote.ui.theme.OssmSurface
 import com.ossm.remote.ui.theme.OssmWarning
 import com.ossm.remote.ui.theme.PatternColors
+import com.ossm.remote.viewmodel.AdaptiveViewModel
 import com.ossm.remote.viewmodel.ControlUiState
-import com.ossm.remote.viewmodel.LiveRecState
 import com.ossm.remote.viewmodel.GuardedControl
 import com.ossm.remote.viewmodel.RandomTarget
 
@@ -119,8 +127,7 @@ fun ControlScreen(
     onSensationLive: (Float) -> Unit,
     onProgressiveMaxCommit: (Float) -> Unit,
     onChaosToggle: (Boolean) -> Unit,
-    onStreamTarget: (Int) -> Unit,
-    onStreamActive: (Boolean) -> Unit,
+    onStreamPosition: (Int) -> Unit,
     onRangeWizardStart: () -> Unit,
     onRangeWizardCapture: () -> Unit,
     onRangeWizardCancel: () -> Unit,
@@ -141,77 +148,76 @@ fun ControlScreen(
     onSavePreset: (Preset) -> Unit,
     onSpeedGuardEnabledChange: (Boolean) -> Unit,
     onDepthGuardEnabledChange: (Boolean) -> Unit,
+    onDepthLimitsChange: (Float, Float) -> Unit,
     onConfirmPendingChange: (Boolean, Boolean) -> Unit,
     onDismissPendingChange: () -> Unit,
     onPatternOrderSave: (List<String>) -> Unit,
-    onLiveRecordToggle: () -> Unit,
     onRandomToggle: (RandomTarget, Boolean) -> Unit,
     onDepthRandomToggle: (Boolean) -> Unit,
     listeningLevel: Float,
     onListeningToggle: (Boolean) -> Unit,
     onListeningCeilingCommit: (Float) -> Unit,
-    onLiveInvertToggle: (Boolean) -> Unit,
-    onLiveMaxAccelChange: (Float) -> Unit
+    onListeningTargetSpeedChange: (Boolean) -> Unit,
+    onListeningTargetDepthChange: (Boolean) -> Unit,
+    onLiveInvertToggle: (Boolean) -> Unit
 ) {
     val connected = connectionState is BleConnectionState.Connected
     val machineBusy = machineState.isHoming || machineState.isPreflight
     val slidersEnabled = connected && !machineBusy
+    val adaptiveVm: AdaptiveViewModel = hiltViewModel()
+    val adaptiveState by adaptiveVm.adaptiveUiState.collectAsState()
+    val adaptiveSettings by adaptiveVm.settings.collectAsState()
+    val adaptiveManualAdjustments by adaptiveVm.manualAdjustments.collectAsState()
     var showSaveDialog by remember { mutableStateOf(false) }
     var showReorderDialog by remember { mutableStateOf(false) }
-    // Boîte Patterns repliable en bulle flottante déplaçable (jamais sur STOP).
-    var patternsCollapsed by remember { mutableStateOf(false) }
-    var bubbleX by remember { mutableFloatStateOf(24f) }
-    var bubbleY by remember { mutableFloatStateOf(500f) }
-    var rootSize by remember { mutableStateOf(IntSize.Zero) }
-    var stopRect by remember { mutableStateOf<Rect?>(null) }
-    // Position réelle → fraction 0..1 de la course. Échelle auto-calibrée sur la
-    // PLAGE observée (min..max) ; orientée pour que 0 % = home (la borne la plus
-    // proche de zéro). Masquée tant que la plage vue est < 5 mm.
-    var minPosMm by remember { mutableFloatStateOf(Float.MAX_VALUE) }
-    var maxPosMm by remember { mutableFloatStateOf(-Float.MAX_VALUE) }
-    // Calibration de la course dans un effet (jamais d'écriture d'état PENDANT la
-    // composition) : chaque nouvelle position notifiée par la machine recompose la vue
-    // → la barre rouge de position suit le chariot EN TEMPS RÉEL, pas seulement au clic.
-    LaunchedEffect(machineState.positionMm) {
-        val raw = machineState.positionMm ?: return@LaunchedEffect
-        if (raw < minPosMm) minPosMm = raw
-        if (raw > maxPosMm) maxPosMm = raw
+    var patternPickerOpen by remember { mutableStateOf(false) }
+    val connectionSessionAddress = (connectionState as? BleConnectionState.Connected)?.address
+    var observedPositionRange by remember(connectionSessionAddress) {
+        mutableStateOf(ObservedPositionRange.empty())
     }
-    val positionFraction: Float? = machineState.positionMm?.let { raw ->
-        val range = maxPosMm - minPosMm
-        if (range < 5f) null else {
-            val f = ((raw - minPosMm) / range).coerceIn(0f, 1f)
-            if (kotlin.math.abs(maxPosMm) <= kotlin.math.abs(minPosMm)) 1f - f else f
+    val observedPositionMm = machineState.positionMm
+    LaunchedEffect(connectionSessionAddress, observedPositionMm) {
+        if (connectionSessionAddress != null && observedPositionMm != null) {
+            observedPositionRange = observedPositionRange.observe(observedPositionMm)
         }
     }
+    val positionFraction = observedPositionRange.markerFraction
     var showInfoDialog by remember { mutableStateOf(false) }
     var speedDraft by remember { mutableFloatStateOf(uiState.speed) }
     var depthRangeDraft by remember { mutableStateOf(uiState.depthMin..uiState.depthMax) }
     var sensationDraft by remember { mutableFloatStateOf(uiState.sensation) }
 
-    LaunchedEffect(uiState.speed, uiState.depthMin, uiState.depthMax, uiState.sensation, uiState.activePatternKey) {
+    LaunchedEffect(
+        uiState.speed,
+        uiState.depthMin,
+        uiState.depthMax,
+        uiState.sensation,
+        uiState.activePatternKey
+    ) {
         speedDraft = uiState.speed
         depthRangeDraft = uiState.depthMin..uiState.depthMax
         sensationDraft = uiState.sensation
+    }
+
+    // Retour au curseur manuel après le mode à l'écoute : tant que le micro pilote la
+    // vitesse, le slider est masqué. À la sortie (mode coupé ou cible vitesse décochée),
+    // resynchronise le brouillon sur la vitesse manuelle restaurée par le ViewModel,
+    // sinon le pouce resterait sur la dernière valeur live du micro.
+    LaunchedEffect(uiState.listeningMode, uiState.listeningTargetSpeed) {
+        if (!(uiState.listeningMode && uiState.listeningTargetSpeed)) {
+            speedDraft = uiState.speed
+        }
     }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Brush.verticalGradient(listOf(OssmBackground, OssmSecondary)))
-            .onSizeChanged { rootSize = it }
     ) {
-        // Quand un pad tactile vertical est affiché (Live ou assistant de plage), on
-        // désactive le scroll de la page : sinon il vole les glissements du doigt.
-        val padOnScreen = uiState.rangeWizard != null ||
-            uiState.activePattern?.mode == PatternControlMode.STREAMING
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .then(
-                    if (padOnScreen) Modifier
-                    else Modifier.verticalScroll(rememberScrollState())
-                )
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
@@ -220,34 +226,12 @@ fun ControlScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                BleStatusIndicator(
-                    state = connectionState,
-                    modifier = Modifier.weight(1f)
-                )
-                if (connected && uiState.activePattern != null) {
-                    Spacer(Modifier.width(8.dp))
-                    IconButton(onClick = { showSaveDialog = true }) {
-                        Icon(Icons.Default.Save, "Sauvegarder profil", tint = OssmPrimaryLight)
-                    }
-                }
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                SecuritySquare(
-                    speedChecked = uiState.speedGuard.enabled,
-                    onSpeedCheckedChange = onSpeedGuardEnabledChange,
-                    depthChecked = uiState.depthGuard.enabled,
-                    onDepthCheckedChange = onDepthGuardEnabledChange,
+                SettingsGearButton(
                     onInfoClick = { showInfoDialog = true }
                 )
                 Box(
                     modifier = Modifier
-                        .size(110.dp)
-                        .onGloballyPositioned { stopRect = it.boundsInRoot() },
+                        .size(110.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     StopButton(onClick = onStop, modifier = Modifier.size(110.dp))
@@ -291,74 +275,44 @@ fun ControlScreen(
                 }
             }
 
-            if (!patternsCollapsed) GlassCard(modifier = Modifier.fillMaxWidth()) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Touche le titre pour replier la boîte en bulle flottante.
-                    Text(
-                        stringResource(R.string.ctl_patterns),
-                        color = OssmPrimaryLight,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.5.sp,
-                        modifier = Modifier.clickable { patternsCollapsed = true }
-                    )
-                    IconButton(onClick = { showReorderDialog = true }) {
-                        Text("+", color = OssmAccent, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-
-                if (uiState.availablePatterns.isEmpty()) {
-                    Text(
-                        stringResource(R.string.ctl_no_patterns),
-                        color = OssmOnSurface.copy(alpha = 0.7f),
-                        fontSize = 13.sp
-                    )
-                } else {
-                    // Grille 2 lignes, ~4 colonnes visibles, défilement horizontal.
-                    val ordered = uiState.orderedPatterns
-                    val columns = ordered.chunked(2)
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        columns.forEach { col ->
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                col.forEach { pattern ->
-                                    val index = ordered.indexOf(pattern)
-                                    PatternButton(
-                                        label = pattern.name,
-                                        color = PatternColors[index % PatternColors.size],
-                                        isActive = uiState.activePatternKey == pattern.key,
-                                        onClick = { onPattern(pattern.key) },
-                                        enabled = connected,
-                                        modifier = Modifier.width(84.dp)
-                                    )
-                                }
-                                if (col.size == 1) Spacer(Modifier.height(1.dp))
-                            }
-                        }
-                    }
-                }
-            }
-
             GlassCard(modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    "CONTRÔLE" + (uiState.activePattern?.let { " — ${it.name}" } ?: ""),
-                    color = OssmPrimaryLight,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.5.sp,
-                    textAlign = TextAlign.Center,
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 8.dp)
-                )
+                ) {
+                    PatternOpenerButton(
+                        onClick = { patternPickerOpen = true },
+                        modifier = Modifier.align(Alignment.CenterStart)
+                    )
+                    if (connected && uiState.activePattern != null) {
+                        IconButton(
+                            onClick = { showSaveDialog = true },
+                            modifier = Modifier
+                                .align(Alignment.CenterEnd)
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(OssmGlass)
+                                .border(1.dp, OssmGlassBorder, RoundedCornerShape(10.dp))
+                        ) {
+                            Icon(Icons.Default.Save, "Sauvegarder controle", tint = OssmPrimaryLight)
+                        }
+                    }
+                    Text(
+                        "CONTRÔLE" + (uiState.activePattern?.let { " — ${it.name}" } ?: ""),
+                        color = OssmPrimaryLight,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.5.sp,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .align(Alignment.Center)
+                            .padding(horizontal = 48.dp)
+                    )
+                }
 
                 val activePattern = uiState.activePattern
                 when {
@@ -366,9 +320,9 @@ fun ControlScreen(
                         val wiz = uiState.rangeWizard
                         Text(
                             if (wiz.step == 1)
-                                "Étape 1/2 — Glisse le pad pour amener la machine au FOND désiré, puis appuie sur « Définir le fond »."
+                                "Étape 1/2 — Place la machine au FOND désiré avec le slider, puis appuie sur « Définir le fond »."
                             else
-                                "Étape 2/2 — Glisse maintenant jusqu'au point de RETRAIT, puis appuie sur « Définir le retrait ».",
+                                "Étape 2/2 — Place maintenant le point de RETRAIT, puis appuie sur « Définir le retrait ».",
                             color = OssmOnSurface,
                             fontSize = 13.sp,
                             modifier = Modifier.padding(bottom = 10.dp)
@@ -386,10 +340,10 @@ fun ControlScreen(
                                 modifier = Modifier.padding(bottom = 10.dp)
                             )
                         }
-                        LiveStreamPad(
+                        StreamPositionSlider(
+                            positionPercent = uiState.streamPositionPercent,
                             enabled = slidersEnabled && uiState.streamingReady,
-                            onTarget = onStreamTarget,
-                            onActive = onStreamActive
+                            onPositionCommit = onStreamPosition
                         )
                         Spacer(Modifier.height(12.dp))
                         Row(
@@ -474,26 +428,12 @@ fun ControlScreen(
                                 modifier = Modifier.padding(bottom = 10.dp)
                             )
                         }
-                        LiveStreamPad(
+                        StreamPositionSlider(
+                            positionPercent = uiState.streamPositionPercent,
                             enabled = slidersEnabled && uiState.streamingReady,
-                            onTarget = onStreamTarget,
-                            onActive = onStreamActive
+                            onPositionCommit = onStreamPosition
                         )
                         Spacer(Modifier.height(10.dp))
-                        // Accélération max : plafonne la vitesse du chariot (gauche = doux
-                        // et fluide, droite = suit le doigt au plus près).
-                        ControlSlider(
-                            label = stringResource(R.string.ctl_live_max_accel),
-                            value = uiState.liveMaxAccel,
-                            onValueChange = onLiveMaxAccelChange,
-                            onValueCommit = onLiveMaxAccelChange,
-                            enabled = connected,
-                            activeColor = OssmPrimary
-                        )
-                        Spacer(Modifier.height(10.dp))
-                        // Sens du Live réglable SUR l'appareil : si le chariot part
-                        // dans le mauvais sens (slider 100 % → home au lieu du fond),
-                        // bascule cet interrupteur — pas besoin de rebuild.
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
@@ -520,28 +460,6 @@ fun ControlScreen(
                                 )
                             )
                         }
-                        Spacer(Modifier.height(10.dp))
-                        val recLabel = when (uiState.liveRec) {
-                            LiveRecState.IDLE -> stringResource(R.string.ctl_rec_idle)
-                            LiveRecState.ARMED -> stringResource(R.string.ctl_rec_armed)
-                            LiveRecState.RECORDING -> stringResource(R.string.ctl_rec_recording)
-                            LiveRecState.PLAYING -> stringResource(R.string.ctl_rec_playing)
-                        }
-                        val recColor = when (uiState.liveRec) {
-                            LiveRecState.IDLE -> OssmPrimary
-                            LiveRecState.ARMED, LiveRecState.RECORDING -> OssmError
-                            LiveRecState.PLAYING -> OssmWarning
-                        }
-                        Button(
-                            onClick = onLiveRecordToggle,
-                            enabled = connected && uiState.streamingReady,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(52.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = recColor)
-                        ) {
-                            Text(recLabel, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                        }
                     }
                     activePattern.mode == PatternControlMode.PROGRESSIVE -> {
                         ProgressiveSpeedBar(
@@ -556,6 +474,9 @@ fun ControlScreen(
                             maxValue = depthRangeDraft.endInclusive,
                             enabled = slidersEnabled,
                             positionFraction = positionFraction,
+                            listeningDepthCurrent = uiState.listeningDepthCurrent,
+                            randomMinValue = uiState.randomDepthMinCurrent,
+                            randomMaxValue = uiState.randomDepthMaxCurrent,
                             onRangeChange = { min, max ->
                                 depthRangeDraft = min..max
                                 onDepthLive(min, max)
@@ -566,16 +487,11 @@ fun ControlScreen(
                             }
                         )
                         Spacer(Modifier.height(8.dp))
-                        ControlSlider(
-                            label = stringResource(R.string.ctl_sensation_ramp),
+                        CenteredSensationSlider(
                             value = sensationDraft,
-                            onValueChange = { sensationDraft = it; onSensationLive(it) },
-                            onValueCommit = { committed ->
-                                sensationDraft = committed
-                                onSensationCommit(committed)
-                            },
                             enabled = slidersEnabled,
-                            activeColor = OssmAccent
+                            onValueChange = { value -> sensationDraft = value; onSensationLive(value) },
+                            onValueCommit = { value -> sensationDraft = value; onSensationCommit(value) }
                         )
                         Spacer(Modifier.height(12.dp))
                         Row(
@@ -671,6 +587,9 @@ fun ControlScreen(
                             maxValue = depthRangeDraft.endInclusive,
                             enabled = slidersEnabled,
                             positionFraction = positionFraction,
+                            listeningDepthCurrent = uiState.listeningDepthCurrent,
+                            randomMinValue = uiState.randomDepthMinCurrent,
+                            randomMaxValue = uiState.randomDepthMaxCurrent,
                             onRangeChange = { min, max ->
                                 depthRangeDraft = min..max
                                 onDepthLive(min, max)
@@ -743,16 +662,30 @@ fun ControlScreen(
                             }
                         }
                     }
+                    activePattern.mode == PatternControlMode.ADAPTIVE -> {
+                        AdaptiveModeContent(
+                            adaptiveState = adaptiveState,
+                            settings = adaptiveSettings,
+                            manualAdjustments = adaptiveManualAdjustments,
+                            connected = connected,
+                            onEnabledChange = adaptiveVm::setEnabled,
+                            onPaceChange = adaptiveVm::setPace,
+                            onDiversityChange = adaptiveVm::setDiversity,
+                            onStart = adaptiveVm::startAdaptive,
+                            onStop = adaptiveVm::stopAdaptive
+                        )
+                    }
                     else -> {
                         // Simple Stroke et Teasing & Pounding exposent le mode aléatoire /
                         // piston : une case « Aléatoire » collée sous chaque curseur.
                         val isRandomCapable = activePattern.key == "teasingPounding" ||
                             activePattern.key == "simpleStroke"
 
-                        if (uiState.listeningMode) {
-                            // Mode à l'écoute : la vitesse est PILOTÉE par le micro. Deux barres,
-                            // comme le mode Progressif : plafond ROUGE réglable (max que le micro
-                            // peut atteindre) + barre BLEUE live = vitesse réelle (niveau × plafond).
+                        if (uiState.listeningMode && uiState.listeningTargetSpeed) {
+                            // Mode à l'écoute : la vitesse est PILOTÉE par le VOLUME du
+                            // micro. Deux barres, comme le mode Progressif : plafond ROUGE
+                            // réglable (max que le micro peut atteindre) + barre BLEUE live
+                            // = vitesse réelle (volume × plafond).
                             ProgressiveSpeedBar(
                                 currentValue = uiState.speed,
                                 maxValue = uiState.listeningCeiling,
@@ -771,7 +704,10 @@ fun ControlScreen(
                                     onSpeedCommit(committed)
                                 },
                                 enabled = slidersEnabled,
-                                activeColor = OssmPrimary
+                                activeColor = OssmPrimary,
+                                currentMarker = uiState.randomSpeedCurrent,
+                                displayValue = "${((uiState.randomSpeedCurrent ?: speedDraft) * 100).toInt()}%",
+                                displayValueColor = if (uiState.randomSpeedCurrent != null) OssmError else null
                             )
                         }
                         if (isRandomCapable) {
@@ -787,6 +723,9 @@ fun ControlScreen(
                             maxValue = depthRangeDraft.endInclusive,
                             enabled = slidersEnabled,
                             positionFraction = positionFraction,
+                            listeningDepthCurrent = uiState.listeningDepthCurrent,
+                            randomMinValue = uiState.randomDepthMinCurrent,
+                            randomMaxValue = uiState.randomDepthMaxCurrent,
                             onRangeChange = { min, max ->
                                 depthRangeDraft = min..max
                                 onDepthLive(min, max)
@@ -805,38 +744,26 @@ fun ControlScreen(
                                 onCheckedChange = { onDepthRandomToggle(it) }
                             )
                         }
-                        if (activePattern.mode == PatternControlMode.STROKE_ENGINE && activePattern.key != "simpleStroke") {
+                        if (activePattern.mode == PatternControlMode.STROKE_ENGINE) {
                             Spacer(Modifier.height(12.dp))
-                            ControlSlider(
-                                label = stringResource(R.string.ctl_sensation),
+                            CenteredSensationSlider(
                                 value = sensationDraft,
-                                onValueChange = { sensationDraft = it; onSensationLive(it) },
-                                onValueCommit = { committed ->
-                                    sensationDraft = committed
-                                    onSensationCommit(committed)
-                                },
                                 enabled = slidersEnabled,
-                                activeColor = OssmAccent
-                            )
-                            // Sensation aléatoire : moitié retour (0–50) et/ou aller (50–100).
-                            RandomModeRow(
-                                label = stringResource(R.string.ctl_random_sensation_low),
-                                checked = uiState.randSensationLow,
-                                onCheckedChange = { onRandomToggle(RandomTarget.SENSATION_LOW, it) }
-                            )
-                            RandomModeRow(
-                                label = stringResource(R.string.ctl_random_sensation_high),
-                                checked = uiState.randSensationHigh,
-                                onCheckedChange = { onRandomToggle(RandomTarget.SENSATION_HIGH, it) }
+                                onValueChange = { value -> sensationDraft = value; onSensationLive(value) },
+                                onValueCommit = { value -> sensationDraft = value; onSensationCommit(value) }
                             )
                         }
                         // Pied de section : mode à l'écoute (micro).
                         if (isRandomCapable) {
                             Spacer(Modifier.height(16.dp))
                             ListeningModeFooter(
-                                enabled = uiState.listeningMode,
-                                level = listeningLevel,
-                                onToggle = onListeningToggle
+                            enabled = uiState.listeningMode,
+                            level = listeningLevel,
+                            onToggle = onListeningToggle,
+                            speedTargetEnabled = uiState.listeningTargetSpeed,
+                            depthTargetEnabled = uiState.listeningTargetDepth,
+                            onSpeedTargetChange = onListeningTargetSpeedChange,
+                            onDepthTargetChange = onListeningTargetDepthChange
                             )
                         }
                     }
@@ -846,42 +773,17 @@ fun ControlScreen(
             Spacer(Modifier.height(24.dp))
         }
 
-        if (patternsCollapsed) {
-            val bubbleSizePx = with(LocalDensity.current) { 62.dp.toPx() }
-            Box(
-                modifier = Modifier
-                    .offset { IntOffset(bubbleX.roundToInt(), bubbleY.roundToInt()) }
-                    .size(62.dp)
-                    .clip(CircleShape)
-                    .background(OssmPrimary.copy(alpha = 0.94f))
-                    .border(2.dp, OssmPrimaryLight.copy(alpha = 0.7f), CircleShape)
-                    .pointerInput(Unit) {
-                        detectTapGestures { patternsCollapsed = false }
-                    }
-                    .pointerInput(rootSize) {
-                        detectDragGestures { change, amount ->
-                            change.consume()
-                            val maxX = (rootSize.width - bubbleSizePx).coerceAtLeast(0f)
-                            val maxY = (rootSize.height - bubbleSizePx).coerceAtLeast(0f)
-                            bubbleX = (bubbleX + amount.x).coerceIn(0f, maxX)
-                            bubbleY = (bubbleY + amount.y).coerceIn(0f, maxY)
-                            // Interdit de recouvrir le bouton STOP.
-                            stopRect?.let { r ->
-                                val b = Rect(bubbleX, bubbleY, bubbleX + bubbleSizePx, bubbleY + bubbleSizePx)
-                                if (b.overlaps(Rect(r.left - 12f, r.top - 12f, r.right + 12f, r.bottom + 12f))) {
-                                    bubbleY = if ((bubbleY + bubbleSizePx / 2f) < r.center.y) {
-                                        (r.top - bubbleSizePx - 16f).coerceAtLeast(0f)
-                                    } else {
-                                        (r.bottom + 16f).coerceAtMost(maxY)
-                                    }
-                                }
-                            }
-                        }
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                Text("▦", color = OssmOnSurface, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-            }
+        if (patternPickerOpen) {
+            PatternPickerOverlay(
+                uiState = uiState,
+                onPattern = { key ->
+                    onPattern(key)
+                    patternPickerOpen = false
+                },
+                onReorder = { showReorderDialog = true },
+                onDismiss = { patternPickerOpen = false },
+                modifier = Modifier.align(Alignment.TopCenter)
+            )
         }
     }
 
@@ -923,7 +825,16 @@ fun ControlScreen(
     }
 
     if (showInfoDialog) {
-        ButtonsInfoDialog(onDismiss = { showInfoDialog = false })
+        ButtonsInfoDialog(
+            speedChecked = uiState.speedGuard.enabled,
+            onSpeedCheckedChange = onSpeedGuardEnabledChange,
+            depthChecked = uiState.depthGuard.enabled,
+            onDepthCheckedChange = onDepthGuardEnabledChange,
+            depthLimitMin = uiState.depthLimitMin,
+            depthLimitMax = uiState.depthLimitMax,
+            onDepthLimitsChange = onDepthLimitsChange,
+            onDismiss = { showInfoDialog = false }
+        )
     }
 
     if (uiState.pendingAutoStart) {
@@ -939,83 +850,259 @@ fun ControlScreen(
 }
 
 @Composable
-private fun SecuritySquare(
-    speedChecked: Boolean,
-    onSpeedCheckedChange: (Boolean) -> Unit,
-    depthChecked: Boolean,
-    onDepthCheckedChange: (Boolean) -> Unit,
-    onInfoClick: () -> Unit
+private fun PatternOpenerButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    IconButton(
+        onClick = onClick,
+        modifier = modifier
+            .size(40.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(OssmGlass)
+            .border(1.dp, OssmGlassBorder, RoundedCornerShape(10.dp))
+    ) {
+        Icon(
+            Icons.Default.TouchApp,
+            contentDescription = stringResource(R.string.ctl_patterns_open),
+            tint = OssmPrimaryLight,
+            modifier = Modifier.size(22.dp)
+        )
+    }
+}
+
+@Composable
+private fun PatternPickerOverlay(
+    uiState: ControlUiState,
+    onPattern: (String) -> Unit,
+    onReorder: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Box(
-        modifier = Modifier
-            .size(84.dp)
-            .clip(MaterialTheme.shapes.medium)
-            .background(OssmGlass)
-            .border(1.dp, OssmGlassBorder, shape = MaterialTheme.shapes.medium)
-            .padding(6.dp)
+        modifier = modifier
+            .fillMaxSize()
+            .background(OssmBackground)
+            .padding(vertical = 24.dp)
     ) {
-        Column(
-            modifier = Modifier.fillMaxSize(),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                "SECURITE",
-                color = OssmPrimaryLight,
-                fontSize = 8.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 0.5.sp
-            )
-            Spacer(Modifier.height(2.dp))
+        GlassCard(modifier = Modifier.fillMaxWidth()) {
             Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                MiniGuardToggle(label = "V", checked = speedChecked, onCheckedChange = onSpeedCheckedChange)
-                MiniGuardToggle(label = "P", checked = depthChecked, onCheckedChange = onDepthCheckedChange)
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        stringResource(R.string.ctl_patterns),
+                        color = OssmPrimaryLight,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.5.sp
+                    )
+                    Text(
+                        stringResource(R.string.ctl_patterns_hint),
+                        color = OssmOnSurface.copy(alpha = 0.62f),
+                        fontSize = 11.sp
+                    )
+                }
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = stringResource(R.string.ctl_patterns_collapse),
+                        tint = OssmPrimaryLight
+                    )
+                }
             }
-        }
-        IconButton(
-            onClick = onInfoClick,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .size(20.dp)
-        ) {
-            Icon(
-                Icons.Default.Info,
-                contentDescription = "Informations sur les boutons",
-                tint = OssmPrimaryLight,
-                modifier = Modifier.size(14.dp)
-            )
+
+            Spacer(Modifier.height(10.dp))
+            if (uiState.availablePatterns.isEmpty()) {
+                Text(
+                    stringResource(R.string.ctl_no_patterns),
+                    color = OssmOnSurface.copy(alpha = 0.7f),
+                    fontSize = 13.sp
+                )
+            } else {
+                val ordered = uiState.orderedPatterns
+                val rows = ordered.chunked(2)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 420.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    rows.forEach { rowPatterns ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            rowPatterns.forEach { pattern ->
+                                val index = ordered.indexOf(pattern)
+                                PatternButton(
+                                    label = pattern.name,
+                                    color = PatternColors[index % PatternColors.size],
+                                    isActive = uiState.activePatternKey == pattern.key,
+                                    onClick = { onPattern(pattern.key) },
+                                    onLongClick = onReorder,
+                                    enabled = true,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            if (rowPatterns.size == 1) Spacer(Modifier.weight(1f))
+                        }
+                    }
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun MiniGuardToggle(
-    label: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit
+private fun CenteredSensationSlider(
+    value: Float,
+    enabled: Boolean,
+    onValueChange: (Float) -> Unit,
+    onValueCommit: (Float) -> Unit
+) {
+    var sliderWidthPx by remember { mutableIntStateOf(0) }
+    var draft by remember { mutableFloatStateOf(value) }
+    LaunchedEffect(value) {
+        draft = value
+    }
+    val sensation = draft.coerceIn(0f, 1f)
+    val valueText = "${(sensation * 100).toInt()}%"
+    fun changeBy(step: Float) {
+        val next = (draft + step).coerceIn(0f, 1f)
+        draft = next
+        onValueChange(next)
+        onValueCommit(next)
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            "Sensation",
+            color = OssmPrimaryLight,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Text(
+            valueText,
+            color = if (enabled) OssmOnSurface else OssmOnSurface.copy(alpha = 0.4f),
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            IconButton(
+                onClick = { changeBy(-0.01f) },
+                enabled = enabled,
+                modifier = Modifier.size(48.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Remove,
+                    contentDescription = stringResource(R.string.ctl_sensation_decrease),
+                    tint = if (enabled) OssmPrimary else OssmOnSurface.copy(alpha = 0.35f)
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .onSizeChanged { sliderWidthPx = it.width }
+            ) {
+                val trackPaddingPx = with(LocalDensity.current) { 16.dp.toPx() }
+                val trackWidthPx = (sliderWidthPx - trackPaddingPx * 2f).coerceAtLeast(0f)
+                val segmentWidth = sensation * trackWidthPx
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(horizontal = 16.dp)
+                    .fillMaxWidth()
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(
+                        if (enabled) OssmOnSurface.copy(alpha = 0.38f)
+                        else OssmOnSurface.copy(alpha = 0.18f)
+                    )
+            ) {
+                if (trackWidthPx > 0f && segmentWidth > 0f) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .width(with(LocalDensity.current) { segmentWidth.toDp() })
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(OssmAccent)
+                    )
+                }
+            }
+                Slider(
+                    value = sensation,
+                    onValueChange = {
+                        val next = it.coerceIn(0f, 1f)
+                        draft = next
+                        onValueChange(next)
+                    },
+                    onValueChangeFinished = { onValueCommit(draft.coerceIn(0f, 1f)) },
+                    valueRange = 0f..1f,
+                    enabled = enabled,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                    colors = SliderDefaults.colors(
+                        thumbColor = OssmAccent,
+                        activeTrackColor = androidx.compose.ui.graphics.Color.Transparent,
+                        inactiveTrackColor = androidx.compose.ui.graphics.Color.Transparent,
+                        disabledThumbColor = OssmOnSurface.copy(alpha = 0.25f),
+                        disabledActiveTrackColor = androidx.compose.ui.graphics.Color.Transparent,
+                        disabledInactiveTrackColor = androidx.compose.ui.graphics.Color.Transparent
+                    )
+                )
+            }
+            IconButton(
+                onClick = { changeBy(0.01f) },
+                enabled = enabled,
+                modifier = Modifier.size(48.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = stringResource(R.string.ctl_sensation_increase),
+                    tint = if (enabled) OssmAccent else OssmOnSurface.copy(alpha = 0.35f)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsGearButton(
+    onInfoClick: () -> Unit
 ) {
     Box(
-        contentAlignment = Alignment.Center,
         modifier = Modifier
-            .size(30.dp)
+            .size(80.dp)
             .clip(CircleShape)
-            .background(if (checked) OssmPrimary.copy(alpha = 0.25f) else OssmOnSurface.copy(alpha = 0.08f))
-            .border(
-                width = 1.dp,
-                color = if (checked) OssmPrimary else OssmOnSurface.copy(alpha = 0.3f),
-                shape = CircleShape
-            )
-            .pointerInput(checked) {
-                detectTapGestures { onCheckedChange(!checked) }
-            }
+            .background(OssmGlass)
+            .border(1.dp, OssmGlassBorder, shape = CircleShape)
+            .clickable(onClick = onInfoClick)
+            .padding(8.dp),
+        contentAlignment = Alignment.Center
     ) {
-        Text(
-            label,
-            color = if (checked) OssmPrimaryLight else OssmOnSurface.copy(alpha = 0.5f),
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold
+        Icon(
+            Icons.Default.Settings,
+            contentDescription = "Reglages de securite",
+            tint = OssmPrimaryLight,
+            modifier = Modifier.size(30.dp)
         )
     }
 }
@@ -1063,14 +1150,62 @@ private fun PausePlayButton(
 }
 
 @Composable
-private fun ButtonsInfoDialog(onDismiss: () -> Unit) {
+private fun ButtonsInfoDialog(
+    speedChecked: Boolean,
+    onSpeedCheckedChange: (Boolean) -> Unit,
+    depthChecked: Boolean,
+    onDepthCheckedChange: (Boolean) -> Unit,
+    depthLimitMin: Float,
+    depthLimitMax: Float,
+    onDepthLimitsChange: (Float, Float) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var depthLimits by remember { mutableStateOf(depthLimitMin..depthLimitMax) }
+    LaunchedEffect(depthLimitMin, depthLimitMax) {
+        depthLimits = depthLimitMin..depthLimitMax
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = OssmSurface,
-        title = { Text("A quoi servent ces boutons ?", color = OssmOnSurface) },
+        title = { Text("Protections de sécurité", color = OssmOnSurface) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                InfoLine("SECURITE (V / P)", "Active/desactive la protection contre un changement brusque de Vitesse ou de Profondeur. Si active, un changement soudain (glissement accroche, doigt qui saute) demande confirmation avant d'etre applique.")
+                Text(
+                    "Ces protections demandent une confirmation avant d'appliquer une hausse soudaine. Le petit carré ouvre ce réglage; il ne modifie jamais les protections directement.",
+                    color = OssmOnSurface.copy(alpha = 0.8f),
+                    fontSize = 13.sp
+                )
+                SliderGuardRow(
+                    title = "Vitesse",
+                    description = "Confirmer les hausses brusques de vitesse.",
+                    checked = speedChecked,
+                    onCheckedChange = onSpeedCheckedChange
+                )
+                SliderGuardRow(
+                    title = "Profondeur",
+                    description = "Confirmer les hausses brusques de profondeur ou de course.",
+                    checked = depthChecked,
+                    onCheckedChange = onDepthCheckedChange
+                )
+                Text(
+                    "Limites de profondeur: ${(depthLimits.start * 100).toInt()}% - ${(depthLimits.endInclusive * 100).toInt()}%",
+                    color = OssmPrimaryLight,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                RangeSlider(
+                    value = depthLimits,
+                    onValueChange = { depthLimits = it },
+                    onValueChangeFinished = {
+                        onDepthLimitsChange(depthLimits.start, depthLimits.endInclusive)
+                    },
+                    valueRange = 0f..1f,
+                    colors = SliderDefaults.colors(
+                        thumbColor = OssmAccent,
+                        activeTrackColor = OssmAccent
+                    )
+                )
+                HorizontalDivider(color = OssmGlassBorder)
                 InfoLine("STOP", "Coupe immediatement le mouvement (vitesse a zero).")
                 InfoLine("Pause/Play (jaune/vert)", "Jaune = en mouvement, appuie pour mettre en pause. Vert = en pause, appuie pour reprendre exactement a la meme position/intensite.")
             }
@@ -1095,7 +1230,11 @@ private fun InfoLine(title: String, description: String) {
 private fun ListeningModeFooter(
     enabled: Boolean,
     level: Float,
-    onToggle: (Boolean) -> Unit
+    onToggle: (Boolean) -> Unit,
+    speedTargetEnabled: Boolean,
+    depthTargetEnabled: Boolean,
+    onSpeedTargetChange: (Boolean) -> Unit,
+    onDepthTargetChange: (Boolean) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         HorizontalDivider(color = OssmGlassBorder)
@@ -1144,6 +1283,25 @@ private fun ListeningModeFooter(
                         .background(OssmAccent)
                 )
             }
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "Le micro agit sur",
+                color = OssmPrimaryLight,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold
+            )
+            SliderGuardRow(
+                title = "Vitesse",
+                description = "Le volume du son pilote la vitesse.",
+                checked = speedTargetEnabled,
+                onCheckedChange = onSpeedTargetChange
+            )
+            SliderGuardRow(
+                title = "Profondeur",
+                description = "La fréquence des pics sonores pilote la profondeur.",
+                checked = depthTargetEnabled,
+                onCheckedChange = onDepthTargetChange
+            )
         }
     }
 }
@@ -1299,12 +1457,18 @@ private fun DepthRangeEditor(
     enabled: Boolean,
     onRangeChange: (Float, Float) -> Unit,
     onRangeCommit: (Float, Float) -> Unit,
-    positionFraction: Float? = null
+    positionFraction: Float? = null,
+    listeningDepthCurrent: Float? = null,
+    randomMinValue: Float? = null,
+    randomMaxValue: Float? = null
 ) {
     var sliderWidthPx by remember { mutableIntStateOf(0) }
     // Dernière barre touchée : true = FOND (max, droite), false = RETRAIT (min, gauche).
     // Les boutons +/- agissent sur CETTE barre. Défaut = fond (comportement d'avant).
     var selectedIsMax by remember { mutableStateOf(true) }
+    val displayedMin = randomMinValue ?: minValue
+    val displayedMax = randomMaxValue ?: maxValue
+    val randomRangeActive = randomMinValue != null || randomMaxValue != null
 
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(
@@ -1320,8 +1484,12 @@ private fun DepthRangeEditor(
                 letterSpacing = 1.sp
             )
             Text(
-                "${(minValue * 100).toInt()}% - ${(maxValue * 100).toInt()}%",
-                color = if (enabled) OssmOnSurface else OssmOnSurface.copy(alpha = 0.4f),
+                "${(displayedMin * 100).toInt()}% - ${(displayedMax * 100).toInt()}%",
+                color = when {
+                    !enabled -> OssmOnSurface.copy(alpha = 0.4f)
+                    randomRangeActive -> OssmError
+                    else -> OssmOnSurface
+                },
                 fontSize = 14.sp,
                 fontWeight = FontWeight.SemiBold
             )
@@ -1411,25 +1579,52 @@ private fun DepthRangeEditor(
                         inactiveTrackColor = OssmAccent.copy(alpha = 0.25f)
                     )
                 )
-                // Barre rouge = position réelle du chariot (rapportée par la machine).
-                // positionFraction est auto-calibré sur la course OBSERVÉE (0 = point le
-                // plus rétracté vu, 1 = point le plus profond vu). On le recale dans la
-                // plage ABSOLUE des curseurs [min, max] : la barre rouge reste donc
-                // toujours entre le curseur min et le curseur max et ne les dépasse
-                // jamais (la machine ne va jamais plus profond que le max réglé).
                 if (positionFraction != null && sliderWidthPx > 0) {
-                    val absoluteFraction =
-                        (minValue + positionFraction.coerceIn(0f, 1f) * (maxValue - minValue))
-                            .coerceIn(0f, 1f)
                     val xDp = with(LocalDensity.current) {
-                        (sliderWidthPx * absoluteFraction).toDp()
+                        (sliderWidthPx * positionFraction.coerceIn(0f, 1f)).toDp()
                     }
                     Box(
                         modifier = Modifier
                             .offset(x = xDp - 1.5.dp)
                             .width(3.dp)
                             .height(48.dp)
-                            .background(OssmError.copy(alpha = 0.9f))
+                        .background(OssmError.copy(alpha = 0.9f))
+                    )
+                }
+                listeningDepthCurrent?.let { depth ->
+                    val xDp = with(LocalDensity.current) {
+                        (sliderWidthPx * depth.coerceIn(0f, 1f)).toDp()
+                    }
+                    Box(
+                        modifier = Modifier
+                            .offset(x = xDp - 1.5.dp)
+                            .width(3.dp)
+                            .height(48.dp)
+                            .background(OssmError)
+                    )
+                }
+                randomMinValue?.let { randomValue ->
+                    val xDp = with(LocalDensity.current) {
+                        (sliderWidthPx * randomValue.coerceIn(0f, 1f)).toDp()
+                    }
+                    Box(
+                        modifier = Modifier
+                            .offset(x = xDp - 1.5.dp)
+                            .width(3.dp)
+                            .height(48.dp)
+                            .background(OssmError.copy(alpha = 0.95f))
+                    )
+                }
+                randomMaxValue?.let { randomValue ->
+                    val xDp = with(LocalDensity.current) {
+                        (sliderWidthPx * randomValue.coerceIn(0f, 1f)).toDp()
+                    }
+                    Box(
+                        modifier = Modifier
+                            .offset(x = xDp - 1.5.dp)
+                            .width(3.dp)
+                            .height(48.dp)
+                            .background(OssmError.copy(alpha = 0.95f))
                     )
                 }
             }
@@ -1682,6 +1877,386 @@ private fun GuardCheckboxRow(
                 checkedThumbColor = OssmPrimary,
                 checkedTrackColor = OssmPrimary.copy(alpha = 0.35f)
             )
+        )
+    }
+}
+
+@Composable
+private fun AdaptiveModeContent(
+    adaptiveState: AdaptiveUiState,
+    settings: AdaptiveSettings,
+    manualAdjustments: Long,
+    connected: Boolean,
+    onEnabledChange: (Boolean) -> Unit,
+    onPaceChange: (AdaptivePace) -> Unit,
+    onDiversityChange: (Float) -> Unit,
+    onStart: () -> Unit,
+    onStop: () -> Unit
+) {
+    AdaptiveStatusCard(
+        state = adaptiveState,
+        manualAdjustments = manualAdjustments
+    )
+    Spacer(Modifier.height(10.dp))
+    AdaptiveSettingsCard(
+        settings = settings,
+        running = adaptiveState.running,
+        enabled = connected,
+        onEnabledChange = onEnabledChange,
+        onPaceChange = onPaceChange,
+        onDiversityChange = onDiversityChange,
+        onStart = onStart,
+        onStop = onStop
+    )
+}
+
+@Composable
+private fun AdaptiveStatusCard(
+    state: AdaptiveUiState,
+    manualAdjustments: Long
+) {
+    GlassCard(modifier = Modifier.fillMaxWidth(), tint = OssmPrimary) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = if (state.locked) Icons.Default.Lock else Icons.Default.LockOpen,
+                contentDescription = stringResource(
+                    if (state.locked) R.string.adapt_locked else R.string.adapt_unlocked
+                ),
+                tint = if (state.locked) OssmWarning else OssmConnected,
+                modifier = Modifier.size(22.dp)
+            )
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    stringResource(
+                        if (state.locked) R.string.adapt_locked else R.string.adapt_unlocked
+                    ),
+                    color = if (state.locked) OssmWarning else OssmConnected,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    stringResource(
+                        if (state.locked) R.string.adapt_locked_hint else R.string.adapt_unlocked_hint
+                    ),
+                    color = OssmOnSurface.copy(alpha = 0.6f),
+                    fontSize = 11.sp
+                )
+            }
+            Text(
+                state.firmwareLevel.name,
+                color = OssmAccent,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp
+            )
+        }
+
+        Spacer(Modifier.height(14.dp))
+        AdaptiveBar(
+            label = stringResource(R.string.adapt_progression),
+            percent = state.progressionPercent,
+            fillColor = OssmPrimary
+        )
+
+        Spacer(Modifier.height(10.dp))
+        AdaptiveBar(
+            label = stringResource(R.string.adapt_confidence),
+            percent = state.confidencePercent,
+            fillColor = OssmAccent,
+            valueColor = confidenceColor(state.confidencePercent)
+        )
+
+        Spacer(Modifier.height(14.dp))
+        val summary = state.learningSummary
+        AdaptiveStatRow(
+            label = stringResource(R.string.adapt_sessions),
+            value = "${summary.sessionsCompleted}"
+        )
+        AdaptiveStatRow(
+            label = stringResource(R.string.adapt_total_active),
+            value = formatDuration(summary.totalActiveMillis)
+        )
+        AdaptiveStatRow(
+            label = stringResource(R.string.adapt_distinct_days),
+            value = "${summary.distinctDays}"
+        )
+        AdaptiveStatRow(
+            label = stringResource(R.string.adapt_manual_adjustments),
+            value = "$manualAdjustments"
+        )
+        summary.topPatternKey?.let { topKey ->
+            AdaptiveStatRow(
+                label = stringResource(R.string.adapt_top_pattern),
+                value = KnownStrokeEnginePatterns.firstOrNull { it.key == topKey }?.name ?: topKey
+            )
+        }
+    }
+}
+
+@Composable
+private fun AdaptiveBar(
+    label: String,
+    percent: Int,
+    fillColor: Color,
+    valueColor: Color = OssmOnSurface
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            label,
+            color = OssmPrimaryLight,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp
+        )
+        Spacer(Modifier.weight(1f))
+        Text(
+            "$percent%",
+            color = valueColor,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+    Spacer(Modifier.height(6.dp))
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(6.dp)
+            .clip(RoundedCornerShape(3.dp))
+            .background(OssmOnSurface.copy(alpha = 0.12f))
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(percent.coerceIn(0, 100) / 100f)
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(fillColor)
+        )
+    }
+}
+
+@Composable
+private fun AdaptiveStatRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            label,
+            color = OssmOnSurface.copy(alpha = 0.65f),
+            fontSize = 13.sp
+        )
+        Text(
+            value,
+            color = OssmOnSurface,
+            style = MaterialTheme.typography.bodyMedium
+        )
+    }
+    Spacer(Modifier.height(4.dp))
+}
+
+private fun confidenceColor(percent: Int): Color = when {
+    percent >= 60 -> OssmConnected
+    percent >= 30 -> OssmWarning
+    else -> OssmError
+}
+
+@Composable
+private fun AdaptiveSettingsCard(
+    settings: AdaptiveSettings,
+    running: Boolean,
+    enabled: Boolean,
+    onEnabledChange: (Boolean) -> Unit,
+    onPaceChange: (AdaptivePace) -> Unit,
+    onDiversityChange: (Float) -> Unit,
+    onStart: () -> Unit,
+    onStop: () -> Unit
+) {
+    GlassCard(modifier = Modifier.fillMaxWidth(), tint = OssmAccent) {
+        Text(
+            stringResource(R.string.adapt_settings_title),
+            color = OssmPrimaryLight,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.5.sp
+        )
+        Spacer(Modifier.height(10.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    stringResource(R.string.adapt_enabled),
+                    color = OssmOnSurface,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    stringResource(R.string.adapt_enabled_hint),
+                    color = OssmOnSurface.copy(alpha = 0.6f),
+                    fontSize = 11.sp
+                )
+            }
+            Switch(
+                checked = settings.enabled,
+                onCheckedChange = onEnabledChange,
+                enabled = enabled,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = OssmAccent,
+                    checkedTrackColor = OssmAccent.copy(alpha = 0.4f),
+                    uncheckedThumbColor = OssmOnSurface.copy(alpha = 0.5f),
+                    uncheckedTrackColor = OssmOnSurface.copy(alpha = 0.12f)
+                )
+            )
+        }
+        Spacer(Modifier.height(12.dp))
+        Text(
+            stringResource(R.string.adapt_pace),
+            color = OssmPrimaryLight,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp
+        )
+        Spacer(Modifier.height(6.dp))
+        PaceSelector(
+            selected = settings.pace,
+            enabled = enabled,
+            onPaceChange = onPaceChange
+        )
+        Spacer(Modifier.height(12.dp))
+        ControlSlider(
+            label = stringResource(R.string.adapt_diversity),
+            value = settings.diversity,
+            onValueChange = onDiversityChange,
+            onValueCommit = onDiversityChange,
+            enabled = enabled,
+            activeColor = OssmAccent,
+            displayValue = "${(settings.diversity * 100).toInt()}%"
+        )
+        Text(
+            stringResource(R.string.adapt_diversity_hint),
+            color = OssmOnSurface.copy(alpha = 0.6f),
+            fontSize = 11.sp
+        )
+        if (running) {
+            Spacer(Modifier.height(10.dp))
+            Text(
+                stringResource(R.string.adapt_running_hint),
+                color = OssmConnected,
+                fontSize = 12.sp
+            )
+        }
+        Spacer(Modifier.height(12.dp))
+        if (running) {
+            Button(
+                onClick = onStop,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = OssmWarning)
+            ) {
+                Text(
+                    stringResource(R.string.adapt_stop),
+                    textAlign = TextAlign.Center,
+                    lineHeight = 16.sp
+                )
+            }
+        } else {
+            Button(
+                onClick = onStart,
+                enabled = enabled && settings.enabled,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = OssmConnected)
+            ) {
+                Text(
+                    stringResource(R.string.adapt_start),
+                    textAlign = TextAlign.Center,
+                    lineHeight = 16.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PaceSelector(
+    selected: AdaptivePace,
+    enabled: Boolean,
+    onPaceChange: (AdaptivePace) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        PaceOption(
+            label = stringResource(R.string.adapt_pace_calm),
+            selected = selected == AdaptivePace.CALME,
+            enabled = enabled,
+            onClick = { onPaceChange(AdaptivePace.CALME) },
+            modifier = Modifier.weight(1f)
+        )
+        PaceOption(
+            label = stringResource(R.string.adapt_pace_moderate),
+            selected = selected == AdaptivePace.MODERE,
+            enabled = enabled,
+            onClick = { onPaceChange(AdaptivePace.MODERE) },
+            modifier = Modifier.weight(1f)
+        )
+        PaceOption(
+            label = stringResource(R.string.adapt_pace_dynamic),
+            selected = selected == AdaptivePace.DYNAMIQUE,
+            enabled = enabled,
+            onClick = { onPaceChange(AdaptivePace.DYNAMIQUE) },
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+private fun PaceOption(
+    label: String,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(
+                when {
+                    !enabled -> OssmOnSurface.copy(alpha = 0.06f)
+                    selected -> OssmPrimary.copy(alpha = 0.28f)
+                    else -> OssmGlass
+                }
+            )
+            .border(
+                1.dp,
+                if (selected) OssmPrimary else OssmGlassBorder,
+                RoundedCornerShape(10.dp)
+            )
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(vertical = 10.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            label,
+            color = when {
+                !enabled -> OssmOnSurface.copy(alpha = 0.35f)
+                selected -> OssmPrimaryLight
+                else -> OssmOnSurface.copy(alpha = 0.7f)
+            },
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold
         )
     }
 }

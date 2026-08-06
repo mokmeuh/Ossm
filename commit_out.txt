@@ -1,0 +1,11 @@
+[main 2489daf] v1.28.10 - Live: interrupteur sens on-device + inversion mapping + cadence 30/45 + latency off; audit; scripts
+ 14 files changed, 458 insertions(+), 191 deletions(-)
+ create mode 100644 AUDIT_DOC_OFFICIELLE.md
+ create mode 100644 all.bat
+ create mode 100644 build.bat
+ create mode 100644 build_install.bat
+ create mode 100644 bump.bat
+ create mode 100644 bump_version.ps1
+ create mode 100644 commit.bat
+ create mode 100644 install.bat
+ create mode 100644 push.bat

@@ -42,6 +42,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -76,6 +77,7 @@ class BleManager @Inject constructor(
     private var lastCommandTime = 0L
     private var emergencyRestoreJob: Job? = null
     private var scanJob: Job? = null
+    private val liveDepthRangeUpdates = Channel<LiveDepthRange>(Channel.CONFLATED)
 
     // Anti-throttle scan Android : le système ignore SILENCIEUSEMENT les startScan()
     // au-delà d'environ 5 appels / 30 s (BLE app scan quota). Symptôme : après une
@@ -110,6 +112,17 @@ class BleManager @Inject constructor(
     // stream:<pos>:<time> ne part (la bande de course serait imprévisible).
     private val _streamingReady = MutableStateFlow(false)
     val streamingReady: StateFlow<Boolean> = _streamingReady.asStateFlow()
+
+    init {
+        scope.launch {
+            for (range in liveDepthRangeUpdates) {
+                writeRaw("set:depth:${range.depthPercent}")
+                delay(LIVE_DEPTH_RANGE_WRITE_GAP_MS)
+                writeRaw("set:stroke:${range.strokePercent}")
+                _lastCommand.value = "set:depth:${range.depthPercent} set:stroke:${range.strokePercent}"
+            }
+        }
+    }
 
     fun startScan() {
         if (!hasPermissions()) {
@@ -263,8 +276,7 @@ class BleManager @Inject constructor(
 
     fun disconnect() {
         sendStop()
-        healthCheckJob?.cancel()
-        gatt?.disconnect()
+        forceResetConnection()
         log(LogLevel.INFO, "CONNECT", "Déconnexion demandée")
     }
 
@@ -326,6 +338,11 @@ class BleManager @Inject constructor(
 
     private val gattCallback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
+            if (gatt !== this@BleManager.gatt) {
+                log(LogLevel.DEBUG, "GATT", "Callback d'un GATT obsolète ignoré")
+                gatt.close()
+                return
+            }
             val deviceName = gatt.device.name ?: gatt.device.address
             when {
                 newState == BluetoothProfile.STATE_CONNECTED && status == BluetoothGatt.GATT_SUCCESS -> {
@@ -734,6 +751,9 @@ class BleManager @Inject constructor(
                     PatternControlMode.AUTO_RANDOM -> {
                         log(LogLevel.INFO, "CMD", "Auto Random selected in app; waiting for mix start")
                     }
+                    PatternControlMode.ADAPTIVE -> {
+                        log(LogLevel.INFO, "CMD", "Adaptive selected in app; waiting for engine start")
+                    }
                     PatternControlMode.LAUNCH_ONLY -> {
                         scope.launch { navigateToMode(pattern.key) }
                         val label = "menu → ${pattern.key}"
@@ -746,7 +766,6 @@ class BleManager @Inject constructor(
                 val speed = toPercent(command.command.speed)
                 val depthMax = toPercent(command.command.depthMax)
                 val stroke = toPercent(command.command.depthMax - command.command.depthMin)
-                val sensation = toPercent(command.command.sensation)
                 scope.launch {
                     writeRaw("set:speed:$speed")
                     delay(40)
@@ -760,9 +779,9 @@ class BleManager @Inject constructor(
                     delay(40)
                     writeRaw("set:stroke:$stroke")
                     delay(40)
-                    writeRaw("set:sensation:$sensation")
+                    writeStrokeEngineSensation(command.command)
                 }
-                val label = "spd=$speed depth=$depthMax stroke=$stroke sens=$sensation"
+                val label = "spd=$speed depth=$depthMax stroke=$stroke sens=${toPercent(command.command.sensation)}"
                 _lastCommand.value = label
                 log(LogLevel.INFO, "CMD", label)
             }
@@ -993,10 +1012,9 @@ class BleManager @Inject constructor(
         val speed = toPercent(command.speed)
         val depthMax = toPercent(command.depthMax)
         val stroke = toPercent(command.depthMax - command.depthMin)
-        val sensation = toPercent(command.sensation)
         log(
             LogLevel.INFO, "CMD",
-            "$reason → envoi depth=$depthMax stroke=$stroke spd=$speed sens=$sensation (anti-fuite streaming 100/100)"
+            "$reason → envoi depth=$depthMax stroke=$stroke spd=$speed sens=${toPercent(command.sensation)} (anti-fuite streaming 100/100)"
         )
         var attempt = 0
         while (attempt < 3) {
@@ -1007,7 +1025,7 @@ class BleManager @Inject constructor(
             delay(40)
             writeRaw("set:stroke:$stroke")
             delay(40)
-            writeRaw("set:sensation:$sensation")
+            writeStrokeEngineSensation(command)
             val verified = awaitMachineState(2_000) {
                 it.depth == depthMax && it.stroke == stroke
             }
@@ -1053,11 +1071,28 @@ class BleManager @Inject constructor(
         }
     }
 
+    private fun writeStrokeEngineSensation(command: StrokeEngineCommand) {
+        writeRaw(buildSensationCommand(command))
+    }
+
     /** Écriture mono-paramètre légère pour le drag temps réel des sliders. */
     fun liveSet(param: String, percent: Int) {
         val p = percent.coerceIn(0, 100)
         writeRaw("set:$param:$p")
         _lastCommand.value = "set:$param:$p"
+    }
+
+    /**
+     * Envoie une plage complète sans lancer deux écritures GATT concurrentes. Le
+     * firmware interprète `depth` comme le fond et `stroke` comme la course : l'ordre
+     * depth puis stroke évite un dépassement transitoire, et chaque nouveau drag
+     * remplace la paire encore en attente par sa valeur la plus récente.
+     */
+    fun liveSetDepthRange(depthPercent: Int, strokePercent: Int) {
+        liveDepthRangeUpdates.trySend(LiveDepthRange(
+            depthPercent = depthPercent.coerceIn(0, 100),
+            strokePercent = strokePercent.coerceIn(0, 100)
+        ))
     }
 
     /** Change le pattern stroke-engine actif sans repasser par le menu. */
@@ -1139,6 +1174,7 @@ class BleManager @Inject constructor(
     }
 
     companion object {
+        private const val LIVE_DEPTH_RANGE_WRITE_GAP_MS = 40L
         // Détection de perte de connexion silencieuse (ping RSSI périodique).
         private const val HEALTH_CHECK_INTERVAL_MS = 3_000L
         private const val HEALTH_CHECK_REPLY_TIMEOUT_MS = 1_500L
@@ -1148,4 +1184,14 @@ class BleManager @Inject constructor(
         private const val SCAN_THROTTLE_WINDOW_MS = 30_000L
         private const val SCAN_THROTTLE_MAX = 4
     }
+}
+
+private data class LiveDepthRange(
+    val depthPercent: Int,
+    val strokePercent: Int
+)
+
+internal fun buildSensationCommand(command: StrokeEngineCommand): String {
+    val sensation = (command.sensation * 100f).toInt().coerceIn(0, 100)
+    return "set:sensation:$sensation"
 }

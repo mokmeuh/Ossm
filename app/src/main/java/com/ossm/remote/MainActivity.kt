@@ -5,8 +5,10 @@ import android.bluetooth.BluetoothAdapter
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
@@ -18,23 +20,36 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.lifecycleScope
+import com.ossm.remote.data.repository.OverlayPreferencesRepository
 import com.ossm.remote.model.BleConnectionState
+import com.ossm.remote.overlay.OverlayService
 import com.ossm.remote.ui.navigation.BottomNavScreens
 import com.ossm.remote.ui.navigation.Screen
 import com.ossm.remote.ui.navigation.shouldReturnToScanAfterDisconnect
 import com.ossm.remote.ui.screens.*
 import com.ossm.remote.ui.theme.*
+import com.ossm.remote.updater.UpdaterStatus
+import com.ossm.remote.updater.UpdaterViewModel
+import com.ossm.remote.updater.installApk
 import com.ossm.remote.viewmodel.*
 import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    @Inject lateinit var overlayPreferencesRepository: OverlayPreferencesRepository
 
     private val bleVm: BleViewModel by viewModels()
     private val controlVm: ControlViewModel by viewModels()
@@ -42,6 +57,26 @@ class MainActivity : ComponentActivity() {
     private val profilesVm: ProfilesViewModel by viewModels()
     private val funscriptVm: FunscriptViewModel by viewModels()
     private val videoSyncVm: VideoSyncViewModel by viewModels()
+    private val updaterVm: UpdaterViewModel by viewModels()
+
+    /**
+     * Relance l'overlay quand on quitte l'app (home / passage vers une autre app) s'il est
+     * activé, à condition qu'il n'ait pas été fermé manuellement dans cette session.
+     * Une fermeture manuelle (icône app / X bulle) pose [OverlayService.manuallyClosed] ET
+     * coupe overlay_enabled ; le drapeau en mémoire couvre la course d'écriture async du
+     * DataStore. On ne démarre jamais l'overlay au premier plan : [maybeAutoStartOverlay] ne
+     * se déclenche que sur onStop (app quittée).
+     */
+    private val overlayAutoStartObserver = object : DefaultLifecycleObserver {
+        override fun onStart(owner: LifecycleOwner) {
+            // Retour au premier plan : l'auto-start redevient possible à la prochaine sortie.
+            OverlayService.manuallyClosed = false
+        }
+
+        override fun onStop(owner: LifecycleOwner) {
+            maybeAutoStartOverlay()
+        }
+    }
 
     private val enableBtLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -85,8 +120,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        lifecycle.addObserver(overlayAutoStartObserver)
 
         requestBlePermissions()
+        updaterVm.checkOnStartup()
 
         setContent {
             OssmRemoteTheme {
@@ -97,12 +134,18 @@ class MainActivity : ComponentActivity() {
                     profilesVm = profilesVm,
                     funscriptVm = funscriptVm,
                     videoSyncVm = videoSyncVm,
+                    updaterVm = updaterVm,
                     onEnableBluetooth = {
                         if (!bleVm.isBluetoothEnabled()) {
                             enableBtLauncher.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE))
                         }
                     },
-                    onListeningToggle = ::toggleListeningMode
+                    onListeningToggle = ::toggleListeningMode,
+                    onQuit = {
+                        controlVm.stop()
+                        bleVm.disconnect()
+                        finish()
+                    }
                 )
             }
         }
@@ -123,6 +166,22 @@ class MainActivity : ComponentActivity() {
         }
         permissionLauncher.launch(perms)
     }
+
+    /**
+     * Auto-start silencieux de l'overlay à la sortie de l'app : réutilise le même chemin que
+     * le toggle de l'écran Profils (startForegroundService, le service gère sa notification
+     * foreground). Sautée sans effet si la permission overlay n'est pas accordée, si l'overlay
+     * a été fermé manuellement dans la session, ou s'il est déjà actif.
+     */
+    private fun maybeAutoStartOverlay() {
+        if (!Settings.canDrawOverlays(this)) return
+        if (OverlayService.manuallyClosed || OverlayService.isRunning) return
+        lifecycleScope.launch {
+            if (overlayPreferencesRepository.overlayEnabled.first()) {
+                startForegroundService(Intent(this@MainActivity, OverlayService::class.java))
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalAnimationApi::class)
@@ -134,8 +193,10 @@ fun OssmApp(
     profilesVm: ProfilesViewModel,
     funscriptVm: FunscriptViewModel,
     videoSyncVm: VideoSyncViewModel,
+    updaterVm: UpdaterViewModel,
     onEnableBluetooth: () -> Unit,
-    onListeningToggle: (Boolean) -> Unit
+    onListeningToggle: (Boolean) -> Unit,
+    onQuit: () -> Unit
 ) {
     val pagerState = rememberPagerState(pageCount = { BottomNavScreens.size })
     val scope = rememberCoroutineScope()
@@ -151,6 +212,14 @@ fun OssmApp(
     val videoSyncState by videoSyncVm.uiState.collectAsState()
     val scannedDevices by bleVm.scannedDevices.collectAsState()
     val machineState by bleVm.machineState.collectAsState()
+    val context = LocalContext.current
+    val updaterState by updaterVm.uiState.collectAsState()
+    val updaterUrl by updaterVm.manualUrl.collectAsState()
+    var showQuitDialog by remember { mutableStateOf(false) }
+
+    BackHandler(enabled = !showQuitDialog) {
+        showQuitDialog = true
+    }
 
     val currentRoute = BottomNavScreens[pagerState.currentPage].route
     val scanPageIndex = BottomNavScreens.indexOfFirst { it.route == Screen.Scan.route }
@@ -206,6 +275,7 @@ fun OssmApp(
     ) { padding ->
         HorizontalPager(
             state = pagerState,
+            userScrollEnabled = false,
             modifier = Modifier.padding(padding)
         ) {
             when (BottomNavScreens[it]) {
@@ -237,8 +307,7 @@ fun OssmApp(
                     onSensationLive = controlVm::setSensationLive,
                     onProgressiveMaxCommit = controlVm::setProgressiveMaxSpeed,
                     onChaosToggle = controlVm::setChaosAtMax,
-                    onStreamTarget = controlVm::setStreamTarget,
-                    onStreamActive = controlVm::setStreamActive,
+                    onStreamPosition = controlVm::setStreamPosition,
                     onRangeWizardStart = controlVm::startRangeWizard,
                     onRangeWizardCapture = controlVm::captureRangePoint,
                     onRangeWizardCancel = controlVm::cancelRangeWizard,
@@ -259,17 +328,18 @@ fun OssmApp(
                     onSavePreset = profilesVm::savePreset,
                     onSpeedGuardEnabledChange = controlVm::setSpeedGuardEnabled,
                     onDepthGuardEnabledChange = controlVm::setDepthGuardEnabled,
+                    onDepthLimitsChange = controlVm::setDepthLimits,
                     onConfirmPendingChange = controlVm::confirmPendingManualChange,
                     onDismissPendingChange = controlVm::dismissPendingManualChange,
                     onPatternOrderSave = controlVm::savePatternOrder,
-                    onLiveRecordToggle = controlVm::toggleLiveRecord,
                     onRandomToggle = controlVm::setRandomMode,
                     onDepthRandomToggle = controlVm::setDepthRandom,
                     listeningLevel = listeningLevel,
                     onListeningToggle = onListeningToggle,
                     onListeningCeilingCommit = controlVm::setListeningCeiling,
-                    onLiveInvertToggle = controlVm::setLiveInvert,
-                    onLiveMaxAccelChange = controlVm::setLiveMaxAccel
+                    onListeningTargetSpeedChange = controlVm::setListeningTargetSpeed,
+                    onListeningTargetDepthChange = controlVm::setListeningTargetDepth,
+                    onLiveInvertToggle = controlVm::setLiveInvert
                 )
                 }
                 Screen.Diagnostics -> {
@@ -283,11 +353,17 @@ fun OssmApp(
                 Screen.Profiles -> {
                 ProfilesScreen(
                     presets = presets,
+                    updaterState = updaterState,
+                    updaterUrl = updaterUrl,
                     onApply = { preset ->
                         controlVm.applyPreset(preset)
                         scope.launch { pagerState.animateScrollToPage(controlPageIndex) }
                     },
-                    onDelete = profilesVm::deletePreset
+                    onDelete = profilesVm::deletePreset,
+                    onUpdateUrlSave = updaterVm::saveManualUrl,
+                    onUpdateCheck = updaterVm::checkNow,
+                    onUpdateDownload = updaterVm::download,
+                    onUpdateInstall = { apk -> installApk(context, apk) }
                 )
                 }
                 Screen.Funscript -> {
@@ -320,5 +396,32 @@ fun OssmApp(
                 }
             }
         }
+    }
+
+    if (showQuitDialog) {
+        AlertDialog(
+            onDismissRequest = { showQuitDialog = false },
+            containerColor = OssmSurface,
+            title = { Text("Quitter l'application ?", color = OssmOnSurface) },
+            text = {
+                Text(
+                    "La machine sera arrêtée avant de fermer l'application.",
+                    color = OssmOnSurface.copy(alpha = 0.8f)
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = onQuit,
+                    colors = ButtonDefaults.buttonColors(containerColor = OssmStop)
+                ) {
+                    Text("Quitter")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showQuitDialog = false }) {
+                    Text("Annuler", color = OssmPrimaryLight)
+                }
+            }
+        )
     }
 }

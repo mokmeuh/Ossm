@@ -94,12 +94,13 @@ class AudioLevelMonitor @Inject constructor(
                         val norm = ((log10(rms + 1.0) - 1.7) / (3.6 - 1.7))
                             .coerceIn(0.0, 1.0)
                             .toFloat()
-                        // Lissage : attaque rapide (réagit vite au son), relâche lent
-                        // (l'intensité redescend en douceur).
+                        // Lissage : attaque rapide conservée (réagit vite au son), relâche
+                        // plus réactive qu'avant — la redescente suit le son en douceur
+                        // mais sans traîner.
                         smoothed = if (norm > smoothed) {
-                            smoothed + (norm - smoothed) * 0.5f
+                            smoothed + (norm - smoothed) * 0.65f
                         } else {
-                            smoothed + (norm - smoothed) * 0.08f
+                            smoothed + (norm - smoothed) * 0.22f
                         }
                         _level.value = smoothed
                     }

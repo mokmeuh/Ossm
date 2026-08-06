@@ -6,7 +6,8 @@ enum class PatternControlMode {
     STREAMING,
     PROGRESSIVE,         // app-driven: full strokes, speed auto-ramps +1% per stroke
     LAUNCH_ONLY,         // pattern that can be activated but exposes no parameter sliders
-    AUTO_RANDOM          // app-driven: randomly mixes the chosen patterns within set limits
+    AUTO_RANDOM,         // app-driven: randomly mixes the chosen patterns within set limits
+    ADAPTIVE             // app-driven: learns preferences and drives the 7 firmware patterns
 }
 
 data class OssmPattern(
@@ -46,6 +47,14 @@ val KnownAutoRandomPattern = OssmPattern(
     mode = PatternControlMode.AUTO_RANDOM
 )
 
+// Adaptive mode: the app learns the user's preferences over sessions and drives the 7
+// firmware stroke-engine patterns intelligently. Locked until enough learning is done.
+val KnownAdaptivePattern = OssmPattern(
+    key = "adaptive",
+    name = "Mode adaptatif",
+    mode = PatternControlMode.ADAPTIVE
+)
+
 val KnownStrokeEnginePatterns = listOf(
     OssmPattern("simpleStroke",     "Simple Stroke",     PatternControlMode.STROKE_ENGINE, id = 0),
     OssmPattern("teasingPounding",  "Teasing Pounding",  PatternControlMode.STROKE_ENGINE, id = 1),
@@ -64,6 +73,6 @@ val KnownStrokeEnginePattern = KnownStrokeEnginePatterns.first()
 // kills the randomness. Its plain in-out motion is already covered by "Simple Stroke" (id 0).
 val AutoRandomMixablePatterns: List<OssmPattern> = KnownStrokeEnginePatterns
 
-// Picker: Auto Random, Progressif, Live, then the 7 stroke patterns.
+// Picker: Auto Random, Mode adaptatif, Progressif, Live, then the 7 stroke patterns.
 val KnownFallbackPatterns: List<OssmPattern> =
-    listOf(KnownAutoRandomPattern, KnownProgressivePattern, KnownStreamingPattern) + KnownStrokeEnginePatterns
+    listOf(KnownAutoRandomPattern, KnownAdaptivePattern, KnownProgressivePattern, KnownStreamingPattern) + KnownStrokeEnginePatterns

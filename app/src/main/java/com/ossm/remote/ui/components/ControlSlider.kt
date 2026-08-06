@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
@@ -20,10 +21,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ossm.remote.ui.theme.OssmOnSurface
+import com.ossm.remote.ui.theme.OssmError
 import com.ossm.remote.ui.theme.OssmPrimary
 import com.ossm.remote.ui.theme.OssmPrimaryLight
 import kotlinx.coroutines.delay
@@ -40,7 +43,10 @@ fun ControlSlider(
     enabled: Boolean = true,
     valueRange: ClosedFloatingPointRange<Float> = 0f..1f,
     activeColor: Color = OssmPrimary,
-    displayValue: String = "${(value * 100).toInt()}%"
+    displayValue: String = "${(value * 100).toInt()}%",
+    currentMarker: Float? = null,
+    markerColor: Color = OssmError,
+    displayValueColor: Color? = null
 ) {
     val step = (valueRange.endInclusive - valueRange.start) / 100f
     var sliderWidthPx by remember { mutableIntStateOf(0) }
@@ -63,7 +69,7 @@ fun ControlSlider(
             )
             Text(
                 text = displayValue,
-                color = if (enabled) OssmOnSurface else OssmOnSurface.copy(0.4f),
+                color = displayValueColor ?: if (enabled) OssmOnSurface else OssmOnSurface.copy(0.4f),
                 fontSize = 14.sp,
                 fontWeight = FontWeight.SemiBold
             )
@@ -88,15 +94,8 @@ fun ControlSlider(
                 modifier = Modifier
                     .weight(1f)
                     .onSizeChanged { sliderWidthPx = it.width }
-                    .pointerInput(enabled, valueRange, sliderWidthPx) {
-                        detectTapGestures { offset ->
-                            if (!enabled || sliderWidthPx <= 0) return@detectTapGestures
-                            val fraction = (offset.x / sliderWidthPx.toFloat()).coerceIn(0f, 1f)
-                            val tappedValue =
-                                valueRange.start + fraction * (valueRange.endInclusive - valueRange.start)
-                            onValueChange(tappedValue)
-                            onValueCommit(tappedValue)
-                        }
+                    .pointerInput(enabled) {
+                        detectTapGestures { /* consume tap — no value jump */ }
                     }
             ) {
                 Slider(
@@ -116,6 +115,22 @@ fun ControlSlider(
                         disabledActiveTrackColor = activeColor.copy(0.2f)
                     )
                 )
+                currentMarker?.let { marker ->
+                    val range = valueRange.endInclusive - valueRange.start
+                    val fraction = if (range <= 0f) 0f else {
+                        ((marker - valueRange.start) / range).coerceIn(0f, 1f)
+                    }
+                    val markerX = with(LocalDensity.current) { (sliderWidthPx * fraction).toDp() }
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .offset(x = markerX - 1.5.dp)
+                            .width(3.dp)
+                            .height(34.dp)
+                            .clip(RoundedCornerShape(1.5.dp))
+                            .background(markerColor.copy(alpha = if (enabled) 0.95f else 0.4f))
+                    )
+                }
             }
 
             RampButton(

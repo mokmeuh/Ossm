@@ -1,0 +1,3 @@
+﻿?? app/src/main/java/com/ossm/remote/ui/screens/ControlScreen.kt
+?? app/src/main/res/values-en/strings.xml
+?? app/src/main/res/values/strings.xml

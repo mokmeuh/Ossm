@@ -1,85 +1,152 @@
-# Handoff Codex - 2026-06-22
+# OSSM Handoff
 
-## Reprise du contexte
-Ce clone ne contenait pas initialement `TASK.md`, `HANDOFF.md`, `CLAUDE.md` ni `AGENTS.md`.
+Date: 2026-08-05
 
-La reprise Codex a ete reconstruite a partir de:
-- `README.md`
-- `git status`
-- les logs de build locaux (`build-out.log`, `compile-err.log`, etc.)
-- lecture ciblee de:
-  - `MainActivity.kt`
-  - `BleManager.kt`
-  - `ControlViewModel.kt`
-  - `ControlScreen.kt`
-  - `ProfilesScreen.kt`
-  - `ControlCommand.kt`
-  - `Pattern.kt`
-  - `Preset.kt`
-  - `PresetEntity.kt`
-  - `ControlViewModelTest.kt`
-- et de deux threads Codex fournis ensuite par l'utilisateur:
-  - `019e90dd-21fe-7620-83fc-bfa1d156c7bc`
-  - `019e8a07-05c1-7a11-97d7-b59597395e79`
+## Message a l'autre AI
 
-## Ce qui etait vrai avant les changements
-- L'app Android native compilait et s'installait deja.
-- Le controle etait modele comme `4 sliders + 3 patterns factices`.
-- `strokeEngine` etait force au branchement BLE.
-- Les patterns etaient locaux et inventes.
-- La profondeur etait representee de facon trompeuse avec un `100 %` qui ne correspondait pas a l'intuition utilisateur.
+Une autre AI travaille deja sur ce depot. Ne pas faire de `reset`, `checkout`,
+`clean`, `stash`, rebase ou commit automatique. Le working tree contient un
+grand ensemble de changements non commites qui doivent etre preserves.
 
-## Ce que Codex a implemente
-- Remplacement du modele de patterns factices par un modele `pattern actif` dynamique.
-- `strokeEngine` devient un pattern reel connu localement.
-- Ajout d'une liste de patterns disponible cote `BleManager` avec tentative de lecture BLE si la caracteristique existe.
-- `ControlUiState` remodelise autour de:
-  - `availablePatterns`
-  - `activePatternKey`
-  - `speed`
-  - `depthMin`
-  - `depthMax`
-  - garde anti-saut
-- La garde anti-saut est persistante via DataStore.
-- Les presets sont migres vers:
-  - `patternKey`
-  - `patternName`
-  - `speed`
-  - `depthMin`
-  - `depthMax`
-- L'ecran Controle affiche maintenant:
-  - une section patterns dynamique
-  - un mode `strokeEngine` avec `Vitesse` + plage `Profondeur`
-  - un popup de confirmation pour les gros sauts
-  - un switch global de securite
-- Les autres patterns sont affiches comme `lancables` sans sliders inventes.
-- La base Room est passee en version `2` avec `fallbackToDestructiveMigration()`.
+Ce fichier est une passation d'etat. Il ne constitue pas une validation finale
+du code et les observations ci-dessous sont celles faites au moment de sa
+creation.
 
-## Confirmation importante venue des anciens threads
-Les anciens threads OSSM confirment le protocole BLE texte reel du firmware et evitent une mauvaise derive:
-- oui a `go:strokeEngine`
-- oui a `set:speed`, `set:stroke`, `set:depth`, `set:sensation`, `set:pattern`
-- non confirme pour `set:depthMin` / `set:depthMax`
+## Ce que Sisyphus a fait
 
-Codex a donc recale l'implementation:
-- l'UI expose `depthMin/depthMax`
-- le BLE traduit cette plage en:
-  - `stroke = depthMax - depthMin`
-  - `depth = depthMax`
+### Configuration OpenCode-Go
 
-## Etat verifie
-- `./gradlew.bat testDebugUnitTest` passe
-- `./gradlew.bat installDebug` passe
-- installation verifiee sur:
-  - `SM-S938W - 16`
+- Les modeles OpenCode-Go ont ete verifies avec `opencode models`.
+- Les 18 modeles du classement utilisateur etaient disponibles.
+- `~/.config/opencode/oh-my-openagent.json` a ete configure selon le classement:
+  - GPT-5.6 Luna pour orchestration, raisonnement, architecture et `deep`.
+  - Qwen3.8 Max pour Android/Kotlin et implementation.
+  - DeepSeek V4 Pro pour le quotidien.
+  - GLM-5.2 pour exploration/documentation.
+  - Kimi K2.7 Code, Grok-4.5, MiMo et Flash selon les specialisations.
+- `~/.config/opencode/opencode.jsonc` utilise maintenant
+  `opencode-go/gpt-5.6-luna` comme modele principal et
+  `opencode-go/deepseek-v4-flash` comme petit modele.
+- Les deux fichiers de configuration ont ete parses avec succes.
+- La cle OpenCode-Go a ete testee: API accessible et `opencode run` a retourne
+  `SMOKE OK`.
 
-## Zones encore ouvertes
-- La vraie forme du payload `pattern list` n'est pas confirmee dans ce clone.
-- La logique de parsing de patterns cote `BleManager` est volontairement defensive et minimale.
-- Si le firmware expose une liste plus structuree que le parseur actuel ne comprend pas, il faudra l'ajuster sur preuve reelle.
-- Le mode Funscript a ete adapte pour compiler avec le nouveau modele de commande, mais son comportement reel avec `strokeEngine` devra idealement etre revalide sur appareil.
+### Reload du TUI
 
-## Point d'attention pour une reprise Claude
-- Ne surtout pas reintroduire `Pattern 1/2/3`.
-- Ne pas inventer `set:depthMin` / `set:depthMax` tant qu'une preuve firmware n'existe pas.
-- Garder la traduction `depthMin/depthMax -> stroke/depth` tant que le protocole reste celui confirme par les threads historiques.
+- Avant le redemarrage, `task()` echouait avec `Provided authentication token
+  is expired` car le serveur opencode etait ancien.
+- L'utilisateur a redemarre le TUI.
+- Le smoke test post-redemarrage passe:
+  `SMOKE OK - OpenCode-Go task active`.
+- Le parent utilisait `opencode-go/gpt-5.6-luna`; la categorie `quick` a utilise
+  `opencode-go/deepseek-v4-flash`.
+
+## Ce que l'autre AI a deja modifie
+
+Le `git status` observe contient beaucoup de fichiers modifies, supprimes ou
+non suivis. Les groupes principaux observes sont:
+
+### Overlay
+
+- `app/src/main/java/com/ossm/remote/overlay/OverlayService.kt`
+- `app/src/main/java/com/ossm/remote/overlay/OverlayUi.kt`
+- `app/src/main/java/com/ossm/remote/data/repository/OverlayPreferencesRepository.kt`
+- `app/src/main/java/com/ossm/remote/viewmodel/OverlaySettingsViewModel.kt`
+- modifications de `MainActivity.kt`, `ProfilesScreen.kt`, `AndroidManifest.xml`
+  et des ressources de strings.
+
+### Statistiques et sessions
+
+- `SessionEntity.kt`, `SessionDao.kt`
+- `SessionStatsRepository.kt`, `StatsSnapshot.kt`
+- `SessionStatsTracker.kt`
+- `StatisticsViewModel.kt`, `StatisticsSection.kt`
+- `ObservedPositionRange.kt` et leurs tests associes.
+
+### Mode adaptatif
+
+- nouveau package `app/src/main/java/com/ossm/remote/adaptive/`
+- `AdaptiveSettingsRepository.kt`
+- `AdaptiveViewModel.kt`
+- modifications de `Pattern.kt`, `ControlViewModel.kt`, `ControlScreen.kt`,
+  `BleManager.kt` et fichiers de tests.
+
+### Updater et infrastructure
+
+- nouveau package `app/src/main/java/com/ossm/remote/updater/`
+- modifications de `OssmApplication.kt`, `AppModule.kt`, manifeste et ressources
+- dependances WorkManager/Hilt et Robolectric dans Gradle
+- modification de `app/build.gradle.kts`
+
+### Version actuellement visible
+
+Dans `app/build.gradle.kts`, l'etat observe contient deja:
+
+- `versionCode = 117`
+- `versionName = "1.4"`
+
+Cela reste non valide tant que les tests, le build, l'installation et la QA ne
+sont pas refaits sur l'ensemble coherent des changements.
+
+## Etat du working tree
+
+- Nombreux fichiers modifies non commites.
+- Nombreux fichiers nouveaux non suivis.
+- `LiveStreamPad.kt` apparait supprime dans `git status`.
+- Le working tree contient aussi des artefacts de diagnostic, de build, de WiFi
+  et de documentation. Ne pas les supprimer sans attribution claire.
+- Sisyphus n'a pas modifie le code applicatif apres avoir constate le travail
+  concurrent.
+
+## Point exact ou Sisyphus etait rendu
+
+Le plan etait de lancer la Vague 1 overlay par delegation, puis:
+
+1. contre-verifier les fichiers et l'integration;
+2. executer les diagnostics LSP et les tests cibles;
+3. confirmer `versionCode 117` / `versionName 1.4`;
+4. lancer `assembleDebug`;
+5. installer en WiFi sur le Moto G Fast avec
+   `adb connect 10.86.86.164:40887`;
+6. effectuer la QA de l'overlay;
+7. poursuivre ensuite les vagues statistiques et adaptatives.
+
+La delegation n'a pas ete relancee apres la decouverte du travail concurrent,
+afin de ne pas produire une seconde implementation de l'overlay dans les memes
+fichiers.
+
+## Points a verifier avant toute release
+
+Les observations suivantes proviennent d'une lecture ponctuelle et doivent etre
+revalidees apres que l'autre AI a fini:
+
+- `OverlayPreferencesRepository` utilise encore une transparence entiere
+  `20..100` et un defaut `100`, alors que le contrat cible est une opacite
+  `0.35..1.0` avec defaut `0.85`.
+- `overlayEnabled` avait un defaut `true` dans le repository, alors que le
+  contrat cible est `false`.
+- Aucun `PositionSnapper.kt` n'etait visible au moment de l'inspection.
+- `MainActivity` demarrait l'overlay via `onStop`; le contrat cible demande
+  `onUserLeaveHint` et l'arret lors du retour au premier plan.
+- Les chemins BLE doivent rester ceux deja existants; ne pas inventer de
+  commandes firmware.
+- Le service ne doit pas injecter `ControlViewModel`.
+- Les changements de l'autre AI doivent etre testes ensemble, pas fichier par
+  fichier en isolation.
+
+## Suite recommandee
+
+1. L'autre AI termine son lot et signale les fichiers qu'elle considere stables.
+2. Sisyphus relit tous les fichiers touches et compare le resultat au contrat.
+3. LSP et tests unitaires cibles, puis test complet.
+4. Build debug unique a la fois pour eviter une corruption KSP.
+5. Installation WiFi sur le Moto G Fast et QA reelle.
+6. Seulement apres validation, continuer vers la release suivante.
+
+## Regles de coordination
+
+- Ne pas editer un fichier que l'autre AI est en train de modifier.
+- Ne pas restaurer les fichiers a partir de Git pour "nettoyer" le depot.
+- Ne pas faire de commit tant que les deux AI n'ont pas confirme le perimetre.
+- Conserver les fins de ligne existantes, notamment CRLF si presentes.
+- Ne pas considerer la presence de `versionCode 117` comme une release valide.

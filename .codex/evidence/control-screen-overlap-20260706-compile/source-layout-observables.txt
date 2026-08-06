@@ -1,0 +1,22 @@
+﻿
+app\src\main\java\com\ossm\remote\ui\screens\ControlScreen.kt:17:import androidx.compose.foundation.layout.heightIn
+app\src\main\java\com\ossm\remote\ui\screens\ControlScreen.kt:218:                    modifier = Modifier.weight(1f)
+app\src\main\java\com\ossm\remote\ui\screens\ControlScreen.kt:242:                        .size(110.dp)
+app\src\main\java\com\ossm\remote\ui\screens\ControlScreen.kt:246:                    StopButton(onClick = onStop, 
+modifier = Modifier.size(110.dp))
+app\src\main\java\com\ossm\remote\ui\screens\ControlScreen.kt:397:                                    .heightIn(min = 
+48.dp),
+app\src\main\java\com\ossm\remote\ui\screens\ControlScreen.kt:411:                                    .heightIn(min = 
+48.dp),
+app\src\main\java\com\ossm\remote\ui\screens\ControlScreen.kt:684:                                    .heightIn(min = 
+48.dp),
+app\src\main\java\com\ossm\remote\ui\screens\ControlScreen.kt:698:                                    .heightIn(min = 
+48.dp),
+app\src\main\java\com\ossm\remote\ui\screens\ControlScreen.kt:1056:            Column(modifier = Modifier.weight(1f)) {
+app\src\main\java\com\ossm\remote\ui\screens\ControlScreen.kt:1126:            modifier = Modifier.weight(1f)
+app\src\main\java\com\ossm\remote\ui\screens\ControlScreen.kt:1149:            modifier = Modifier.weight(1f)
+app\src\main\java\com\ossm\remote\ui\screens\ControlScreen.kt:1220:        Column(modifier = Modifier.weight(1f)) {
+app\src\main\java\com\ossm\remote\ui\screens\ControlScreen.kt:1590:            modifier = Modifier.weight(1f)
+
+
+

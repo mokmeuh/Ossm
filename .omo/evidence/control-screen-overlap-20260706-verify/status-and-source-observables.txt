@@ -1,0 +1,43 @@
+﻿SCENARIO: Verify actual local files touched for OSSM ControlScreen overlap fix
+INVOCATION: git status --short -- app/src/main/java/com/ossm/remote/ui/screens/ControlScreen.kt app/src/main/res/values/strings.xml app/src/main/res/values-en/strings.xml; Select-String source layout observables; Get-FileHash touched/directly-related files
+START: 2026-07-06T01:14:37.5900731-04:00
+
+--- git status target files ---
+?? app/src/main/java/com/ossm/remote/ui/screens/ControlScreen.kt
+?? app/src/main/res/values-en/strings.xml
+?? app/src/main/res/values/strings.xml
+
+--- SHA256 hashes ---
+
+Path                                                                                             Hash                  
+----                                                                                             ----                  
+C:\Users\mikae\Documents\Ossm\Ossm\app\src\main\java\com\ossm\remote\ui\screens\ControlScreen.kt 7FDAEE00BB95FB1628B...
+C:\Users\mikae\Documents\Ossm\Ossm\app\src\main\res\values\strings.xml                           2F88DDF8AC2A877E12D...
+C:\Users\mikae\Documents\Ossm\Ossm\app\src\main\res\values-en\strings.xml                        9D7BF63984A618D9105...
+
+
+
+--- source layout observables ---
+
+app\src\main\java\com\ossm\remote\ui\screens\ControlScreen.kt:17:import androidx.compose.foundation.layout.heightIn
+app\src\main\java\com\ossm\remote\ui\screens\ControlScreen.kt:218:                    modifier = Modifier.weight(1f)
+app\src\main\java\com\ossm\remote\ui\screens\ControlScreen.kt:242:                        .size(110.dp)
+app\src\main\java\com\ossm\remote\ui\screens\ControlScreen.kt:246:                    StopButton(onClick = onStop, 
+modifier = Modifier.size(110.dp))
+app\src\main\java\com\ossm\remote\ui\screens\ControlScreen.kt:397:                                    .heightIn(min = 
+48.dp),
+app\src\main\java\com\ossm\remote\ui\screens\ControlScreen.kt:411:                                    .heightIn(min = 
+48.dp),
+app\src\main\java\com\ossm\remote\ui\screens\ControlScreen.kt:684:                                    .heightIn(min = 
+48.dp),
+app\src\main\java\com\ossm\remote\ui\screens\ControlScreen.kt:698:                                    .heightIn(min = 
+48.dp),
+app\src\main\java\com\ossm\remote\ui\screens\ControlScreen.kt:1056:            Column(modifier = Modifier.weight(1f)) {
+app\src\main\java\com\ossm\remote\ui\screens\ControlScreen.kt:1126:            modifier = Modifier.weight(1f)
+app\src\main\java\com\ossm\remote\ui\screens\ControlScreen.kt:1149:            modifier = Modifier.weight(1f)
+app\src\main\java\com\ossm\remote\ui\screens\ControlScreen.kt:1220:        Column(modifier = Modifier.weight(1f)) {
+app\src\main\java\com\ossm\remote\ui\screens\ControlScreen.kt:1590:            modifier = Modifier.weight(1f)
+
+
+
+END: 2026-07-06T01:14:37.5900731-04:00

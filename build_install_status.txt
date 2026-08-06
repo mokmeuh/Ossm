@@ -1,0 +1,2 @@
+INSTALL_FAILED 
+adb.exe: device offline
