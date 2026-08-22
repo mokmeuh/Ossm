@@ -1,7 +1,10 @@
 #include "nimble.h"
 
 #include <ArduinoJson.h>
+#include <NimBLEDevice.h>
+#include <NimBLEServer.h>
 #include <constants/LogTags.h>
+#include <esp_log.h>
 #include <services/board.h>
 #include <services/tasks.h>
 
@@ -15,6 +18,7 @@
 #include "pairing.hpp"
 #include "patterns.hpp"
 #include "rename.hpp"
+#include "services/communication/queue.h"
 #include "services/led.h"
 #include "state.hpp"
 #include "wifi.hpp"
@@ -26,6 +30,9 @@ NimBLECharacteristic* pStateCharacteristic = nullptr;
 NimBLECharacteristic* pSpeedKnobConfigCharacteristic = nullptr;
 NimBLECharacteristic* pLatencyCompensationConfigCharacteristic = nullptr;
 NimBLECharacteristic* pCommandCharacteristic = nullptr;
+NimBLECharacteristic* pResistanceTelemetryCharacteristic = nullptr;
+
+static resistance_protocol::Config resistanceConfig{};
 
 static long lostConnectionTime = 0;
 static int speedOnLostConnection = 0;
@@ -85,6 +92,31 @@ class ServerCallbacks : public NimBLEServerCallbacks {
                  connInfo.getAddress().toString().c_str());
     }
 } serverCallbacks;
+
+class ResistanceConfigCallbacks : public NimBLECharacteristicCallbacks {
+    void onWrite(NimBLECharacteristic* characteristic,
+                 NimBLEConnInfo& connInfo) override {
+        const std::string value = characteristic->getValue();
+        optional_ble::applyResistanceConfig(
+            reinterpret_cast<const uint8_t*>(value.data()), value.size(),
+            resistanceConfig);
+        const auto encoded = resistance_protocol::encodeConfig(resistanceConfig);
+        characteristic->setValue(encoded.data(), encoded.size());
+    }
+} resistanceConfigCallbacks;
+
+class LiveSmoothCallbacks : public NimBLECharacteristicCallbacks {
+    void onWrite(NimBLECharacteristic* characteristic,
+                 NimBLEConnInfo& connInfo) override {
+        const std::string value = characteristic->getValue();
+        live_smooth::Packet packet{};
+        if (live_smooth::decode(
+                reinterpret_cast<const uint8_t*>(value.data()), value.size(),
+                packet) == live_smooth::DecodeStatus::Ok) {
+            offerLiveSmoothTarget(packet, millis());
+        }
+    }
+} liveSmoothCallbacks;
 
 #ifdef PRETEND_TO_BE_FLESHY_THRUST_SYNC
 class FTSCallbacks : public NimBLECharacteristicCallbacks {
@@ -151,6 +183,8 @@ void nimbleLoop(void* pvParameters) {
     String lastState = "";
     int lastConnCount = 0;
     int lastMessageTime = 0;
+    uint32_t lastResistanceTelemetryTime = 0;
+    uint16_t resistanceTelemetrySequence = 0;
     while (true) {
         // Check if we should be advertising (no connections)
         if (pServer->getConnectedCount() == 0) {
@@ -252,6 +286,20 @@ void nimbleLoop(void* pvParameters) {
         }
 
         int currentTime = millis();
+        if (optional_ble::kResistanceSignalGatePassed &&
+            optional_ble::telemetryDue(currentTime,
+                                       lastResistanceTelemetryTime)) {
+            const uint16_t sequence = resistanceTelemetrySequence;
+            resistanceTelemetrySequence =
+                optional_ble::nextTelemetrySequence(resistanceTelemetrySequence);
+            const auto telemetry = resistance_protocol::encodeTelemetry({
+                0, sequence,
+                static_cast<uint32_t>(currentTime), 0, 0, 0, 0, 0, 0, 0});
+            pResistanceTelemetryCharacteristic->setValue(telemetry.data(),
+                                                         telemetry.size());
+            pResistanceTelemetryCharacteristic->notify();
+            lastResistanceTelemetryTime = currentTime;
+        }
         String fingerprint = ossm->getStateFingerprint();
         bool stateChanged = fingerprint != lastState;
         bool timeElapsed = (currentTime - lastMessageTime) > 1000;
@@ -264,9 +312,11 @@ void nimbleLoop(void* pvParameters) {
         lastState = fingerprint;
 
         String currentState = ossm->getCurrentState();
-        if (stateChanged) {
+        if (optional_ble::shouldRefreshStateValue(stateChanged, timeElapsed)) {
             ESP_LOGD(NIMBLE_TAG, "State changed to: %s", currentState.c_str());
             pChr->setValue(currentState);
+        }
+        if (stateChanged) {
             pChr->notify();
         }
 
@@ -318,6 +368,34 @@ void initNimble() {
     // Pairing characteristic — BLE one-click pairing from the dashboard
     initPairingCharacteristic(pService,
                               NimBLEUUID(CHARACTERISTIC_PAIRING_UUID));
+
+    NimBLECharacteristic* pCapabilityCharacteristic =
+        pService->createCharacteristic(
+            resistance_protocol::kCapabilityUuid, NIMBLE_PROPERTY::READ);
+    const auto capability = resistance_protocol::encodeCapability(
+        optional_ble::capabilityPacket());
+    pCapabilityCharacteristic->setValue(capability.data(), capability.size());
+
+    pResistanceTelemetryCharacteristic = pService->createCharacteristic(
+        resistance_protocol::kTelemetryUuid,
+        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
+    const auto telemetry = resistance_protocol::encodeTelemetry({});
+    pResistanceTelemetryCharacteristic->setValue(telemetry.data(),
+                                                 telemetry.size());
+
+    NimBLECharacteristic* pResistanceConfigCharacteristic =
+        pService->createCharacteristic(
+            resistance_protocol::kConfigUuid,
+            NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE);
+    const auto config = resistance_protocol::encodeConfig(resistanceConfig);
+    pResistanceConfigCharacteristic->setValue(config.data(), config.size());
+    pResistanceConfigCharacteristic->setCallbacks(&resistanceConfigCallbacks);
+
+    NimBLECharacteristic* pLiveSmoothCharacteristic =
+        pService->createCharacteristic(
+            live_smooth::kCharacteristicUuid,
+            NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR);
+    pLiveSmoothCharacteristic->setCallbacks(&liveSmoothCallbacks);
 
     // Start the services
     pService->start();

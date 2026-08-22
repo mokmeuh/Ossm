@@ -14,6 +14,7 @@ import com.ossm.remote.model.KnownFallbackPatterns
 import com.ossm.remote.model.KnownSimplePenetrationPattern
 import com.ossm.remote.model.KnownStreamingPattern
 import com.ossm.remote.model.KnownStrokeEnginePattern
+import com.ossm.remote.model.LiveTargetProducer
 import com.ossm.remote.model.OssmCommand
 import com.ossm.remote.model.OssmPattern
 import com.ossm.remote.model.PatternControlMode
@@ -290,7 +291,7 @@ class ControlSessionStore @Inject constructor(
         // epoch's first eligible state may enter the selected StrokeEngine pattern.
         withTimeoutOrNull(6_000) {
             bleManager.machineState.first { it.state != "unknown" && it.isReady }
-        } ?: return
+        }
         if (connectionEpoch != epoch ||
             bleManager.connectionState.value !is BleConnectionState.Connected ||
             autoEnteredConnectionEpoch == epoch
@@ -1335,16 +1336,44 @@ class ControlSessionStore @Inject constructor(
         return min + (max - min) * amount.coerceIn(0f, 1f)
     }
 
-    fun setStreamPosition(positionPercent: Int) {
-        val st = _uiState.value
-        val canStream = st.rangeWizard != null || st.activePattern?.mode == PatternControlMode.STREAMING
-        if (!canStream || !st.streamingReady) return
+    fun setStreamPositionDrag(positionPercent: Int) {
         val target = positionPercent.coerceIn(0, 100)
         _uiState.update { it.copy(streamPositionPercent = target, isRunning = true, isPaused = false) }
+
+        val state = _uiState.value
+        if (canStreamPosition(state)) sendStreamPositionTarget(target)
+    }
+
+    fun setStreamPosition(positionPercent: Int) {
+        val st = _uiState.value
+        if (!canStreamPosition(st)) return
+        val target = positionPercent.coerceIn(0, 100)
+        _uiState.update { it.copy(streamPositionPercent = target, isRunning = true, isPaused = false) }
+        sendStreamPositionTarget(target)
+    }
+
+    fun stopLiveTouch() {
+        _uiState.update { it.copy(isRunning = false, isPaused = false, speed = 0f) }
+        bleManager.sendCommand(OssmCommand.Stop)
+    }
+
+    private fun canStreamPosition(state: ControlUiState): Boolean {
+        val canStream = state.rangeWizard != null || state.activePattern?.mode == PatternControlMode.STREAMING
+        return canStream && state.streamingReady
+    }
+
+    private fun sendStreamPositionTarget(target: Int) {
         if ((bleManager.machineState.value.speed ?: 0) < 100) {
             bleManager.liveSet("speed", 100)
         }
-        bleManager.sendCommand(OssmCommand.Stream(target, timeMs = STREAM_RELEASE_MOVE_MS))
+        val producer = if (_uiState.value.rangeWizard != null) {
+            LiveTargetProducer.RANGE_WIZARD
+        } else {
+            LiveTargetProducer.TOUCH
+        }
+        bleManager.sendCommand(
+            OssmCommand.Stream(target, timeMs = STREAM_RELEASE_MOVE_MS, producer = producer)
+        )
     }
 
     // ---- Assistant de plage au toucher ----

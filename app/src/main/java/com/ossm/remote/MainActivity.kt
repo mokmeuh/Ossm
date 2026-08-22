@@ -58,24 +58,25 @@ class MainActivity : ComponentActivity() {
     private val funscriptVm: FunscriptViewModel by viewModels()
     private val videoSyncVm: VideoSyncViewModel by viewModels()
     private val updaterVm: UpdaterViewModel by viewModels()
+    private val overlaySettingsVm: OverlaySettingsViewModel by viewModels()
 
     /**
      * Relance l'overlay quand on quitte l'app (home / passage vers une autre app) s'il est
      * activé, à condition qu'il n'ait pas été fermé manuellement dans cette session.
-     * Une fermeture manuelle (icône app / X bulle) pose [OverlayService.manuallyClosed] ET
-     * coupe overlay_enabled ; le drapeau en mémoire couvre la course d'écriture async du
-     * DataStore. On ne démarre jamais l'overlay au premier plan : [maybeAutoStartOverlay] ne
-     * se déclenche que sur onStop (app quittée).
+     * Une fermeture manuelle pose [OverlayService.manuallyClosed] jusqu'au prochain retour
+     * dans l'app. On ne démarre jamais l'overlay au premier plan : [maybeAutoStartOverlay]
+     * ne se déclenche que sur onStop (app quittée).
      */
     private val overlayAutoStartObserver = object : DefaultLifecycleObserver {
         override fun onStart(owner: LifecycleOwner) {
-            // Retour au premier plan : l'auto-start redevient possible à la prochaine sortie.
+            stopService(Intent(this@MainActivity, OverlayService::class.java))
             OverlayService.manuallyClosed = false
         }
+    }
 
-        override fun onStop(owner: LifecycleOwner) {
-            maybeAutoStartOverlay()
-        }
+    override fun onStop() {
+        super.onStop()
+        maybeAutoStartOverlay()
     }
 
     private val enableBtLauncher = registerForActivityResult(
@@ -171,15 +172,27 @@ class MainActivity : ComponentActivity() {
      * Auto-start silencieux de l'overlay à la sortie de l'app : réutilise le même chemin que
      * le toggle de l'écran Profils (startForegroundService, le service gère sa notification
      * foreground). Sautée sans effet si la permission overlay n'est pas accordée, si l'overlay
-     * a été fermé manuellement dans la session, ou s'il est déjà actif.
+     * a été fermé manuellement dans la session, s'il est désactivé, ou si l'app est encore
+     * au premier plan (onStop transitoire). L'état est revérifié après la lecture async du
+     * réglage : on ne démarre jamais l'overlay au premier plan.
      */
     private fun maybeAutoStartOverlay() {
         if (!Settings.canDrawOverlays(this)) return
-        if (OverlayService.manuallyClosed || OverlayService.isRunning) return
+        if (OverlayService.manuallyClosed) return
+        if (AppForegroundTracker.isAppInForeground) return
         lifecycleScope.launch {
-            if (overlayPreferencesRepository.overlayEnabled.first()) {
-                startForegroundService(Intent(this@MainActivity, OverlayService::class.java))
-            }
+            val enabled = overlaySettingsVm.overlayEnabled.value
+                .takeIf { it }
+                ?: overlayPreferencesRepository.overlayEnabled.first()
+            if (!enabled) return@launch
+            // Revérification après la suspension async : l'utilisateur peut être revenu au
+            // premier plan ou avoir fermé l'overlay manuellement pendant la lecture du réglage.
+            if (OverlayService.manuallyClosed) return@launch
+            if (AppForegroundTracker.isAppInForeground) return@launch
+            startForegroundService(
+                Intent(this@MainActivity, OverlayService::class.java)
+                    .setAction(OverlayService.ACTION_SHOW)
+            )
         }
     }
 }
@@ -308,6 +321,8 @@ fun OssmApp(
                     onProgressiveMaxCommit = controlVm::setProgressiveMaxSpeed,
                     onChaosToggle = controlVm::setChaosAtMax,
                     onStreamPosition = controlVm::setStreamPosition,
+                    onStreamDrag = controlVm::setStreamPositionDrag,
+                    onStreamTouchEnd = controlVm::stopLiveTouch,
                     onRangeWizardStart = controlVm::startRangeWizard,
                     onRangeWizardCapture = controlVm::captureRangePoint,
                     onRangeWizardCancel = controlVm::cancelRangeWizard,

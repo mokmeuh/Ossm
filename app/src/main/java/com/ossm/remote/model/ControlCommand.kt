@@ -1,5 +1,12 @@
 package com.ossm.remote.model
 
+enum class LiveTargetProducer {
+    TOUCH,
+    FUNSCRIPT,
+    VIDEO_SYNC,
+    RANGE_WIZARD,
+}
+
 data class StrokeEngineCommand(
     val speed: Float = 0f,
     val depthMin: Float = 0.2f,
@@ -12,5 +19,10 @@ sealed class OssmCommand {
     data class ActivatePattern(val pattern: OssmPattern) : OssmCommand()
     data class UpdateStrokeEngine(val command: StrokeEngineCommand) : OssmCommand()
     object EnterStreaming : OssmCommand()
-    data class Stream(val positionPercent: Int, val timeMs: Int) : OssmCommand()
+    data class Stream(
+        val positionPercent: Int,
+        val timeMs: Int,
+        val producer: LiveTargetProducer = LiveTargetProducer.TOUCH,
+        val receivedAtMs: Long? = null,
+    ) : OssmCommand()
 }

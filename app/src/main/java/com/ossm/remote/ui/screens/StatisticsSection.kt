@@ -164,7 +164,7 @@ fun StatisticsSection(modifier: Modifier = Modifier) {
             title = { Text(stringResource(R.string.stat_reset_title), color = OssmOnSurface) },
             text = {
                 Text(
-                    "Êtes-vous absolument certain ? Toutes les données seront définitivement supprimées et ne pourront pas être récupérées.",
+                    stringResource(R.string.stat_reset_final_msg),
                     color = OssmOnSurface.copy(alpha = 0.7f)
                 )
             },

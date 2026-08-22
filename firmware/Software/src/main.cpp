@@ -11,6 +11,9 @@
 #include "services/display.h"
 #include "services/encoder.h"
 #include "services/led.h"
+#ifdef SIGNAL_DIAGNOSTICS
+#include "services/onboard_signal_diagnostics.h"
+#endif
 #include "services/stepper.h"
 #include "services/wm.h"
 #include "utils/update.h"
@@ -63,6 +66,10 @@ void __attribute__((weak)) setup() {
 
     // Initialize state machine after global state is set up
     initStateMachine();
+
+#ifdef SIGNAL_DIAGNOSTICS
+    startSignalDiagnostics();
+#endif
 
     // The board, display, and state machine initialized successfully. Confirm
     // the running image if a rollback-capable bootloader marked it pending.

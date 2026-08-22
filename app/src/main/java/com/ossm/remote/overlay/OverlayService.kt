@@ -10,12 +10,11 @@ import android.content.pm.ServiceInfo
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
+import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
 import android.view.Gravity
 import android.view.WindowManager
-import androidx.compose.animation.core.animate
-import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -35,6 +34,7 @@ import androidx.savedstate.SavedStateRegistry
 import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+import com.ossm.remote.AppForegroundTracker
 import com.ossm.remote.MainActivity
 import com.ossm.remote.R
 import com.ossm.remote.data.repository.OverlayPreferencesRepository
@@ -49,6 +49,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
@@ -81,6 +82,8 @@ class OverlayService : Service() {
     private var dragging by mutableStateOf(false)
     private var transparencyPercent by mutableStateOf(DEFAULT_TRANSPARENCY_PERCENT)
 
+    private var bubbleX = DEFAULT_BUBBLE_X
+    private var bubbleY = DEFAULT_BUBBLE_Y
     private var viewAttached = false
     private var isStopped = false
 
@@ -97,20 +100,50 @@ class OverlayService : Service() {
         }
         createNotificationChannel()
         startAsForeground()
-        setupOverlay()
         observePreferences()
+        observeForeground()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (isStopped) return START_NOT_STICKY
         composeOwner.onStart()
         composeOwner.onResume()
-        // Le service est arrêté via le toggle de l'écran Profils (stopService) ou ici.
-        if (intent?.action == ACTION_STOP) {
-            safeStopSelf()
-            return START_NOT_STICKY
+        when (intent?.action) {
+            ACTION_STOP -> {
+                safeStopSelf()
+                return START_NOT_STICKY
+            }
+            ACTION_SHOW -> {
+                showOverlay()
+            }
         }
-        return START_STICKY
+        return START_NOT_STICKY
+    }
+
+    private fun showOverlay() {
+        if (AppForegroundTracker.isAppInForeground) return
+        if (manuallyClosed) return
+        if (viewAttached) return
+        setupOverlay()
+    }
+
+    private fun hideOverlay() {
+        expanded = false
+        if (!viewAttached) return
+        viewAttached = false
+        try {
+            windowManager.removeView(composeView)
+        } catch (e: Exception) {
+            Log.w(TAG, "removeView : vue déjà détachée", e)
+        }
+    }
+
+    private fun observeForeground() {
+        serviceScope.launch {
+            AppForegroundTracker.isAppInForegroundFlow.collect { inForeground ->
+                if (inForeground) safeStopSelf() else showOverlay()
+            }
+        }
     }
 
     override fun onDestroy() {
@@ -132,6 +165,7 @@ class OverlayService : Service() {
     // ---- Mise en place de la fenêtre overlay ----
 
     private fun setupOverlay() {
+        expanded = false
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         composeView = ComposeView(this).apply {
             setViewTreeLifecycleOwner(composeOwner)
@@ -147,12 +181,13 @@ class OverlayService : Service() {
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = DEFAULT_BUBBLE_X
-            y = DEFAULT_BUBBLE_Y
+            x = bubbleX
+            y = bubbleY
         }
         try {
             windowManager.addView(composeView, params)
@@ -164,20 +199,20 @@ class OverlayService : Service() {
     }
 
     private fun observePreferences() {
-        // Position persistée : appliquée dès lecture (et si l'utilisateur ne glisse pas).
         serviceScope.launch {
             combine(
                 overlayPreferencesRepository.bubbleX,
                 overlayPreferencesRepository.bubbleY
             ) { x, y -> x to y }.collect { (x, y) ->
-                if (!dragging) {
+                bubbleX = x
+                bubbleY = y
+                if (!dragging && ::params.isInitialized) {
                     params.x = x
                     params.y = y
                     updateWindow()
                 }
             }
         }
-        // Transparence persistée : reflétée en direct sur la bulle/le panneau.
         serviceScope.launch {
             overlayPreferencesRepository.transparencyPercent.collect { percent ->
                 transparencyPercent = percent
@@ -227,21 +262,9 @@ class OverlayService : Service() {
 
     /** Ferme l'overlay seul : arrête le service, la machine n'est pas arrêtée. */
     private fun closeOverlay() {
-        // Fermeture manuelle dans cette session : l'auto-start à la sortie d'app ne doit
-        // pas relancer l'overlay. Le drapeau est réinitialisé quand l'app revient au premier
-        // plan (MainActivity.onStart). Redondant avec overlay_enabled=false ci-dessous pour
-        // couvrir la course d'écriture async du DataStore.
         manuallyClosed = true
-        // Garde le toggle de l'écran Profils cohérent : l'overlay n'est plus actif.
-        serviceScope.launch {
-            overlayPreferencesRepository.setOverlayEnabled(false)
-        }
-        // Émet ACTION_STOP : le service se stoppe proprement (onDestroy retire la fenêtre).
-        try {
-            startService(Intent(this, OverlayService::class.java).setAction(ACTION_STOP))
-        } catch (e: Exception) {
-            Log.w(TAG, "closeOverlay : impossible d'émettre ACTION_STOP", e)
-        }
+        hideOverlay()
+        safeStopSelf()
     }
 
     private fun safeStopSelf() {
@@ -296,14 +319,14 @@ class OverlayService : Service() {
         serviceScope.launch {
             val startX = params.x
             val startY = params.y
-            animate(
-                initialValue = 0f,
-                targetValue = 1f,
-                animationSpec = tween(durationMillis = SNAP_ANIMATION_MS)
-            ) { value, _ ->
-                params.x = (startX + (targetX - startX) * value).roundToInt()
-                params.y = (startY + (targetY - startY) * value).roundToInt()
+            val startTime = SystemClock.uptimeMillis()
+            while (true) {
+                val progress = (SystemClock.uptimeMillis() - startTime).toFloat() / SNAP_ANIMATION_MS
+                if (progress >= 1f) break
+                params.x = snapInterpolate(startX, targetX, progress)
+                params.y = snapInterpolate(startY, targetY, progress)
                 updateWindow()
+                delay(16L)
             }
             params.x = targetX
             params.y = targetY
@@ -376,6 +399,7 @@ class OverlayService : Service() {
     }
 
     companion object {
+        const val ACTION_SHOW = "com.ossm.remote.overlay.SHOW"
         const val ACTION_STOP = "com.ossm.remote.overlay.STOP"
 
         /** Vrai tant que le service tourne (drapeau processus pour l'auto-start). */
@@ -391,8 +415,8 @@ class OverlayService : Service() {
         private const val TAG = "OverlayService"
         private const val CHANNEL_ID = "overlay"
         private const val NOTIFICATION_ID = 70
-        private const val DEFAULT_BUBBLE_X = 24
-        private const val DEFAULT_BUBBLE_Y = 160
+        private const val DEFAULT_BUBBLE_X = 220
+        private const val DEFAULT_BUBBLE_Y = 220
         private const val DEFAULT_TRANSPARENCY_PERCENT = 100
         private const val MARGIN_DP = 8f
         private const val SNAP_ANIMATION_MS = 260
@@ -427,4 +451,14 @@ private class OverlayComposeOwner : LifecycleOwner, ViewModelStoreOwner, SavedSt
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         viewModelStore.clear()
     }
+}
+
+/**
+ * Interpolation linéaire entre [start] et [target], progress clamped 0f..1f.
+ * Remplace l'animation frame-time de Compose (pas de MonotonicFrameClock dans
+ * un service) par un calcul d'horloge wall-clock identique.
+ */
+internal fun snapInterpolate(start: Int, target: Int, progress: Float): Int {
+    val clamped = progress.coerceIn(0f, 1f)
+    return (start + (target - start) * clamped).roundToInt()
 }

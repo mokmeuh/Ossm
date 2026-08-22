@@ -12,6 +12,7 @@ import com.ossm.remote.analysis.VideoMotionAnalyzer
 import com.ossm.remote.ble.BleManager
 import com.ossm.remote.model.Funscript
 import com.ossm.remote.model.FunscriptAction
+import com.ossm.remote.model.LiveTargetProducer
 import com.ossm.remote.model.OssmCommand
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -339,7 +340,8 @@ class VideoSyncViewModel @Inject constructor(
                     bleManager.sendCommand(
                         OssmCommand.Stream(
                             positionPercent = mapPosition(action.pos),
-                            timeMs = dt
+                            timeMs = dt,
+                            producer = LiveTargetProducer.VIDEO_SYNC,
                         )
                     )
                 }

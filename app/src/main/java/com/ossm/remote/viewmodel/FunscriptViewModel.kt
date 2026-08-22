@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
 import com.ossm.remote.ble.BleManager
 import com.ossm.remote.model.Funscript
+import com.ossm.remote.model.LiveTargetProducer
 import com.ossm.remote.model.OssmCommand
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -137,6 +138,7 @@ class FunscriptViewModel @Inject constructor(
             } else {
                 // La pause a envoyé set:speed:0 ; en streaming le firmware ignore tout
                 // stream:pos:time si speed=0 — on restaure avant de reprendre.
+                bleManager.resumeStreamingTargets()
                 bleManager.liveSet("speed", 100)
             }
 
@@ -165,7 +167,8 @@ class FunscriptViewModel @Inject constructor(
                 bleManager.sendCommand(
                     OssmCommand.Stream(
                         positionPercent = mapPosition(action.pos),
-                        timeMs = durationMs
+                        timeMs = durationMs,
+                        producer = LiveTargetProducer.FUNSCRIPT,
                     )
                 )
 

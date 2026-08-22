@@ -17,6 +17,7 @@ import com.ossm.remote.model.KnownFallbackPatterns
 import com.ossm.remote.model.KnownAdaptivePattern
 import com.ossm.remote.model.MachineState
 import com.ossm.remote.model.KnownStrokeEnginePattern
+import com.ossm.remote.model.LiveTargetProducer
 import com.ossm.remote.model.OssmCommand
 import com.ossm.remote.model.OssmPattern
 import com.ossm.remote.model.PatternControlMode
@@ -32,6 +33,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -209,6 +211,23 @@ class ControlViewModelTest {
         runCurrent()
 
         verify(exactly = 1) { bleManager.activatePatternVerified(any(), any(), any()) }
+    }
+
+    @Test
+    fun `connection fallback enters stroke engine when no machine state notification arrives`() = runTest {
+        connectionStateFlow.value = BleConnectionState.Connected("OSSM", "00:11:22:33:44:55")
+        runCurrent()
+
+        advanceTimeBy(6_001)
+        runCurrent()
+
+        verify(exactly = 1) {
+            bleManager.activatePatternVerified(
+                patternId = any(),
+                patternName = KnownStrokeEnginePattern.name,
+                command = match { it.speed == 0f }
+            )
+        }
     }
 
     @Test
@@ -572,6 +591,36 @@ class ControlViewModelTest {
     }
 
     @Test
+    fun `live speed increase requires confirmation before it reaches the machine`() = runTest {
+        viewModel.setSpeedLive(0.2f)
+        advanceUntilIdle()
+
+        assertEquals(0f, viewModel.uiState.value.speed)
+        assertEquals(GuardedControl.SPEED, viewModel.uiState.value.pendingManualChange?.control)
+        verify(exactly = 0) { bleManager.liveSet("speed", any()) }
+
+        viewModel.confirmPendingManualChange(skipForSession = true, neverAskAgain = false)
+        advanceUntilIdle()
+
+        assertEquals(0.2f, viewModel.uiState.value.speed)
+        verify { bleManager.sendCommand(match { it is OssmCommand.UpdateStrokeEngine }) }
+    }
+
+    @Test
+    fun `activating another pattern clears pending speed change and stops motion`() = runTest {
+        viewModel.setSpeedLive(0.2f)
+        advanceUntilIdle()
+        assertNotNull(viewModel.uiState.value.pendingManualChange)
+
+        viewModel.activatePattern(KnownStrokeEnginePattern.key)
+        advanceUntilIdle()
+
+        assertEquals(0f, viewModel.uiState.value.speed)
+        assertFalse(viewModel.uiState.value.isRunning)
+        assertNull(viewModel.uiState.value.pendingManualChange)
+    }
+
+    @Test
     fun `depth increase over threshold requires confirmation, decrease does not`() = runTest {
         // Réduire la plage (moins profond) passe sans confirmation.
         viewModel.requestDepthRangeChange(0.3f, 0.6f)
@@ -687,6 +736,101 @@ class ControlViewModelTest {
     }
 
     @Test
+    fun `live stream drag forwards every callback to the shared target scheduler`() = runTest {
+        patternsFlow.value = listOf(OssmPattern("live", "Live", PatternControlMode.STREAMING))
+        streamingReadyFlow.value = true
+        machineStateFlow.value = MachineState(speed = 100)
+        advanceUntilIdle()
+
+        viewModel.setStreamPositionDrag(10)
+        assertEquals(10, viewModel.uiState.value.streamPositionPercent)
+        viewModel.setStreamPositionDrag(20)
+        viewModel.setStreamPositionDrag(30)
+
+        verify(exactly = 1) { bleManager.sendCommand(OssmCommand.Stream(10, timeMs = 60)) }
+        verify(exactly = 1) { bleManager.sendCommand(OssmCommand.Stream(20, timeMs = 60)) }
+        verify(exactly = 1) { bleManager.sendCommand(OssmCommand.Stream(30, timeMs = 60)) }
+    }
+
+    @Test
+    fun `fast live stream drag preserves the latest finger target for central coalescing`() = runTest {
+        patternsFlow.value = listOf(OssmPattern("live", "Live", PatternControlMode.STREAMING))
+        streamingReadyFlow.value = true
+        machineStateFlow.value = MachineState(speed = 100)
+        advanceUntilIdle()
+
+        viewModel.setStreamPositionDrag(0)
+        viewModel.setStreamPositionDrag(100)
+
+        verify(exactly = 1) { bleManager.sendCommand(OssmCommand.Stream(0, timeMs = 60)) }
+        verify(exactly = 1) { bleManager.sendCommand(OssmCommand.Stream(100, timeMs = 60)) }
+    }
+
+    @Test
+    fun `live stream drag forwards reversal samples to central safety scheduling`() = runTest {
+        patternsFlow.value = listOf(OssmPattern("live", "Live", PatternControlMode.STREAMING))
+        streamingReadyFlow.value = true
+        machineStateFlow.value = MachineState(speed = 100)
+        advanceUntilIdle()
+
+        viewModel.setStreamPositionDrag(20)
+        viewModel.setStreamPositionDrag(80)
+        viewModel.setStreamPositionDrag(0)
+
+        verify(exactly = 1) { bleManager.sendCommand(OssmCommand.Stream(20, timeMs = 60)) }
+        verify(exactly = 1) { bleManager.sendCommand(OssmCommand.Stream(80, timeMs = 60)) }
+        verify(exactly = 1) { bleManager.sendCommand(OssmCommand.Stream(0, timeMs = 60)) }
+    }
+
+    @Test
+    fun `live stream drag updates state but is gated before streaming is ready`() = runTest {
+        patternsFlow.value = listOf(OssmPattern("live", "Live", PatternControlMode.STREAMING))
+        streamingReadyFlow.value = false
+        advanceUntilIdle()
+
+        viewModel.setStreamPositionDrag(50)
+        assertEquals(50, viewModel.uiState.value.streamPositionPercent)
+        advanceUntilIdle()
+        verify(exactly = 0) { bleManager.sendCommand(match { it is OssmCommand.Stream }) }
+
+        streamingReadyFlow.value = true
+        advanceUntilIdle()
+        verify(exactly = 0) { bleManager.sendCommand(match { it is OssmCommand.Stream }) }
+    }
+
+    @Test
+    fun `live stream release forwards final target without changing callback types`() = runTest {
+        patternsFlow.value = listOf(OssmPattern("live", "Live", PatternControlMode.STREAMING))
+        streamingReadyFlow.value = true
+        machineStateFlow.value = MachineState(speed = 100)
+        advanceUntilIdle()
+
+        viewModel.setStreamPositionDrag(10)
+        viewModel.setStreamPositionDrag(20)
+        viewModel.setStreamPosition(80)
+
+        verify(exactly = 1) { bleManager.sendCommand(OssmCommand.Stream(10, timeMs = 60)) }
+        verify(exactly = 1) { bleManager.sendCommand(OssmCommand.Stream(20, timeMs = 60)) }
+        verify(exactly = 1) { bleManager.sendCommand(OssmCommand.Stream(80, timeMs = 60)) }
+    }
+
+    @Test
+    fun `ending Live touch immediately stops motion without entering emergency state`() = runTest {
+        patternsFlow.value = listOf(OssmPattern("live", "Live", PatternControlMode.STREAMING))
+        streamingReadyFlow.value = true
+        machineStateFlow.value = MachineState(speed = 100)
+        advanceUntilIdle()
+
+        viewModel.setStreamPositionDrag(65)
+        viewModel.stopLiveTouch()
+
+        assertEquals(65, viewModel.uiState.value.streamPositionPercent)
+        assertFalse(viewModel.uiState.value.isRunning)
+        verify(exactly = 1) { bleManager.sendCommand(OssmCommand.Stop) }
+        verify(exactly = 0) { bleManager.emergencyStop() }
+    }
+
+    @Test
     fun `range wizard captures the last committed live position`() = runTest {
         streamingReadyFlow.value = true
         advanceUntilIdle()
@@ -702,6 +846,11 @@ class ControlViewModelTest {
         assertEquals(0.2f, viewModel.uiState.value.depthMin, 0.001f)
         assertEquals(0.8f, viewModel.uiState.value.depthMax, 0.001f)
         assertNull(viewModel.uiState.value.rangeWizard)
+        verify {
+            bleManager.sendCommand(
+                OssmCommand.Stream(80, timeMs = 60, producer = LiveTargetProducer.RANGE_WIZARD)
+            )
+        }
     }
 
 }

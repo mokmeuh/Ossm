@@ -3,7 +3,6 @@ package com.ossm.remote.data.db
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import java.time.Instant
-import java.time.LocalDate
 import java.time.ZoneId
 
 /**
@@ -34,4 +33,4 @@ data class SessionEntity(
 
 /** Jour calendaire local (epochDay) d'un horodatage, utilisé pour l'historique quotidien. */
 internal fun epochDayOf(millis: Long): Long =
-    LocalDate.ofInstant(Instant.ofEpochMilli(millis), ZoneId.systemDefault()).toEpochDay()
+    Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).toLocalDate().toEpochDay()

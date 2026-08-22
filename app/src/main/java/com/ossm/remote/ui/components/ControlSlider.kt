@@ -1,16 +1,18 @@
 package com.ossm.remote.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -19,19 +21,30 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.setProgress
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ossm.remote.R
 import com.ossm.remote.ui.theme.OssmOnSurface
 import com.ossm.remote.ui.theme.OssmError
 import com.ossm.remote.ui.theme.OssmPrimary
 import com.ossm.remote.ui.theme.OssmPrimaryLight
+import android.os.SystemClock
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 @Composable
 fun ControlSlider(
@@ -49,7 +62,14 @@ fun ControlSlider(
     displayValueColor: Color? = null
 ) {
     val step = (valueRange.endInclusive - valueRange.start) / 100f
-    var sliderWidthPx by remember { mutableIntStateOf(0) }
+    val rangeSize = valueRange.endInclusive - valueRange.start
+    fun toPercent(raw: Float): Float = if (rangeSize <= 0f) {
+        0f
+    } else {
+        ((raw - valueRange.start) / rangeSize * 100f).coerceIn(0f, 100f)
+    }
+    fun fromPercent(percent: Float): Float =
+        valueRange.start + percent.coerceIn(0f, 100f) / 100f * rangeSize
 
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -90,48 +110,18 @@ fun ControlSlider(
                 onValueCommit = onValueCommit
             )
 
-            Box(
+            PrecisionScalarSlider(
+                valuePercent = toPercent(value),
+                enabled = enabled,
+                activeColor = activeColor,
+                currentMarkerPercent = currentMarker?.let(::toPercent),
+                onValueChange = { onValueChange(fromPercent(it)) },
+                onValueCommit = { onValueCommit(fromPercent(it)) },
                 modifier = Modifier
                     .weight(1f)
-                    .onSizeChanged { sliderWidthPx = it.width }
-                    .pointerInput(enabled) {
-                        detectTapGestures { /* consume tap — no value jump */ }
-                    }
-            ) {
-                Slider(
-                    value = value,
-                    onValueChange = onValueChange,
-                    onValueChangeFinished = { onValueCommit(value) },
-                    valueRange = valueRange,
-                    enabled = enabled,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(44.dp),
-                    colors = SliderDefaults.colors(
-                        thumbColor = activeColor,
-                        activeTrackColor = activeColor,
-                        inactiveTrackColor = activeColor.copy(alpha = 0.25f),
-                        disabledThumbColor = activeColor.copy(0.3f),
-                        disabledActiveTrackColor = activeColor.copy(0.2f)
-                    )
-                )
-                currentMarker?.let { marker ->
-                    val range = valueRange.endInclusive - valueRange.start
-                    val fraction = if (range <= 0f) 0f else {
-                        ((marker - valueRange.start) / range).coerceIn(0f, 1f)
-                    }
-                    val markerX = with(LocalDensity.current) { (sliderWidthPx * fraction).toDp() }
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.CenterStart)
-                            .offset(x = markerX - 1.5.dp)
-                            .width(3.dp)
-                            .height(34.dp)
-                            .clip(RoundedCornerShape(1.5.dp))
-                            .background(markerColor.copy(alpha = if (enabled) 0.95f else 0.4f))
-                    )
-                }
-            }
+                    .fillMaxWidth(),
+                markerColor = markerColor
+            )
 
             RampButton(
                 symbol = "+",
@@ -145,6 +135,191 @@ fun ControlSlider(
                 onValueCommit = onValueCommit
             )
         }
+    }
+}
+
+@Composable
+internal fun PrecisionScalarSlider(
+    valuePercent: Float,
+    enabled: Boolean,
+    activeColor: Color,
+    onValueChange: (Float) -> Unit,
+    onValueCommit: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+    currentMarkerPercent: Float? = null,
+    markerColor: Color = OssmError
+) {
+    val haptics = LocalHapticFeedback.current
+    val gestureState = remember { PrecisionSliderState() }
+    val onChange = rememberUpdatedState(onValueChange)
+    val onCommit = rememberUpdatedState(onValueCommit)
+    var draftPercent by remember { mutableFloatStateOf(valuePercent.coerceIn(0f, 100f)) }
+    var dragging by remember { mutableStateOf(false) }
+    var level by remember { mutableStateOf(PrecisionLevel.Global) }
+    var visibleRange by remember { mutableStateOf(0f..100f) }
+
+    fun syncVisualState() {
+        level = gestureState.level
+        visibleRange = gestureState.visibleRange
+    }
+
+    LaunchedEffect(valuePercent, dragging) {
+        if (!dragging) draftPercent = valuePercent.coerceIn(0f, 100f)
+    }
+    LaunchedEffect(enabled) {
+        if (!enabled && dragging) {
+            gestureState.cancel()
+            dragging = false
+            draftPercent = valuePercent.coerceIn(0f, 100f)
+            syncVisualState()
+        }
+    }
+    LaunchedEffect(dragging) {
+        while (dragging) {
+            delay(25)
+            if (gestureState.advanceTime(SystemClock.uptimeMillis())) {
+                syncVisualState()
+                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            }
+        }
+    }
+
+    val rangeLabel = when (level) {
+        PrecisionLevel.Global -> stringResource(R.string.precision_range_global)
+        else -> stringResource(
+            R.string.precision_range_level,
+            checkNotNull(level.halfSpan).roundToInt(),
+            visibleRange.start.roundToInt(),
+            visibleRange.endInclusive.roundToInt()
+        )
+    }
+    val stateLabel = stringResource(
+        R.string.precision_state_description,
+        rangeLabel,
+        draftPercent.roundToInt()
+    )
+    val rangeSpan = visibleRange.endInclusive - visibleRange.start
+    val displayedFraction = if (rangeSpan <= 0f) 0f else {
+        ((draftPercent - visibleRange.start) / rangeSpan).coerceIn(0f, 1f)
+    }
+    val markerFraction = currentMarkerPercent?.let {
+        ((it - visibleRange.start) / rangeSpan).coerceIn(0f, 1f)
+    }
+
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp)
+                .semantics {
+                    stateDescription = stateLabel
+                    progressBarRangeInfo = ProgressBarRangeInfo(draftPercent, 0f..100f)
+                    if (enabled) {
+                        setProgress { target ->
+                            val next = target.coerceIn(0f, 100f)
+                            draftPercent = next
+                            onChange.value(next)
+                            onCommit.value(next)
+                            true
+                        }
+                    }
+                }
+                .pointerInput(enabled) {
+                    if (!enabled) return@pointerInput
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        down.consume()
+                        gestureState.onDown(
+                            valuePercent = draftPercent,
+                            pointerX = down.position.x,
+                            trackWidthPx = size.width.toFloat(),
+                            uptimeMillis = down.uptimeMillis
+                        )
+                        dragging = true
+                        syncVisualState()
+                        var released = false
+                        try {
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                if (change.changedToUpIgnoreConsumed()) {
+                                    released = true
+                                    change.consume()
+                                    gestureState.release()?.let(onCommit.value)
+                                    dragging = false
+                                    syncVisualState()
+                                    break
+                                }
+                                if (!change.pressed) break
+                                if (gestureState.onMove(change.position.x, change.uptimeMillis)) {
+                                    draftPercent = gestureState.valuePercent
+                                    onChange.value(draftPercent)
+                                    syncVisualState()
+                                }
+                                change.consume()
+                            }
+                        } finally {
+                            if (!released) {
+                                gestureState.cancel()
+                                dragging = false
+                                draftPercent = valuePercent.coerceIn(0f, 100f)
+                                syncVisualState()
+                            }
+                        }
+                    }
+                }
+        ) {
+            val centerY = size.height / 2f
+            val trackStart = 10.dp.toPx()
+            val trackEnd = size.width - trackStart
+            val trackWidth = (trackEnd - trackStart).coerceAtLeast(0f)
+            val trackHeight = 6.dp.toPx()
+            val radius = trackHeight / 2f
+            drawRoundRect(
+                color = activeColor.copy(alpha = if (enabled) 0.24f else 0.10f),
+                topLeft = androidx.compose.ui.geometry.Offset(trackStart, centerY - radius),
+                size = androidx.compose.ui.geometry.Size(trackWidth, trackHeight),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius)
+            )
+            drawRoundRect(
+                color = activeColor.copy(alpha = if (enabled) 1f else 0.28f),
+                topLeft = androidx.compose.ui.geometry.Offset(trackStart, centerY - radius),
+                size = androidx.compose.ui.geometry.Size(trackWidth * displayedFraction, trackHeight),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius)
+            )
+            markerFraction?.let { fraction ->
+                val markerX = trackStart + trackWidth * fraction
+                drawLine(
+                    color = markerColor.copy(alpha = if (enabled) 0.95f else 0.4f),
+                    start = androidx.compose.ui.geometry.Offset(markerX, centerY - 17.dp.toPx()),
+                    end = androidx.compose.ui.geometry.Offset(markerX, centerY + 17.dp.toPx()),
+                    strokeWidth = 3.dp.toPx()
+                )
+            }
+            val thumbX = trackStart + trackWidth * displayedFraction
+            drawCircle(
+                color = activeColor.copy(alpha = if (enabled) 1f else 0.35f),
+                radius = 9.dp.toPx(),
+                center = androidx.compose.ui.geometry.Offset(thumbX, centerY)
+            )
+            drawCircle(
+                color = OssmOnSurface.copy(alpha = if (enabled) 0.7f else 0.2f),
+                radius = 11.dp.toPx(),
+                center = androidx.compose.ui.geometry.Offset(thumbX, centerY),
+                style = Stroke(width = 1.dp.toPx())
+            )
+        }
+        Text(
+            text = rangeLabel,
+            color = when (level) {
+                PrecisionLevel.Global -> OssmOnSurface.copy(alpha = 0.55f)
+                PrecisionLevel.Fine30, PrecisionLevel.Fine20 -> OssmPrimaryLight
+                PrecisionLevel.Fine10, PrecisionLevel.Fine5 -> activeColor
+            },
+            fontSize = 11.sp,
+            fontWeight = if (level == PrecisionLevel.Global) FontWeight.Normal else FontWeight.Bold,
+            maxLines = 1
+        )
     }
 }
 
@@ -178,7 +353,7 @@ private fun RampButton(
 
     Box(
         modifier = Modifier
-            .size(52.dp)
+            .size(56.dp)
             .clip(CircleShape)
             .background(
                 if (enabled) activeColor.copy(alpha = 0.18f)

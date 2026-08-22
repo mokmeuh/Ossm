@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.StopCircle
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Slider
@@ -322,10 +323,9 @@ private fun OverlayPanel(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Icône app : ferme l'overlay seul (sans arrêter la machine).
             IconButton(onClick = onOverlayClose, modifier = Modifier.size(34.dp)) {
                 Icon(
-                    painter = painterResource(R.drawable.ic_launcher_foreground),
+                    imageVector = Icons.Default.Close,
                     contentDescription = stringResource(R.string.overlay_close),
                     modifier = Modifier.size(24.dp)
                 )
@@ -365,7 +365,6 @@ private fun OverlayPanel(
                     modifier = Modifier.size(20.dp)
                 )
             }
-            // X rouge : arrêt d'urgence.
             Box(
                 modifier = Modifier
                     .size(44.dp)
@@ -375,7 +374,7 @@ private fun OverlayPanel(
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    Icons.Default.Close,
+                    Icons.Default.StopCircle,
                     contentDescription = stringResource(R.string.overlay_emergency_stop),
                     tint = Color.White,
                     modifier = Modifier.size(30.dp)
@@ -428,7 +427,7 @@ private fun OverlayPanel(
             onValueCommit = { onDepthCommit(depthMinDraft, depthMaxDraft) }
         )
 
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(4.dp))
         OverlaySlider(
             label = stringResource(R.string.prof_max),
             value = depthMaxDraft,

@@ -1,0 +1,10 @@
+--- firmware/Software/test/test_task11_live_smooth_engine/main.cpp
++++ firmware/Software/test/test_task11_live_smooth_engine/main.cpp
+@@ -64,4 +64,7 @@
+     UNITY_BEGIN();
+     RUN_TEST(test_legacy_stream_command_bytes_and_mapping_are_unchanged);
+     RUN_TEST(test_legacy_motion_profile_characterization);
++    RUN_TEST(test_planner_rejects_zero_distance_and_short_duration);
++    RUN_TEST(test_monotonic_deadline_never_extends_duration);
++    RUN_TEST(test_task7_queue_semantics_drive_the_tested_planner);
+     return UNITY_END();

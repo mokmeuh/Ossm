@@ -197,6 +197,10 @@ class ControlViewModel @Inject constructor(
 
     fun setStreamPosition(positionPercent: Int) = controlSessionStore.setStreamPosition(positionPercent)
 
+    fun setStreamPositionDrag(positionPercent: Int) = controlSessionStore.setStreamPositionDrag(positionPercent)
+
+    fun stopLiveTouch() = controlSessionStore.stopLiveTouch()
+
     fun startRangeWizard() = controlSessionStore.startRangeWizard()
 
     fun captureRangePoint() = controlSessionStore.captureRangePoint()

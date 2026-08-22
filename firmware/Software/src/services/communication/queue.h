@@ -5,6 +5,8 @@
 #include <chrono>
 #include <queue>
 
+#include "live_smooth_protocol.h"
+
 struct PositionTime {
     uint8_t position; // 0 - 100
     uint16_t inTime;     // in ms
@@ -14,5 +16,21 @@ struct PositionTime {
 
 extern std::queue<String> messageQueue;
 extern std::queue<PositionTime> targetQueue;
+
+struct LiveSmoothTarget {
+    live_smooth::Packet packet{};
+    uint32_t acceptedAtMs = 0;
+};
+
+void initializeLiveSmoothQueue();
+void updateLiveSmoothSafety(const live_smooth::SafetyState& safety);
+void latchLiveSmoothEndpointPressure();
+live_smooth::OfferResult offerLiveSmoothTarget(
+    const live_smooth::Packet& packet, uint32_t nowMs);
+bool pollLiveSmoothTarget(uint32_t nowMs, LiveSmoothTarget& target);
+void stopLiveSmoothOutOfBand();
+bool resumeLiveSmooth();
+std::size_t liveSmoothQueueDepth();
+bool liveSmoothMotionAllowed();
 
 #endif  // OSSM_COMMUNICATION_QUEUE_H

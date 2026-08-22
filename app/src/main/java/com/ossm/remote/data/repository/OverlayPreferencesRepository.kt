@@ -40,7 +40,7 @@ class OverlayPreferencesRepository @Inject constructor(
 
     /** Vrai quand l'utilisateur a activé l'overlay dans les réglages. */
     val overlayEnabled: Flow<Boolean> = context.overlayDataStore.data.map { prefs ->
-        prefs[OVERLAY_ENABLED] ?: true
+        prefs[OVERLAY_ENABLED] ?: false
     }
 
     suspend fun setBubblePosition(x: Int, y: Int) {
@@ -68,8 +68,8 @@ class OverlayPreferencesRepository @Inject constructor(
         private val TRANSPARENCY_PERCENT = intPreferencesKey("transparency_percent")
         private val OVERLAY_ENABLED = booleanPreferencesKey("overlay_enabled")
 
-        private const val DEFAULT_X = 24
-        private const val DEFAULT_Y = 160
+        private const val DEFAULT_X = 220
+        private const val DEFAULT_Y = 220
         private const val DEFAULT_TRANSPARENCY_PERCENT = 100
         private const val MIN_TRANSPARENCY = 20
         private const val MAX_TRANSPARENCY = 100

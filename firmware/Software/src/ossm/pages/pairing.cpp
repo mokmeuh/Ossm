@@ -59,6 +59,7 @@ static void pairingTask(void *pvParameters) {
     doc["md5"] = ESP.getSketchMD5();
     doc["device"] = "OSSM";
     doc["version"] = VERSION;
+    doc["buildIdentity"] = OSSM_BUILD_IDENTITY;
 
     String body;
     serializeJson(doc, body);

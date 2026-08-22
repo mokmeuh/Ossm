@@ -6,7 +6,9 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -17,16 +19,15 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
-import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Save
@@ -46,7 +47,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RangeSlider
-import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -76,6 +76,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -128,6 +130,8 @@ fun ControlScreen(
     onProgressiveMaxCommit: (Float) -> Unit,
     onChaosToggle: (Boolean) -> Unit,
     onStreamPosition: (Int) -> Unit,
+    onStreamDrag: (Int) -> Unit,
+    onStreamTouchEnd: () -> Unit,
     onRangeWizardStart: () -> Unit,
     onRangeWizardCapture: () -> Unit,
     onRangeWizardCancel: () -> Unit,
@@ -214,38 +218,21 @@ fun ControlScreen(
             .fillMaxSize()
             .background(Brush.verticalGradient(listOf(OssmBackground, OssmSecondary)))
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                SettingsGearButton(
-                    onInfoClick = { showInfoDialog = true }
-                )
-                Box(
-                    modifier = Modifier
-                        .size(110.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    StopButton(onClick = onStop, modifier = Modifier.size(110.dp))
-                }
-                PausePlayButton(
+        CompactControlScaffold(
+            actionRail = { landscape ->
+                CompactActionRail(
+                    landscape = landscape,
                     isPaused = uiState.isPaused,
-                    enabled = connected
+                    pauseEnabled = connected
                         && uiState.activePattern?.mode != PatternControlMode.STREAMING
                         && (uiState.isRunning || uiState.isPaused),
+                    onInfoClick = { showInfoDialog = true },
+                    onStop = onStop,
                     onPause = onPause,
                     onResume = onResume
                 )
             }
-
+        ) { compactLandscape ->
             if (!connected) {
                 GlassCard(modifier = Modifier.fillMaxWidth(), tint = OssmWarning) {
                     Text(
@@ -275,7 +262,12 @@ fun ControlScreen(
                 }
             }
 
-            GlassCard(modifier = Modifier.fillMaxWidth()) {
+            GlassCard(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("control_card"),
+                padding = if (compactLandscape) 10.dp else 16.dp
+            ) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -343,7 +335,10 @@ fun ControlScreen(
                         StreamPositionSlider(
                             positionPercent = uiState.streamPositionPercent,
                             enabled = slidersEnabled && uiState.streamingReady,
-                            onPositionCommit = onStreamPosition
+                            onPositionDrag = onStreamDrag,
+                            onPositionCommit = onStreamPosition,
+                            onTouchEnd = onStreamTouchEnd,
+                            compact = compactLandscape
                         )
                         Spacer(Modifier.height(12.dp))
                         Row(
@@ -431,7 +426,10 @@ fun ControlScreen(
                         StreamPositionSlider(
                             positionPercent = uiState.streamPositionPercent,
                             enabled = slidersEnabled && uiState.streamingReady,
-                            onPositionCommit = onStreamPosition
+                            onPositionDrag = onStreamDrag,
+                            onPositionCommit = onStreamPosition,
+                            onTouchEnd = onStreamTouchEnd,
+                            compact = compactLandscape
                         )
                         Spacer(Modifier.height(10.dp))
                         Row(
@@ -454,6 +452,7 @@ fun ControlScreen(
                             Switch(
                                 checked = uiState.liveInvert,
                                 onCheckedChange = onLiveInvertToggle,
+                                modifier = Modifier.sizeIn(minWidth = 56.dp, minHeight = 56.dp),
                                 colors = SwitchDefaults.colors(
                                     checkedThumbColor = OssmAccent,
                                     checkedTrackColor = OssmAccent.copy(alpha = 0.4f)
@@ -502,6 +501,7 @@ fun ControlScreen(
                                 checked = uiState.chaosAtMax,
                                 onCheckedChange = { onChaosToggle(it) },
                                 enabled = connected,
+                                modifier = Modifier.sizeIn(minWidth = 56.dp, minHeight = 56.dp),
                                 colors = androidx.compose.material3.CheckboxDefaults.colors(
                                     checkedColor = OssmAccent,
                                     uncheckedColor = OssmOnSurface.copy(alpha = 0.5f)
@@ -770,7 +770,6 @@ fun ControlScreen(
                 }
             }
 
-            Spacer(Modifier.height(24.dp))
         }
 
         if (patternPickerOpen) {
@@ -850,6 +849,108 @@ fun ControlScreen(
 }
 
 @Composable
+internal fun CompactControlScaffold(
+    modifier: Modifier = Modifier,
+    actionRail: @Composable (landscape: Boolean) -> Unit,
+    content: @Composable ColumnScope.(landscape: Boolean) -> Unit
+) {
+    BoxWithConstraints(
+        modifier = modifier
+            .fillMaxSize()
+            .testTag("control_main_surface")
+    ) {
+        val landscape = maxWidth > maxHeight
+        if (landscape) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(112.dp)
+                        .fillMaxHeight(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    actionRail(true)
+                }
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    content = { content(true) }
+                )
+            }
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(110.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    actionRail(false)
+                }
+                content(false)
+            }
+        }
+    }
+}
+
+@Composable
+private fun CompactActionRail(
+    landscape: Boolean,
+    isPaused: Boolean,
+    pauseEnabled: Boolean,
+    onInfoClick: () -> Unit,
+    onStop: () -> Unit,
+    onPause: () -> Unit,
+    onResume: () -> Unit
+) {
+    val actions: @Composable () -> Unit = {
+        SettingsGearButton(onInfoClick = onInfoClick)
+        Box(
+            modifier = Modifier
+                .size(110.dp)
+                .testTag("control_stop"),
+            contentAlignment = Alignment.Center
+        ) {
+            StopButton(onClick = onStop, modifier = Modifier.size(110.dp))
+        }
+        PausePlayButton(
+            isPaused = isPaused,
+            enabled = pauseEnabled,
+            onPause = onPause,
+            onResume = onResume
+        )
+    }
+    if (landscape) {
+        Column(
+            modifier = Modifier.fillMaxHeight(),
+            verticalArrangement = Arrangement.SpaceEvenly,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            actions()
+        }
+    } else {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            actions()
+        }
+    }
+}
+
+@Composable
 private fun PatternOpenerButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -879,12 +980,20 @@ private fun PatternPickerOverlay(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(OssmBackground)
-            .padding(vertical = 24.dp)
-    ) {
+    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        val landscape = maxWidth > maxHeight
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(
+                    start = if (landscape) 112.dp else 12.dp,
+                    top = if (landscape) 8.dp else 100.dp,
+                    end = 12.dp,
+                    bottom = 8.dp
+                )
+                .clip(RoundedCornerShape(20.dp))
+                .background(OssmBackground)
+        ) {
         GlassCard(modifier = Modifier.fillMaxWidth()) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -957,6 +1066,7 @@ private fun PatternPickerOverlay(
                 }
             }
         }
+        }
     }
 }
 
@@ -967,121 +1077,14 @@ private fun CenteredSensationSlider(
     onValueChange: (Float) -> Unit,
     onValueCommit: (Float) -> Unit
 ) {
-    var sliderWidthPx by remember { mutableIntStateOf(0) }
-    var draft by remember { mutableFloatStateOf(value) }
-    LaunchedEffect(value) {
-        draft = value
-    }
-    val sensation = draft.coerceIn(0f, 1f)
-    val valueText = "${(sensation * 100).toInt()}%"
-    fun changeBy(step: Float) {
-        val next = (draft + step).coerceIn(0f, 1f)
-        draft = next
-        onValueChange(next)
-        onValueCommit(next)
-    }
-
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(
-            "Sensation",
-            color = OssmPrimaryLight,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 1.sp,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth()
-        )
-        Text(
-            valueText,
-            color = if (enabled) OssmOnSurface else OssmOnSurface.copy(alpha = 0.4f),
-            fontSize = 14.sp,
-            fontWeight = FontWeight.SemiBold,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth()
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            IconButton(
-                onClick = { changeBy(-0.01f) },
-                enabled = enabled,
-                modifier = Modifier.size(48.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Remove,
-                    contentDescription = stringResource(R.string.ctl_sensation_decrease),
-                    tint = if (enabled) OssmPrimary else OssmOnSurface.copy(alpha = 0.35f)
-                )
-            }
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .onSizeChanged { sliderWidthPx = it.width }
-            ) {
-                val trackPaddingPx = with(LocalDensity.current) { 16.dp.toPx() }
-                val trackWidthPx = (sliderWidthPx - trackPaddingPx * 2f).coerceAtLeast(0f)
-                val segmentWidth = sensation * trackWidthPx
-            Box(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .padding(horizontal = 16.dp)
-                    .fillMaxWidth()
-                    .height(6.dp)
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(
-                        if (enabled) OssmOnSurface.copy(alpha = 0.38f)
-                        else OssmOnSurface.copy(alpha = 0.18f)
-                    )
-            ) {
-                if (trackWidthPx > 0f && segmentWidth > 0f) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.CenterStart)
-                            .width(with(LocalDensity.current) { segmentWidth.toDp() })
-                            .fillMaxHeight()
-                            .clip(RoundedCornerShape(3.dp))
-                            .background(OssmAccent)
-                    )
-                }
-            }
-                Slider(
-                    value = sensation,
-                    onValueChange = {
-                        val next = it.coerceIn(0f, 1f)
-                        draft = next
-                        onValueChange(next)
-                    },
-                    onValueChangeFinished = { onValueCommit(draft.coerceIn(0f, 1f)) },
-                    valueRange = 0f..1f,
-                    enabled = enabled,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
-                    colors = SliderDefaults.colors(
-                        thumbColor = OssmAccent,
-                        activeTrackColor = androidx.compose.ui.graphics.Color.Transparent,
-                        inactiveTrackColor = androidx.compose.ui.graphics.Color.Transparent,
-                        disabledThumbColor = OssmOnSurface.copy(alpha = 0.25f),
-                        disabledActiveTrackColor = androidx.compose.ui.graphics.Color.Transparent,
-                        disabledInactiveTrackColor = androidx.compose.ui.graphics.Color.Transparent
-                    )
-                )
-            }
-            IconButton(
-                onClick = { changeBy(0.01f) },
-                enabled = enabled,
-                modifier = Modifier.size(48.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = stringResource(R.string.ctl_sensation_increase),
-                    tint = if (enabled) OssmAccent else OssmOnSurface.copy(alpha = 0.35f)
-                )
-            }
-        }
-    }
+    ControlSlider(
+        label = stringResource(R.string.ctl_sensation),
+        value = value,
+        onValueChange = onValueChange,
+        onValueCommit = onValueCommit,
+        enabled = enabled,
+        activeColor = OssmAccent
+    )
 }
 
 @Composable
@@ -1259,6 +1262,7 @@ private fun ListeningModeFooter(
             Switch(
                 checked = enabled,
                 onCheckedChange = onToggle,
+                modifier = Modifier.sizeIn(minWidth = 56.dp, minHeight = 56.dp),
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = OssmAccent,
                     checkedTrackColor = OssmAccent.copy(alpha = 0.4f)
@@ -1322,6 +1326,7 @@ private fun RandomModeRow(
         Checkbox(
             checked = checked,
             onCheckedChange = onCheckedChange,
+            modifier = Modifier.sizeIn(minWidth = 56.dp, minHeight = 56.dp),
             colors = CheckboxDefaults.colors(
                 checkedColor = OssmAccent,
                 uncheckedColor = OssmOnSurface.copy(alpha = 0.5f)
@@ -1360,6 +1365,7 @@ private fun AutoRandomPatternRow(
         Checkbox(
             checked = checked,
             onCheckedChange = onCheckedChange,
+            modifier = Modifier.sizeIn(minWidth = 56.dp, minHeight = 56.dp),
             colors = CheckboxDefaults.colors(
                 checkedColor = OssmAccent,
                 uncheckedColor = OssmOnSurface.copy(alpha = 0.5f)
@@ -1442,6 +1448,7 @@ private fun SliderGuardRow(
         Switch(
             checked = checked,
             onCheckedChange = onCheckedChange,
+            modifier = Modifier.sizeIn(minWidth = 56.dp, minHeight = 56.dp),
             colors = SwitchDefaults.colors(
                 checkedThumbColor = OssmPrimary,
                 checkedTrackColor = OssmPrimary.copy(alpha = 0.35f)
@@ -1531,15 +1538,7 @@ private fun DepthRangeEditor(
                             val fraction = (offset.x / sliderWidthPx.toFloat()).coerceIn(0f, 1f)
                             val tappedValue = fraction
                             val tappedMin = kotlin.math.abs(tappedValue - minValue) <= kotlin.math.abs(tappedValue - maxValue)
-                            // Mémorise la barre touchée pour que +/- agissent dessus.
                             selectedIsMax = !tappedMin
-                            val newRange = if (tappedMin) {
-                                tappedValue.coerceAtMost(maxValue)..maxValue
-                            } else {
-                                minValue..tappedValue.coerceAtLeast(minValue)
-                            }
-                            onRangeChange(newRange.start, newRange.endInclusive)
-                            onRangeCommit(newRange.start, newRange.endInclusive)
                         }
                     }
             ) {
@@ -1873,6 +1872,7 @@ private fun GuardCheckboxRow(
         Switch(
             checked = checked,
             onCheckedChange = onCheckedChange,
+            modifier = Modifier.sizeIn(minWidth = 56.dp, minHeight = 56.dp),
             colors = SwitchDefaults.colors(
                 checkedThumbColor = OssmPrimary,
                 checkedTrackColor = OssmPrimary.copy(alpha = 0.35f)
@@ -2108,6 +2108,7 @@ private fun AdaptiveSettingsCard(
                 checked = settings.enabled,
                 onCheckedChange = onEnabledChange,
                 enabled = enabled,
+                modifier = Modifier.sizeIn(minWidth = 56.dp, minHeight = 56.dp),
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = OssmAccent,
                     checkedTrackColor = OssmAccent.copy(alpha = 0.4f),

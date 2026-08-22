@@ -51,6 +51,13 @@
     <string name="ctl_patterns_open">Ouvrir les patterns</string>
     <string name="ctl_no_patterns">Aucun pattern détecté pour ce firmware.</string>
     <string name="ctl_live_hint_ready">Glisse le slider pour previsualiser, relache pour envoyer une seule position (0 %% = home, 100 %% = fond).</string>
+    <string name="ctl_live_home">Home</string>
+    <string name="ctl_live_deep">Fond</string>
+    <string name="ctl_live_release_once">Relâche pour valider</string>
+    <string name="ctl_live_preparing_short">Préparation…</string>
+    <string name="live_range_global">Live 0–100</string>
+    <string name="live_range_narrowed">Live précis · %1$d–%2$d</string>
+    <string name="live_state_description">%1$s, position %2$d pour cent</string>
     <string name="ctl_live_preparing">Préparation du mode Live — la machine confirme la pleine course…</string>
     <string name="ctl_live_knob_hint">→ Baisse le bouton de vitesse physique à 0 pour entrer dans le mode.</string>
     <string name="ctl_rec_idle">Enregistrer un mouvement</string>
@@ -66,6 +73,10 @@
     <string name="ctl_sensation_retour_ramp">Retour (vitesse de retour)</string>
     <string name="ctl_sensation_decrease">Diminuer la sensation</string>
     <string name="ctl_sensation_increase">Augmenter la sensation</string>
+    <string name="ctl_sensation">Sensation</string>
+    <string name="precision_range_global">Plage 0–100</string>
+    <string name="precision_range_level">Précision ±%1$d · %2$d–%3$d</string>
+    <string name="precision_state_description">%1$s, valeur %2$d pour cent</string>
     <string name="ctl_reorder_title">Réorganiser les patterns</string>
     <string name="ctl_reorder_hint">Appui long puis glisse pour déplacer.</string>
     <string name="ctl_save">Enregistrer</string>
@@ -173,6 +184,7 @@
     <string name="stat_reset">Effacer</string>
     <string name="stat_reset_title">Effacer les statistiques ?</string>
     <string name="stat_reset_msg">Toutes les sessions seront supprimées définitivement. Cette action est irréversible.</string>
+    <string name="stat_reset_final_msg">Êtes-vous absolument certain ? Toutes les données seront définitivement supprimées et ne pourront pas être récupérées.</string>
     <string name="stat_continue">Continuer</string>
     <string name="stat_delete_permanently">Supprimer définitivement</string>
 

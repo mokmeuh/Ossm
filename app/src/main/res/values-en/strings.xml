@@ -51,6 +51,13 @@
     <string name="ctl_patterns_open">Open patterns</string>
     <string name="ctl_no_patterns">No pattern detected for this firmware.</string>
     <string name="ctl_live_hint_ready">Drag the slider to preview, release to send one position (0%% = home, 100%% = deep end).</string>
+    <string name="ctl_live_home">Home</string>
+    <string name="ctl_live_deep">Deep</string>
+    <string name="ctl_live_release_once">Release to commit</string>
+    <string name="ctl_live_preparing_short">Preparing…</string>
+    <string name="live_range_global">Live 0–100</string>
+    <string name="live_range_narrowed">Precise Live · %1$d–%2$d</string>
+    <string name="live_state_description">%1$s, position %2$d percent</string>
     <string name="ctl_live_preparing">Preparing Live mode — the machine is confirming full range…</string>
     <string name="ctl_live_knob_hint">→ Turn the physical speed knob down to 0 to enter the mode.</string>
     <string name="ctl_rec_idle">Record a movement</string>
@@ -66,6 +73,10 @@
     <string name="ctl_sensation_retour_ramp">Return (return speed)</string>
     <string name="ctl_sensation_decrease">Decrease sensation</string>
     <string name="ctl_sensation_increase">Increase sensation</string>
+    <string name="ctl_sensation">Sensation</string>
+    <string name="precision_range_global">Range 0–100</string>
+    <string name="precision_range_level">Precision ±%1$d · %2$d–%3$d</string>
+    <string name="precision_state_description">%1$s, value %2$d percent</string>
     <string name="ctl_reorder_title">Reorder patterns</string>
     <string name="ctl_reorder_hint">Long-press then drag to move.</string>
     <string name="ctl_save">Save</string>

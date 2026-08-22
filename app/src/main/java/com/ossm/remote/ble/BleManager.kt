@@ -10,6 +10,7 @@ import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothGattDescriptor
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
+import android.bluetooth.BluetoothStatusCodes
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
@@ -17,6 +18,7 @@ import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.SystemClock
 import androidx.core.content.ContextCompat
 import com.ossm.remote.model.BleConnectionState
 import com.ossm.remote.model.BleDevice
@@ -39,6 +41,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -53,7 +56,51 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.withTimeoutOrNull
+import java.util.UUID
+
+internal enum class KnownDeviceReconnectAction {
+    NONE,
+    CONNECT_KNOWN_DEVICE,
+}
+
+internal fun chooseKnownDeviceReconnectAction(
+    hasConnectPermission: Boolean,
+    bluetoothEnabled: Boolean,
+    hasKnownAddress: Boolean,
+    connectionIdle: Boolean,
+): KnownDeviceReconnectAction = if (
+    hasConnectPermission && bluetoothEnabled && hasKnownAddress && connectionIdle
+) {
+    KnownDeviceReconnectAction.CONNECT_KNOWN_DEVICE
+} else {
+    KnownDeviceReconnectAction.NONE
+}
+
+internal enum class PostCccdAction {
+    READ_STATE,
+    CONTINUE_SETUP,
+    FAIL,
+}
+
+internal fun choosePostCccdAction(
+    status: Int,
+    hasStateCharacteristic: Boolean,
+    stateCharacteristicReadable: Boolean,
+): PostCccdAction = when {
+    status != BluetoothGatt.GATT_SUCCESS -> PostCccdAction.FAIL
+    hasStateCharacteristic && stateCharacteristicReadable -> PostCccdAction.READ_STATE
+    else -> PostCccdAction.CONTINUE_SETUP
+}
+
+internal fun chooseGattWriteType(properties: Int, preferResponse: Boolean): Int = when {
+    preferResponse && properties and BluetoothGattCharacteristic.PROPERTY_WRITE != 0 ->
+        BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+    properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE != 0 ->
+        BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+    else -> BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+}
 
 @Singleton
 @SuppressLint("MissingPermission")
@@ -72,12 +119,36 @@ class BleManager @Inject constructor(
     private var patternListCharacteristic: BluetoothGattCharacteristic? = null
     private var speedKnobCharacteristic: BluetoothGattCharacteristic? = null
     private var latencyCompensationCharacteristic: BluetoothGattCharacteristic? = null
+    private var capabilityCharacteristic: BluetoothGattCharacteristic? = null
+    private var liveSmoothCharacteristic: BluetoothGattCharacteristic? = null
+    @Volatile private var liveSmoothCapabilityPayload: ByteArray? = null
     // Vrai quand la séquence post-connexion (MTU → CCCD → lectures/config) est finie.
     @Volatile private var postSetupDone = false
+    @Volatile private var postSetupStarted = false
+    @Volatile private var stateBootstrapPending = false
+    private var stateBootstrapAttempts = 0
+    private var stateBootstrapTimeoutJob: Job? = null
+    @Volatile private var connectionEpoch = 0L
     private var lastCommandTime = 0L
     private var emergencyRestoreJob: Job? = null
     private var scanJob: Job? = null
     private val liveDepthRangeUpdates = Channel<LiveDepthRange>(Channel.CONFLATED)
+    private val liveTargetUpdates = Channel<OssmCommand.Stream>(Channel.CONFLATED)
+    private val liveTargetScheduler = LiveTargetScheduler()
+    private val liveTargetLock = Any()
+    private val normalGattWrites = Channel<GattWriteRequest>(Channel.UNLIMITED)
+    private val urgentGattWrites = Channel<GattWriteRequest>(Channel.CONFLATED)
+    @Volatile private var activeWriteCompletion: CompletableDeferred<Int>? = null
+    private var reconnectJob: Job? = null
+    @Volatile private var manualDisconnectRequested = false
+
+    private data class GattWriteRequest(
+        val epoch: Long,
+        val characteristic: BluetoothGattCharacteristic,
+        val value: ByteArray,
+        val preferResponse: Boolean,
+        val completion: CompletableDeferred<Boolean>? = null,
+    )
 
     // Anti-throttle scan Android : le système ignore SILENCIEUSEMENT les startScan()
     // au-delà d'environ 5 appels / 30 s (BLE app scan quota). Symptôme : après une
@@ -114,6 +185,8 @@ class BleManager @Inject constructor(
     val streamingReady: StateFlow<Boolean> = _streamingReady.asStateFlow()
 
     init {
+        scope.launch { runGattWriteWorker() }
+        scope.launch { runLiveTargetWorker() }
         scope.launch {
             for (range in liveDepthRangeUpdates) {
                 writeRaw("set:depth:${range.depthPercent}")
@@ -122,6 +195,7 @@ class BleManager @Inject constructor(
                 _lastCommand.value = "set:depth:${range.depthPercent} set:stroke:${range.strokePercent}"
             }
         }
+        scheduleKnownDeviceReconnect(RECONNECT_AFTER_RELAUNCH_DELAY_MS)
     }
 
     fun startScan() {
@@ -247,6 +321,12 @@ class BleManager @Inject constructor(
     }
 
     fun connect(address: String) {
+        if (!hasConnectPermission()) {
+            log(LogLevel.ERROR, "CONNECT", "Permission Bluetooth connexion manquante")
+            return
+        }
+        manualDisconnectRequested = false
+        reconnectJob?.cancel()
         stopScan()
         healthCheckJob?.cancel()
         val device = bluetoothAdapter?.getRemoteDevice(address) ?: run {
@@ -265,16 +345,28 @@ class BleManager @Inject constructor(
             try { it.close() } catch (_: Exception) {}
         }
         gatt = null
+        connectionEpoch++
         commandCharacteristic = null
         speedKnobCharacteristic = null
         latencyCompensationCharacteristic = null
+        capabilityCharacteristic = null
+        liveSmoothCharacteristic = null
+        liveSmoothCapabilityPayload = null
         postSetupDone = false
+        postSetupStarted = false
+        stateBootstrapPending = false
+        stateBootstrapAttempts = 0
+        stateBootstrapTimeoutJob?.cancel()
         notifyCharacteristic = null
         patternListCharacteristic = null
+        cancelLiveTargets()
         gatt = device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
     }
 
     fun disconnect() {
+        manualDisconnectRequested = true
+        reconnectJob?.cancel()
+        cancelLiveTargets()
         sendStop()
         forceResetConnection()
         log(LogLevel.INFO, "CONNECT", "Déconnexion demandée")
@@ -320,6 +412,8 @@ class BleManager @Inject constructor(
         healthCheckJob?.cancel()
         streamingEntryJob?.cancel()
         _streamingReady.value = false
+        cancelLiveTargets()
+        connectionEpoch++
         gatt?.let {
             try { it.disconnect() } catch (_: Exception) {}
             try { it.close() } catch (_: Exception) {}
@@ -328,12 +422,20 @@ class BleManager @Inject constructor(
         commandCharacteristic = null
         speedKnobCharacteristic = null
         latencyCompensationCharacteristic = null
+        capabilityCharacteristic = null
+        liveSmoothCharacteristic = null
+        liveSmoothCapabilityPayload = null
         postSetupDone = false
+        postSetupStarted = false
+        stateBootstrapPending = false
+        stateBootstrapAttempts = 0
+        stateBootstrapTimeoutJob?.cancel()
         notifyCharacteristic = null
         patternListCharacteristic = null
         _availablePatterns.value = KnownFallbackPatterns
         _machineState.value = MachineState()
         _connectionState.value = BleConnectionState.Disconnected
+        if (!manualDisconnectRequested) scheduleKnownDeviceReconnect(RECONNECT_AFTER_DROP_DELAY_MS)
     }
 
     private val gattCallback = object : BluetoothGattCallback() {
@@ -354,13 +456,22 @@ class BleManager @Inject constructor(
                     commandCharacteristic = null
                     speedKnobCharacteristic = null
                     latencyCompensationCharacteristic = null
+                    capabilityCharacteristic = null
+                    liveSmoothCharacteristic = null
+                    liveSmoothCapabilityPayload = null
                     postSetupDone = false
+                    postSetupStarted = false
+                    stateBootstrapPending = false
+                    stateBootstrapAttempts = 0
+                    stateBootstrapTimeoutJob?.cancel()
                     notifyCharacteristic = null
                     patternListCharacteristic = null
                     emergencyRestoreJob?.cancel()
                     healthCheckJob?.cancel()
                     streamingEntryJob?.cancel()
                     _streamingReady.value = false
+                    cancelLiveTargets()
+                    connectionEpoch++
                     if (wasConnected) {
                         log(LogLevel.WARNING, "GATT", "Déconnexion inattendue de $deviceName — nettoyage GATT et retour scan")
                         _connectionState.value = BleConnectionState.EmergencyStop
@@ -383,6 +494,7 @@ class BleManager @Inject constructor(
                     _availablePatterns.value = KnownFallbackPatterns
                     _machineState.value = MachineState()
                     log(LogLevel.INFO, "GATT", "GATT fermé et libéré (status=$status) — rescan possible sans redémarrer l'app")
+                    if (!manualDisconnectRequested) scheduleKnownDeviceReconnect(RECONNECT_AFTER_DROP_DELAY_MS)
                 }
                 status != BluetoothGatt.GATT_SUCCESS -> {
                     log(LogLevel.ERROR, "GATT", "Erreur connexion status=$status")
@@ -390,6 +502,7 @@ class BleManager @Inject constructor(
                     _connectionState.value = BleConnectionState.Error("GATT error $status")
                     gatt.close()
                     this@BleManager.gatt = null
+                    if (!manualDisconnectRequested) scheduleKnownDeviceReconnect(RECONNECT_AFTER_DROP_DELAY_MS)
                 }
             }
         }
@@ -441,9 +554,12 @@ class BleManager @Inject constructor(
 
             speedKnobCharacteristic = ossmService?.getCharacteristic(BleConstants.SPEED_KNOB_UUID)
             latencyCompensationCharacteristic = ossmService?.getCharacteristic(BleConstants.LATENCY_UUID)
+            capabilityCharacteristic = ossmService?.getCharacteristic(ResistanceProtocol.CAPABILITY_UUID)
+            liveSmoothCharacteristic = ossmService?.getCharacteristic(UUID.fromString(LiveSmoothProtocol.CHARACTERISTIC_UUID))
 
             val deviceName = gatt.device.name ?: gatt.device.address
             _connectionState.value = BleConnectionState.Connected(deviceName, gatt.device.address)
+            if (ossmService != null) rememberKnownDevice(gatt.device.address)
             log(LogLevel.INFO, "GATT", "Connecté et prêt: $deviceName")
             startConnectionHealthCheck()
 
@@ -480,11 +596,9 @@ class BleManager @Inject constructor(
         private fun finishSetupAfterMtu(gatt: BluetoothGatt) {
             val notifyChar = notifyCharacteristic
             if (notifyChar != null) {
-                enableNotifications(gatt, notifyChar)
-                // onDescriptorWrite enchaînera. Filet de sécurité si jamais il ne vient pas :
-                scope.launch {
-                    delay(2_000)
-                    if (!postSetupDone) finishSetupAfterCccd(gatt)
+                if (!enableNotifications(gatt, notifyChar)) {
+                    failGattSetup("Abonnement aux notifications d'état refusé")
+                    return
                 }
             } else {
                 finishSetupAfterCccd(gatt)
@@ -493,14 +607,68 @@ class BleManager @Inject constructor(
 
         override fun onDescriptorWrite(gatt: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
             log(LogLevel.DEBUG, "GATT", "CCCD écrit (status=$status)")
-            finishSetupAfterCccd(gatt)
+            if (descriptor.uuid != BleConstants.CCCD_UUID) return
+            when (
+                choosePostCccdAction(
+                    status = status,
+                    hasStateCharacteristic = notifyCharacteristic != null,
+                    stateCharacteristicReadable = notifyCharacteristic?.properties
+                        ?.and(BluetoothGattCharacteristic.PROPERTY_READ) != 0,
+                )
+            ) {
+                PostCccdAction.READ_STATE -> bootstrapMachineState(gatt)
+                PostCccdAction.CONTINUE_SETUP -> finishSetupAfterCccd(gatt)
+                PostCccdAction.FAIL -> failGattSetup("Écriture CCCD échouée (status=$status)")
+            }
+        }
+
+        private fun bootstrapMachineState(gatt: BluetoothGatt) {
+            val state = notifyCharacteristic ?: return finishSetupAfterCccd(gatt)
+            if (stateBootstrapAttempts >= STATE_BOOTSTRAP_MAX_ATTEMPTS) {
+                failGattSetup("État machine illisible après $stateBootstrapAttempts essais")
+                return
+            }
+            stateBootstrapAttempts++
+            stateBootstrapPending = true
+            val accepted = runCatching { gatt.readCharacteristic(state) }.getOrDefault(false)
+            if (!accepted) {
+                stateBootstrapPending = false
+                scheduleStateBootstrapRetry(gatt)
+                return
+            }
+            stateBootstrapTimeoutJob?.cancel()
+            stateBootstrapTimeoutJob = scope.launch {
+                delay(STATE_BOOTSTRAP_READ_TIMEOUT_MS)
+                if (stateBootstrapPending && gatt === this@BleManager.gatt) {
+                    stateBootstrapPending = false
+                    scheduleStateBootstrapRetry(gatt)
+                }
+            }
+        }
+
+        private fun scheduleStateBootstrapRetry(gatt: BluetoothGatt) {
+            scope.launch {
+                delay(STATE_BOOTSTRAP_RETRY_MS)
+                if (!postSetupStarted && gatt === this@BleManager.gatt) bootstrapMachineState(gatt)
+            }
+        }
+
+        private fun failGattSetup(message: String) {
+            stateBootstrapPending = false
+            stateBootstrapTimeoutJob?.cancel()
+            _connectionState.value = BleConnectionState.Error(message)
+            log(LogLevel.ERROR, "GATT", message)
         }
 
         private fun finishSetupAfterCccd(gatt: BluetoothGatt) {
-            if (postSetupDone) return
-            postSetupDone = true
+            if (postSetupStarted) return
+            postSetupStarted = true
             scope.launch {
                 delay(200)
+                capabilityCharacteristic?.let { capability ->
+                    gatt.readCharacteristic(capability)
+                    delay(CAPABILITY_READ_WAIT_MS)
+                }
                 if (patternListCharacteristic != null) {
                     gatt.readCharacteristic(patternListCharacteristic)
                 } else {
@@ -508,6 +676,7 @@ class BleManager @Inject constructor(
                     log(LogLevel.WARNING, "GATT", "Liste de patterns indisponible, Stroke Engine seulement")
                 }
                 delay(500)
+                postSetupDone = true
                 // Bouton vitesse → indépendant (réécrit aussi à chaque entrée streaming).
                 writeSpeedKnobIndependent()
                 // No forced mode entry on connect: the machine keeps the homing/state the
@@ -523,9 +692,15 @@ class BleManager @Inject constructor(
         ) {
             if (status != BluetoothGatt.GATT_SUCCESS) {
                 log(LogLevel.WARNING, "READ", "Lecture échouée ${characteristic.uuid} status=$status")
+                if (characteristic.uuid == BleConstants.STATE_CHAR_UUID && stateBootstrapPending) {
+                    stateBootstrapPending = false
+                    stateBootstrapTimeoutJob?.cancel()
+                    scheduleStateBootstrapRetry(gatt)
+                }
                 return
             }
-            handleCharacteristicPayload(characteristic.uuid.toString(), value)
+            val validPayload = handleCharacteristicPayload(characteristic.uuid.toString(), value)
+            completeStateBootstrapIfReady(gatt, characteristic, validPayload)
         }
 
         @Deprecated("Used for API < 33")
@@ -536,9 +711,34 @@ class BleManager @Inject constructor(
         ) {
             if (status != BluetoothGatt.GATT_SUCCESS) {
                 log(LogLevel.WARNING, "READ", "Lecture échouée ${characteristic.uuid} status=$status")
+                if (characteristic.uuid == BleConstants.STATE_CHAR_UUID && stateBootstrapPending) {
+                    stateBootstrapPending = false
+                    stateBootstrapTimeoutJob?.cancel()
+                    scheduleStateBootstrapRetry(gatt)
+                }
                 return
             }
-            handleCharacteristicPayload(characteristic.uuid.toString(), characteristic.value ?: byteArrayOf())
+            val validPayload = handleCharacteristicPayload(
+                characteristic.uuid.toString(),
+                characteristic.value ?: byteArrayOf(),
+            )
+            completeStateBootstrapIfReady(gatt, characteristic, validPayload)
+        }
+
+        private fun completeStateBootstrapIfReady(
+            gatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic,
+            validPayload: Boolean,
+        ) {
+            if (characteristic.uuid != BleConstants.STATE_CHAR_UUID || !stateBootstrapPending) return
+            stateBootstrapPending = false
+            stateBootstrapTimeoutJob?.cancel()
+            if (validPayload) {
+                log(LogLevel.INFO, "GATT", "État machine initialisé par lecture")
+                finishSetupAfterCccd(gatt)
+            } else {
+                scheduleStateBootstrapRetry(gatt)
+            }
         }
 
         override fun onCharacteristicChanged(
@@ -555,6 +755,7 @@ class BleManager @Inject constructor(
         }
 
         override fun onCharacteristicWrite(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
+            if (gatt === this@BleManager.gatt) activeWriteCompletion?.complete(status)
             if (status != BluetoothGatt.GATT_SUCCESS) {
                 log(LogLevel.WARNING, "WRITE", "Écriture échouée status=$status")
             }
@@ -570,13 +771,25 @@ class BleManager @Inject constructor(
     @Volatile
     private var currentMtu: Int = 23
 
-    private fun handleCharacteristicPayload(source: String, value: ByteArray) {
+    private fun handleCharacteristicPayload(source: String, value: ByteArray): Boolean {
+        if (source.equals(ResistanceProtocol.CAPABILITY_UUID.toString(), ignoreCase = true)) {
+            liveSmoothCapabilityPayload = value.copyOf().takeIf {
+                ResistanceProtocol.decodeCapability(it).value != null
+            }
+            val verified = liveSmoothCapabilityPayload != null
+            log(
+                if (verified) LogLevel.INFO else LogLevel.WARNING,
+                "CAPABILITY",
+                if (verified) "Marqueur firmware v1 vérifié" else "Marqueur firmware invalide — transport texte conservé",
+            )
+            return verified
+        }
         val message = value.toString(Charsets.UTF_8).trim()
-        if (message.isBlank()) return
+        if (message.isBlank()) return false
 
-        when {
+        return when {
             source.equals(BleConstants.STATE_CHAR_UUID.toString(), ignoreCase = true) -> {
-                parseStateJson(message)?.let { newState ->
+                val newState = parseStateJson(message) ?: return false
                     val prev = _machineState.value
                     _machineState.value = newState
                     if (prev.state != newState.state) {
@@ -586,9 +799,10 @@ class BleManager @Inject constructor(
                     // le mapping live n'est plus garanti, on désarme le pad.
                     if (_streamingReady.value && !newState.state.contains("streaming", ignoreCase = true)) {
                         _streamingReady.value = false
+                        cancelLiveTargets()
                         log(LogLevel.WARNING, "STATE", "Sortie du streaming — live désarmé")
                     }
-                }
+                true
             }
             source.equals(BleConstants.PATTERN_LIST_UUID.toString(), ignoreCase = true) -> {
                 val parsed = parsePatternListJson(message)
@@ -596,6 +810,7 @@ class BleManager @Inject constructor(
                     _availablePatterns.value = mergeKnownPatterns(parsed)
                     log(LogLevel.INFO, "PATTERN", "Patterns: ${parsed.joinToString { "${it.id}:${it.name}" }}")
                 }
+                parsed.isNotEmpty()
             }
             source.equals(BleConstants.COMMAND_CHAR_UUID.toString(), ignoreCase = true) -> {
                 when {
@@ -603,8 +818,12 @@ class BleManager @Inject constructor(
                     message.startsWith("fail:") -> log(LogLevel.WARNING, "ACK", message)
                     else -> log(LogLevel.DEBUG, "NOTIFY", "[CMD] $message")
                 }
+                true
             }
-            else -> log(LogLevel.DEBUG, "NOTIFY", "[$source] $message")
+            else -> {
+                log(LogLevel.DEBUG, "NOTIFY", "[$source] $message")
+                true
+            }
         }
     }
 
@@ -676,22 +895,19 @@ class BleManager @Inject constructor(
             .ifBlank { "pattern" }
     }
 
-    private fun enableNotifications(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
-        gatt.setCharacteristicNotification(characteristic, true)
-        val descriptor = characteristic.getDescriptor(BleConstants.CCCD_UUID)
-        if (descriptor != null) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                gatt.writeDescriptor(descriptor, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
-            } else {
+    private fun enableNotifications(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic): Boolean {
+        if (!gatt.setCharacteristicNotification(characteristic, true)) return false
+        val descriptor = characteristic.getDescriptor(BleConstants.CCCD_UUID) ?: return false
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            gatt.writeDescriptor(descriptor, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE) ==
+                BluetoothStatusCodes.SUCCESS
+        } else {
                 @Suppress("DEPRECATION")
                 descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
                 @Suppress("DEPRECATION")
                 gatt.writeDescriptor(descriptor)
-            }
         }
     }
-
-    private var lastStreamPos: Int = -1
 
     // Sens du mode Live, réglé depuis les préférences (voir mapping dans sendCommand/Stream).
     @Volatile
@@ -703,17 +919,7 @@ class BleManager @Inject constructor(
             // sans stroke=100/depth=100 confirmés, la bande de course est imprévisible
             // (cause du bug « slider 0-100 ≠ 0-100 du home »).
             if (!_streamingReady.value) return
-            val rawPos = command.positionPercent.coerceIn(0, 100)
-            val pos = mapLiveStreamPositionPercent(rawPos, liveInvert)
-            // Firmware crashes on division-by-zero if two consecutive stream commands have
-            // the same position (streaming.cpp line 57: direction = distance/abs(distance)).
-            if (pos == lastStreamPos) return
-            lastStreamPos = pos
-            val t = command.timeMs.coerceAtLeast(1)
-            writeRaw("stream:$pos:$t")
-            _lastCommand.value = "stream:$pos:$t (slider=$rawPos%)"
-            val modeLabel = if (liveInvert) "direct" else "inverse"
-            log(LogLevel.DEBUG, "STREAM", "stream:$pos:$t (slider=$rawPos%, $modeLabel)")
+            liveTargetUpdates.trySend(command.copy(receivedAtMs = command.receivedAtMs ?: SystemClock.elapsedRealtime()))
             return
         }
 
@@ -723,7 +929,8 @@ class BleManager @Inject constructor(
 
         when (command) {
             is OssmCommand.Stop -> {
-                writeRaw("set:speed:0")
+                cancelLiveTargets()
+                writeRaw("set:speed:0", urgent = true)
                 _lastCommand.value = "set:speed:0"
                 log(LogLevel.INFO, "CMD", "set:speed:0")
             }
@@ -843,43 +1050,23 @@ class BleManager @Inject constructor(
      */
     @SuppressLint("MissingPermission")
     private fun writeSpeedKnobIndependent() {
-        val activeGatt = gatt ?: return
         val char = speedKnobCharacteristic ?: run {
             log(LogLevel.WARNING, "GATT", "Caractéristique speed-knob absente (firmware ancien ?)")
             return
         }
         val bytes = "false".toByteArray(Charsets.UTF_8)
-        val writeType = if (char.properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE != 0)
-            BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
-        else BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            activeGatt.writeCharacteristic(char, bytes, writeType)
-        } else {
-            @Suppress("DEPRECATION") char.value = bytes
-            @Suppress("DEPRECATION") char.writeType = writeType
-            @Suppress("DEPRECATION") activeGatt.writeCharacteristic(char)
-        }
+        enqueueGattWrite(char, bytes)
         log(LogLevel.INFO, "GATT", "Speed knob → independent (BLE speed non plafonné)")
     }
 
     @SuppressLint("MissingPermission")
     private fun writeLatencyCompensationEnabled() {
-        val activeGatt = gatt ?: return
         val char = latencyCompensationCharacteristic ?: run {
             log(LogLevel.WARNING, "GATT", "Caractéristique latency-compensation absente")
             return
         }
         val bytes = "true".toByteArray(Charsets.UTF_8)
-        val writeType = if (char.properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE != 0)
-            BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
-        else BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            activeGatt.writeCharacteristic(char, bytes, writeType)
-        } else {
-            @Suppress("DEPRECATION") char.value = bytes
-            @Suppress("DEPRECATION") char.writeType = writeType
-            @Suppress("DEPRECATION") activeGatt.writeCharacteristic(char)
-        }
+        enqueueGattWrite(char, bytes)
         log(LogLevel.INFO, "GATT", "Latency compensation → enabled")
     }
 
@@ -906,7 +1093,7 @@ class BleManager @Inject constructor(
 
     private suspend fun triggerStreamingEntry() {
         _streamingReady.value = false
-        lastStreamPos = -1
+        cancelLiveTargets()
 
         _lastCommand.value = "go:menu (→ streaming)"
         val inStreaming = navigateToMode("streaming")
@@ -946,6 +1133,7 @@ class BleManager @Inject constructor(
 
         if (verified) {
             _streamingReady.value = true
+            liveTargetScheduler.resume()
             _lastCommand.value = "streaming prêt (stroke=100 depth=100)"
             log(LogLevel.INFO, "CMD", "Streaming vérifié : plage live 0-100 = home→fond (speed=${_machineState.value.speed})")
         } else {
@@ -1049,26 +1237,191 @@ class BleManager @Inject constructor(
         return withTimeoutOrNull(timeoutMs) { machineState.first(predicate) } != null
     }
 
+    private suspend fun runGattWriteWorker() {
+        while (scope.isActive) {
+            val request = urgentGattWrites.tryReceive().getOrNull() ?: select {
+                urgentGattWrites.onReceive { it }
+                normalGattWrites.onReceive { it }
+            }
+            if (request.epoch != connectionEpoch) {
+                request.completion?.complete(false)
+                continue
+            }
+            var setupWaitMs = 0L
+            while (!postSetupDone && request.epoch == connectionEpoch && setupWaitMs < GATT_SETUP_WAIT_MS) {
+                delay(GATT_SETUP_POLL_MS)
+                setupWaitMs += GATT_SETUP_POLL_MS
+            }
+            val succeeded = performGattWrite(request)
+            request.completion?.complete(succeeded)
+            if (!succeeded && request.completion == null) {
+                log(LogLevel.WARNING, "WRITE", "Écriture GATT non livrée")
+            }
+        }
+    }
+
     @SuppressLint("MissingPermission")
-    private fun writeRaw(text: String) {
-        val activeGatt = gatt ?: return
+    private suspend fun performGattWrite(request: GattWriteRequest): Boolean {
+        val activeGatt = gatt ?: return false
+        if (request.epoch != connectionEpoch || !postSetupDone) return false
+        val writeType = chooseGattWriteType(
+            properties = request.characteristic.properties,
+            preferResponse = request.preferResponse,
+        )
+        val callback = if (writeType == BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT) {
+            CompletableDeferred<Int>()
+        } else {
+            null
+        }
+        activeWriteCompletion = callback
+        val accepted = try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                activeGatt.writeCharacteristic(request.characteristic, request.value, writeType) ==
+                    BluetoothStatusCodes.SUCCESS
+            } else {
+                @Suppress("DEPRECATION")
+                request.characteristic.value = request.value
+                @Suppress("DEPRECATION")
+                request.characteristic.writeType = writeType
+                @Suppress("DEPRECATION")
+                activeGatt.writeCharacteristic(request.characteristic)
+            }
+        } catch (_: Exception) {
+            false
+        }
+        if (!accepted) {
+            activeWriteCompletion = null
+            return false
+        }
+        val succeeded = if (callback != null) {
+            withTimeoutOrNull(GATT_WRITE_CALLBACK_TIMEOUT_MS) { callback.await() } == BluetoothGatt.GATT_SUCCESS
+        } else {
+            delay(GATT_WRITE_NO_RESPONSE_GAP_MS)
+            true
+        }
+        activeWriteCompletion = null
+        return succeeded
+    }
+
+    private fun enqueueGattWrite(
+        characteristic: BluetoothGattCharacteristic,
+        value: ByteArray,
+        urgent: Boolean = false,
+        preferResponse: Boolean = true,
+    ) {
+        val request = GattWriteRequest(
+            connectionEpoch,
+            characteristic,
+            value.copyOf(),
+            preferResponse,
+        )
+        if (urgent) urgentGattWrites.trySend(request) else normalGattWrites.trySend(request)
+    }
+
+    private suspend fun writeGattAndAwait(
+        characteristic: BluetoothGattCharacteristic,
+        value: ByteArray,
+    ): Boolean {
+        val completion = CompletableDeferred<Boolean>()
+        normalGattWrites.send(
+            GattWriteRequest(
+                connectionEpoch,
+                characteristic,
+                value.copyOf(),
+                preferResponse = false,
+                completion = completion,
+            )
+        )
+        return completion.await()
+    }
+
+    private suspend fun runLiveTargetWorker() {
+        for (command in liveTargetUpdates) {
+            offerLiveTarget(command)
+            while (scope.isActive) {
+                while (true) {
+                    val newer = liveTargetUpdates.tryReceive().getOrNull() ?: break
+                    offerLiveTarget(newer)
+                }
+                val now = SystemClock.elapsedRealtime()
+                val waitMs = synchronized(liveTargetLock) {
+                    liveTargetScheduler.millisecondsUntilReady(now)
+                }
+                if (waitMs > 0L) {
+                    val newer = withTimeoutOrNull(waitMs) { liveTargetUpdates.receive() }
+                    if (newer != null) {
+                        offerLiveTarget(newer)
+                        continue
+                    }
+                }
+                val target = synchronized(liveTargetLock) {
+                    liveTargetScheduler.poll(SystemClock.elapsedRealtime())
+                }
+                if (target != null) {
+                    dispatchLiveTarget(target)
+                    continue
+                }
+                break
+            }
+        }
+    }
+
+    private fun offerLiveTarget(command: OssmCommand.Stream) {
+        if (!_streamingReady.value) return
+        val rawPosition = command.positionPercent.coerceIn(0, 100)
+        val actuatorPosition = mapLiveStreamPositionPercent(rawPosition, liveInvert)
+        synchronized(liveTargetLock) {
+            liveTargetScheduler.offer(
+                LiveTargetInput(
+                    positionPercent = actuatorPosition,
+                    requestedDurationMs = command.timeMs,
+                    producer = command.producer,
+                    receivedAtMs = command.receivedAtMs ?: SystemClock.elapsedRealtime(),
+                )
+            )
+        }
+    }
+
+    private suspend fun dispatchLiveTarget(target: ScheduledLiveTarget) {
+        val smoothCharacteristic = liveSmoothCharacteristic
+        val writable = smoothCharacteristic != null && smoothCharacteristic.properties and (
+            BluetoothGattCharacteristic.PROPERTY_WRITE or
+                BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE
+            ) != 0
+        val write = LiveSmoothProtocol.createTargetWrite(
+            target = target,
+            capabilityPayload = liveSmoothCapabilityPayload,
+            characteristicWritable = writable,
+            connected = _connectionState.value is BleConnectionState.Connected,
+            streamingReady = _streamingReady.value,
+        ) ?: return
+        when (write.transport) {
+            LiveTransportSelection.BLOCKED -> return
+            LiveTransportSelection.BINARY_V1 -> {
+                writeGattAndAwait(smoothCharacteristic ?: return, write.payload)
+                _lastCommand.value = "live-v1:${target.positionPercent}:${target.durationMs} seq=${target.sequence}"
+            }
+            LiveTransportSelection.LEGACY_TEXT -> {
+                val characteristic = commandCharacteristic ?: return
+                writeGattAndAwait(characteristic, write.payload)
+                _lastCommand.value = write.payload.toString(Charsets.UTF_8)
+            }
+        }
+    }
+
+    private fun cancelLiveTargets() {
+        while (liveTargetUpdates.tryReceive().isSuccess) Unit
+        synchronized(liveTargetLock) { liveTargetScheduler.stop() }
+    }
+
+    fun resumeStreamingTargets() {
+        if (_streamingReady.value) synchronized(liveTargetLock) { liveTargetScheduler.resume() }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun writeRaw(text: String, urgent: Boolean = false) {
         val char = commandCharacteristic ?: return
-        val bytes = text.toByteArray(Charsets.UTF_8)
-        val writeType = if (char.properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE != 0) {
-            BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
-        } else {
-            BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            activeGatt.writeCharacteristic(char, bytes, writeType)
-        } else {
-            @Suppress("DEPRECATION")
-            char.value = bytes
-            @Suppress("DEPRECATION")
-            char.writeType = writeType
-            @Suppress("DEPRECATION")
-            activeGatt.writeCharacteristic(char)
-        }
+        enqueueGattWrite(char, text.toByteArray(Charsets.UTF_8), urgent)
     }
 
     private fun writeStrokeEngineSensation(command: StrokeEngineCommand) {
@@ -1103,7 +1456,8 @@ class BleManager @Inject constructor(
     }
 
     fun sendStop() {
-        writeRaw("set:speed:0")
+        cancelLiveTargets()
+        writeRaw("set:speed:0", urgent = true)
         _lastCommand.value = "set:speed:0"
         log(LogLevel.WARNING, "CMD", "STOP envoyé")
     }
@@ -1147,6 +1501,50 @@ class BleManager @Inject constructor(
 
     fun isBluetoothEnabled() = bluetoothAdapter?.isEnabled == true
 
+    private fun scheduleKnownDeviceReconnect(delayMs: Long) {
+        reconnectJob?.cancel()
+        reconnectJob = scope.launch {
+            delay(delayMs)
+            val knownAddress = readKnownDeviceAddress()
+            if (knownAddress.isNullOrBlank()) return@launch
+            val action = chooseKnownDeviceReconnectAction(
+                hasConnectPermission = hasConnectPermission(),
+                bluetoothEnabled = bluetoothAdapter?.isEnabled == true,
+                hasKnownAddress = true,
+                connectionIdle = _connectionState.value is BleConnectionState.Disconnected ||
+                    _connectionState.value is BleConnectionState.Error,
+            )
+            if (action == KnownDeviceReconnectAction.CONNECT_KNOWN_DEVICE) {
+                log(LogLevel.INFO, "CONNECT", "Reconnexion au périphérique OSSM connu")
+                reconnectJob = null
+                connect(knownAddress)
+            }
+        }
+    }
+
+    private fun rememberKnownDevice(address: String) {
+        runCatching {
+            context.getSharedPreferences(BLE_PREFERENCES, Context.MODE_PRIVATE)
+                .edit()
+                .putString(KNOWN_DEVICE_ADDRESS, address)
+                .apply()
+        }
+    }
+
+    private fun readKnownDeviceAddress(): String? = runCatching {
+        context.getSharedPreferences(BLE_PREFERENCES, Context.MODE_PRIVATE)
+            .getString(KNOWN_DEVICE_ADDRESS, null)
+    }.getOrNull()
+
+    private fun hasConnectPermission(): Boolean {
+        val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            Manifest.permission.BLUETOOTH_CONNECT
+        } else {
+            Manifest.permission.BLUETOOTH
+        }
+        return ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+    }
+
     private fun hasPermissions(): Boolean {
         val perms = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             listOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
@@ -1175,6 +1573,18 @@ class BleManager @Inject constructor(
 
     companion object {
         private const val LIVE_DEPTH_RANGE_WRITE_GAP_MS = 40L
+        private const val CAPABILITY_READ_WAIT_MS = 300L
+        private const val STATE_BOOTSTRAP_MAX_ATTEMPTS = 5
+        private const val STATE_BOOTSTRAP_RETRY_MS = 300L
+        private const val STATE_BOOTSTRAP_READ_TIMEOUT_MS = 1_000L
+        private const val GATT_SETUP_WAIT_MS = 5_000L
+        private const val GATT_SETUP_POLL_MS = 20L
+        private const val GATT_WRITE_CALLBACK_TIMEOUT_MS = 1_000L
+        private const val GATT_WRITE_NO_RESPONSE_GAP_MS = 20L
+        private const val RECONNECT_AFTER_RELAUNCH_DELAY_MS = 750L
+        private const val RECONNECT_AFTER_DROP_DELAY_MS = 2_500L
+        private const val BLE_PREFERENCES = "ossm_ble_connection"
+        private const val KNOWN_DEVICE_ADDRESS = "known_ossm_address"
         // Détection de perte de connexion silencieuse (ping RSSI périodique).
         private const val HEALTH_CHECK_INTERVAL_MS = 3_000L
         private const val HEALTH_CHECK_REPLY_TIMEOUT_MS = 1_500L

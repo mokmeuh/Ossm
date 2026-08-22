@@ -1,9 +1,69 @@
 #ifndef OSSM_NIMBLE_H
 #define OSSM_NIMBLE_H
 
-#include <NimBLEDevice.h>
-#include <NimBLEServer.h>
-#include <esp_log.h>
+#include <cstddef>
+#include <cstdint>
+
+#include "live_smooth_protocol.h"
+#include "resistance_protocol.h"
+
+class NimBLEServer;
+
+#ifndef RESISTANCE_SIGNAL_GATE_PASS
+#define RESISTANCE_SIGNAL_GATE_PASS 0
+#endif
+
+namespace optional_ble {
+
+inline constexpr bool kResistanceSignalGatePassed =
+    RESISTANCE_SIGNAL_GATE_PASS == 1;
+inline constexpr uint32_t kResistanceTelemetryIntervalMs = 50;
+
+enum class ConfigWriteStatus : uint8_t {
+    accepted,
+    invalid_packet,
+    signal_gate_unavailable,
+};
+
+inline resistance_protocol::Capability capabilityPacket() {
+    return {
+        kResistanceSignalGatePassed ? resistance_protocol::kAllCapabilityBits
+                                    : 0U,
+        resistance_protocol::kTelemetryProperties,
+        resistance_protocol::kConfigProperties,
+    };
+}
+
+inline bool telemetryDue(uint32_t nowMs, uint32_t lastTelemetryMs) {
+    return static_cast<uint32_t>(nowMs - lastTelemetryMs) >=
+           kResistanceTelemetryIntervalMs;
+}
+
+inline bool shouldRefreshStateValue(bool stateChanged, bool timeElapsed) {
+    return stateChanged || timeElapsed;
+}
+
+inline uint16_t nextTelemetrySequence(uint16_t sequence) {
+    return sequence == 0xffffU ? 0U
+                               : static_cast<uint16_t>(sequence + 1U);
+}
+
+inline ConfigWriteStatus applyResistanceConfig(
+    const uint8_t* data, std::size_t length,
+    resistance_protocol::Config& current) {
+    resistance_protocol::Config candidate{};
+    if (resistance_protocol::decodeConfig(data, length, candidate) !=
+        resistance_protocol::DecodeStatus::ok) {
+        return ConfigWriteStatus::invalid_packet;
+    }
+    if (!kResistanceSignalGatePassed) {
+        return ConfigWriteStatus::signal_gate_unavailable;
+    }
+    current = candidate;
+    return ConfigWriteStatus::accepted;
+}
+
+}
 
 #define SERVICE_UUID "522b443a-4f53-534d-0001-420badbabe69"
 

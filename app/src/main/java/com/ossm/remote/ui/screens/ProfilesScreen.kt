@@ -373,11 +373,11 @@ private fun OverlayCard() {
     }
 }
 
-private fun onOverlayToggle(context: Context, overlayVm: OverlaySettingsViewModel, enabled: Boolean) {
+internal fun onOverlayToggle(context: Context, overlayVm: OverlaySettingsViewModel, enabled: Boolean) {
     if (enabled) {
         if (Settings.canDrawOverlays(context)) {
+            OverlayService.manuallyClosed = false
             overlayVm.setOverlayEnabled(true)
-            context.startForegroundService(Intent(context, OverlayService::class.java))
         } else {
             val intent = Intent(
                 Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
@@ -386,6 +386,9 @@ private fun onOverlayToggle(context: Context, overlayVm: OverlaySettingsViewMode
             context.startActivity(intent)
         }
     } else {
+        // Fermeture délibérée : posé AVANT l'arrêt async du service et l'écriture DataStore,
+        // pour que l'auto-start de onStop (app quittée) ne relance pas l'overlay.
+        OverlayService.manuallyClosed = true
         overlayVm.setOverlayEnabled(false)
         context.stopService(Intent(context, OverlayService::class.java))
     }

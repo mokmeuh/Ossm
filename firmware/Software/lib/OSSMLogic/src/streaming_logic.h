@@ -32,13 +32,35 @@ inline int32_t scaleStreamPosition(int posPercent, int32_t maxStroke,
            depth;
 }
 
+inline int8_t streamDirection(int32_t positionDelta) {
+    if (positionDelta == 0) return 0;
+    return positionDelta > 0 ? 1 : -1;
+}
+
+inline bool shouldScheduleStreamPosition(bool hasPreviousPosition,
+                                         int32_t positionDelta) {
+    return !hasPreviousPosition || positionDelta != 0;
+}
+
+inline uint32_t timedStreamSpeedLimit(uint32_t machineMaxSpeed) {
+    return machineMaxSpeed;
+}
+
 /// Result of motion profile planning.
 struct MotionProfile {
     uint32_t speed;
     uint32_t acceleration;
     int32_t distance;         // adjusted if physically impossible
     int32_t targetPosition;   // adjusted if distance was clamped
+    bool valid;
 };
+
+inline uint16_t remainingDurationMs(uint32_t deadlineMs, uint32_t nowMs,
+                                    uint16_t requestedMs) {
+    const uint32_t remaining = deadlineMs - nowMs;
+    if (remaining == 0U || remaining >= 0x80000000U) return 0;
+    return static_cast<uint16_t>(std::min<uint32_t>(remaining, requestedMs));
+}
 
 /// Plan a triangular/trapezoidal motion profile for a streaming move.
 /// Extracted from streaming.cpp lines 99-125.
@@ -52,6 +74,9 @@ inline MotionProfile planMotion(int32_t currentPosition,
                                 uint32_t maxSpeed, uint32_t maxAccel,
                                 int32_t stepsPerMm = 1) {
     int32_t distance = std::abs(targetPosition - currentPosition);
+    if (distance == 0 || timeSeconds < 0.01f || maxSpeed == 0 || maxAccel == 0) {
+        return {0, 0, distance, currentPosition, false};
+    }
 
     // Clamp distance to what's physically achievable
     int32_t maxDistance = maxAccel * std::pow(timeSeconds / 2, 2);
@@ -69,6 +94,10 @@ inline MotionProfile planMotion(int32_t currentPosition,
         distance = reducedDist;
     }
 
+    if (distance == 0) {
+        return {0, 0, 0, currentPosition, false};
+    }
+
     // Triangular profile: speed = 2 * distance / time
     uint32_t requiredSpeed = (2 * distance) / timeSeconds;
     requiredSpeed = std::max(requiredSpeed, 100u);
@@ -84,7 +113,7 @@ inline MotionProfile planMotion(int32_t currentPosition,
     requiredAccel = std::max(requiredAccel, 100u);
     requiredAccel = std::min(requiredAccel, maxAccel);
 
-    return {requiredSpeed, requiredAccel, distance, targetPosition};
+    return {requiredSpeed, requiredAccel, distance, targetPosition, true};
 }
 
 }  // namespace streaming_logic

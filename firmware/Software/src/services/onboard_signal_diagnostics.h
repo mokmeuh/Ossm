@@ -1,0 +1,6 @@
+#ifndef OSSM_SERVICES_ONBOARD_SIGNAL_DIAGNOSTICS_H
+#define OSSM_SERVICES_ONBOARD_SIGNAL_DIAGNOSTICS_H
+
+void startSignalDiagnostics();
+
+#endif
