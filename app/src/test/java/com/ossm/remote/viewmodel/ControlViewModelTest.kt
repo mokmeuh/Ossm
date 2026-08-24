@@ -718,7 +718,7 @@ class ControlViewModelTest {
         advanceUntilIdle()
 
         assertEquals(100, viewModel.uiState.value.streamPositionPercent)
-        verify { bleManager.liveSet("speed", 100) }
+        verify(exactly = 0) { bleManager.liveSet("speed", any()) }
         verify { bleManager.sendCommand(OssmCommand.Stream(positionPercent = 100, timeMs = 60)) }
     }
 

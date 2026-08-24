@@ -13,3 +13,12 @@ internal fun shouldReturnToScanAfterDisconnect(
         previous is BleConnectionState.EmergencyStop
     return isDisconnectedLike && !wasAlreadyDisconnected
 }
+
+internal fun shouldOpenControlAfterConnect(
+    previous: BleConnectionState?,
+    current: BleConnectionState,
+    currentRoute: String
+): Boolean =
+    currentRoute == Screen.Scan.route &&
+        current is BleConnectionState.Connected &&
+        previous !is BleConnectionState.Connected

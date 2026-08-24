@@ -46,6 +46,18 @@ inline uint32_t timedStreamSpeedLimit(uint32_t machineMaxSpeed) {
     return machineMaxSpeed;
 }
 
+inline uint32_t liveAccelerationLimit(uint32_t machineMaxAcceleration) {
+    return std::max(machineMaxAcceleration / 4U, 100U);
+}
+
+inline uint32_t selectStreamAcceleration(bool isLiveSmooth,
+                                         bool stepperIsRunning,
+                                         uint32_t currentAcceleration,
+                                         uint32_t plannedAcceleration) {
+    if (isLiveSmooth || !stepperIsRunning) return plannedAcceleration;
+    return std::max(currentAcceleration, plannedAcceleration);
+}
+
 /// Result of motion profile planning.
 struct MotionProfile {
     uint32_t speed;

@@ -159,6 +159,13 @@ bool pollLiveSmoothTarget(uint32_t nowMs, LiveSmoothTarget& target) {
     return false;
 }
 
+void clearLiveSmoothTargets() {
+    QueueLock lock;
+    if (!lock) return;
+
+    if (liveQueue != nullptr) xQueueReset(liveQueue);
+}
+
 void stopLiveSmoothOutOfBand() {
     QueueLock lock;
     if (!lock) return;

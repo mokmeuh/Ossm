@@ -37,3 +37,7 @@
 
 ## Hotspots
 - `ControlScreen.kt`, `ControlSessionStore.kt`, and `BleManager.kt` are oversized/high-centrality files. Make the smallest seam-level change and extend adjacent tests before refactoring.
+
+## Frozen FunScript And Video Scope
+- FunScript and Video tabs/features are hidden and frozen. Agents must not fix, refactor, extend, deeply test, or otherwise modify their screens, routes, playback, or repositories unless the user explicitly reactivates this scope.
+- General builds may still compile these areas. Emergency compile-only repairs must be reported and must not silently change behavior.

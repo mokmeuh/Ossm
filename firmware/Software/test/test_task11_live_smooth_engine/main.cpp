@@ -28,6 +28,25 @@ void test_legacy_motion_profile_characterization() {
     TEST_ASSERT_EQUAL_INT32(1000, profile.targetPosition);
 }
 
+void test_live_acceleration_limit_is_quarter_machine_max_with_floor() {
+    TEST_ASSERT_EQUAL_UINT32(
+        125000, streaming_logic::liveAccelerationLimit(500000));
+    TEST_ASSERT_EQUAL_UINT32(
+        100, streaming_logic::liveAccelerationLimit(200));
+}
+
+void test_running_live_motion_selects_lower_planned_acceleration() {
+    TEST_ASSERT_EQUAL_UINT32(
+        4000,
+        streaming_logic::selectStreamAcceleration(true, true, 8000, 4000));
+    TEST_ASSERT_EQUAL_UINT32(
+        8000,
+        streaming_logic::selectStreamAcceleration(false, true, 8000, 4000));
+    TEST_ASSERT_EQUAL_UINT32(
+        4000,
+        streaming_logic::selectStreamAcceleration(false, false, 8000, 4000));
+}
+
 void test_planner_rejects_zero_distance_and_short_duration() {
     const auto zero = streaming_logic::planMotion(500, 500, 0.02f, 50000, 100000, 1);
     const auto shortMove = streaming_logic::planMotion(0, 500, 0.005f, 50000, 100000, 1);
@@ -122,6 +141,8 @@ int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_legacy_stream_command_bytes_and_mapping_are_unchanged);
     RUN_TEST(test_legacy_motion_profile_characterization);
+    RUN_TEST(test_live_acceleration_limit_is_quarter_machine_max_with_floor);
+    RUN_TEST(test_running_live_motion_selects_lower_planned_acceleration);
     RUN_TEST(test_planner_rejects_zero_distance_and_short_duration);
     RUN_TEST(test_planner_rejects_distance_that_clamps_to_zero);
     RUN_TEST(test_accepted_60ms_stream_command_maps_to_motion_at_firmware_limits);

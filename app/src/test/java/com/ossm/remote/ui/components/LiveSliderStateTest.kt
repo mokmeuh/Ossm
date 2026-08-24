@@ -8,149 +8,86 @@ import org.junit.Test
 
 class LiveSliderStateTest {
     @Test
-    fun `down and near-track tap preserve current Live position`() {
-        val state = LiveSliderState(movementThresholdPx = 8f)
-
-        state.onDown(valuePercent = 42f, pointerX = 190f, trackWidthPx = 300f, uptimeMillis = 0)
-
-        assertEquals(42f, state.valuePercent, 0.001f)
-        assertEquals(0f..100f, state.visibleRange)
+    fun `vertical mapping places Home at bottom and Fond at top`() {
+        assertEquals(100f, livePositionForPointer(pointerY = 0f, trackHeightPx = 400f), 0.001f)
+        assertEquals(75f, livePositionForPointer(pointerY = 100f, trackHeightPx = 400f), 0.001f)
+        assertEquals(50f, livePositionForPointer(pointerY = 200f, trackHeightPx = 400f), 0.001f)
+        assertEquals(0f, livePositionForPointer(pointerY = 400f, trackHeightPx = 400f), 0.001f)
+        assertEquals(100f, livePositionForPointer(pointerY = -20f, trackHeightPx = 400f), 0.001f)
+        assertEquals(0f, livePositionForPointer(pointerY = 420f, trackHeightPx = 400f), 0.001f)
     }
 
     @Test
-    fun `moving finger previews linearly without narrowing`() {
+    fun `finger down and every meaningful vertical move emit real-time positions`() {
         val state = LiveSliderState(movementThresholdPx = 8f)
-        state.onDown(valuePercent = 40f, pointerX = 100f, trackWidthPx = 200f, uptimeMillis = 0)
+        val emitted = mutableListOf<Int>()
 
-        assertTrue(state.onMove(pointerX = 120f, uptimeMillis = 1_900))
-        assertFalse(state.advanceTime(2_000))
+        emitted += state.onDown(pointerY = 300f, trackHeightPx = 300f, uptimeMillis = 0).toInt()
+        state.onMove(pointerY = 295f, uptimeMillis = 10)?.let { emitted += it.toInt() }
+        state.onMove(pointerY = 225f, uptimeMillis = 20)?.let { emitted += it.toInt() }
+        state.onMove(pointerY = 150f, uptimeMillis = 30)?.let { emitted += it.toInt() }
+        state.onMove(pointerY = 75f, uptimeMillis = 40)?.let { emitted += it.toInt() }
+        state.onMove(pointerY = 0f, uptimeMillis = 50)?.let { emitted += it.toInt() }
 
-        assertEquals(50f, state.valuePercent, 0.001f)
-        assertEquals(0f..100f, state.visibleRange)
+        assertEquals(listOf(0, 25, 50, 75, 100), emitted)
     }
 
     @Test
-    fun `first stationary level is always ten to ninety`() {
+    fun `Live precision is disabled by default and never narrows automatically`() {
         val state = LiveSliderState()
-        state.onDown(valuePercent = 50f, pointerX = 100f, trackWidthPx = 200f, uptimeMillis = 0)
+        state.onDown(pointerY = 100f, trackHeightPx = 200f, uptimeMillis = 0)
 
-        assertFalse(state.advanceTime(1_999))
+        assertFalse(state.advanceTime(2_000))
+        assertFalse(state.advanceTime(10_000))
+        assertEquals(0f..100f, state.visibleRange)
+    }
+
+    @Test
+    fun `precision narrows around current vertical target without changing it`() {
+        val state = LiveSliderState(precisionEnabled = true)
+        state.onDown(pointerY = 100f, trackHeightPx = 200f, uptimeMillis = 0)
+
         assertTrue(state.advanceTime(2_000))
         assertEquals(10f..90f, state.visibleRange)
-
-    }
-
-    @Test
-    fun `later Live levels reduce half span and recenter on current value`() {
-        val state = LiveSliderState()
-        state.onDown(valuePercent = 50f, pointerX = 100f, trackWidthPx = 200f, uptimeMillis = 0)
-        state.advanceTime(2_000)
-
-        state.onMove(pointerX = 75f, uptimeMillis = 2_500)
-        assertEquals(40f, state.valuePercent, 0.001f)
-        state.advanceTime(4_500)
-        assertEquals(10f..70f, state.visibleRange)
-        state.advanceTime(6_500)
-        assertEquals(20f..60f, state.visibleRange)
-        state.advanceTime(8_500)
-        assertEquals(30f..50f, state.visibleRange)
-        state.advanceTime(10_500)
-        assertEquals(35f..45f, state.visibleRange)
-        assertFalse(state.advanceTime(12_500))
-    }
-
-    @Test
-    fun `Live recentered levels preserve span near global edges`() {
-        val state = LiveSliderState()
-        state.onDown(valuePercent = 95f, pointerX = 100f, trackWidthPx = 200f, uptimeMillis = 0)
-        state.advanceTime(2_000)
-        state.advanceTime(4_000)
-
-        assertEquals(40f..100f, state.visibleRange)
-    }
-
-    @Test
-    fun `movement restarts timer while retaining narrowed range`() {
-        val state = LiveSliderState(movementThresholdPx = 8f)
-        state.onDown(valuePercent = 50f, pointerX = 100f, trackWidthPx = 200f, uptimeMillis = 0)
-        state.advanceTime(2_000)
-
-        state.onMove(pointerX = 120f, uptimeMillis = 2_500)
-
-        assertEquals(10f..90f, state.visibleRange)
-        assertFalse(state.advanceTime(4_499))
-        assertTrue(state.advanceTime(4_500))
-        assertEquals(28f..88f, state.visibleRange)
-    }
-
-    @Test
-    fun `drag after narrowing uses current range span without transition jump`() {
-        val state = LiveSliderState(movementThresholdPx = 8f)
-        state.onDown(valuePercent = 50f, pointerX = 100f, trackWidthPx = 200f, uptimeMillis = 0)
-        state.advanceTime(2_000)
-
         assertEquals(50f, state.valuePercent, 0.001f)
-        state.onMove(pointerX = 120f, uptimeMillis = 2_100)
 
-        assertEquals(58f, state.valuePercent, 0.001f)
+        assertEquals(60f, state.onMove(pointerY = 75f, uptimeMillis = 2_100)!!, 0.001f)
+        assertTrue(state.advanceTime(4_100))
+        assertEquals(30f..90f, state.visibleRange)
+        assertEquals(60f, state.valuePercent, 0.001f)
     }
 
     @Test
-    fun `cancel does not commit and resets Live range`() {
-        val state = LiveSliderState()
-        state.onDown(valuePercent = 50f, pointerX = 100f, trackWidthPx = 200f, uptimeMillis = 0)
-        state.advanceTime(2_000)
-
-        state.cancel()
-
-        assertNull(state.release())
-        assertEquals(0f..100f, state.visibleRange)
-    }
-
-    @Test
-    fun `release commits once and resets Live range`() {
-        val state = LiveSliderState()
-        state.onDown(valuePercent = 50f, pointerX = 100f, trackWidthPx = 200f, uptimeMillis = 0)
-        state.onMove(pointerX = 120f, uptimeMillis = 100)
-
-        assertEquals(60f, state.release()!!, 0.001f)
-        assertNull(state.release())
-        assertEquals(0f..100f, state.visibleRange)
-    }
-
-    @Test
-    fun `pointer up commits final position then requests Live stop`() {
+    fun `release is stop-only with no final target callback`() {
         val state = LiveSliderState()
         val events = mutableListOf<String>()
-        state.onDown(valuePercent = 50f, pointerX = 100f, trackWidthPx = 200f, uptimeMillis = 0)
-        state.onMove(pointerX = 120f, uptimeMillis = 100)
+        state.onDown(pointerY = 150f, trackHeightPx = 300f, uptimeMillis = 0)
+        state.onMove(pointerY = 75f, uptimeMillis = 100)
 
         finishLiveTouchGesture(
-            released = true,
             gestureState = state,
-            onCommit = { events += "commit:${it.toInt()}" },
-            onTouchEnd = { events += "stop" }
-        )
-
-        assertEquals(listOf("commit:60", "stop"), events)
-        assertNull(state.release())
-    }
-
-    @Test
-    fun `pointer cancel skips commit and immediately requests Live stop`() {
-        val state = LiveSliderState()
-        val events = mutableListOf<String>()
-        state.onDown(valuePercent = 50f, pointerX = 100f, trackWidthPx = 200f, uptimeMillis = 0)
-        state.onMove(pointerX = 120f, uptimeMillis = 100)
-
-        finishLiveTouchGesture(
-            released = false,
-            gestureState = state,
-            onCommit = { events += "commit" },
             onTouchEnd = { events += "stop" }
         )
 
         assertEquals(listOf("stop"), events)
-        assertNull(state.release())
+        assertNull(state.onMove(pointerY = 0f, uptimeMillis = 200))
+        assertEquals(0f..100f, state.visibleRange)
+    }
+
+    @Test
+    fun `cancel is stop-only with no final target callback`() {
+        val state = LiveSliderState(precisionEnabled = true)
+        val events = mutableListOf<String>()
+        state.onDown(pointerY = 150f, trackHeightPx = 300f, uptimeMillis = 0)
+        state.advanceTime(2_000)
+
+        finishLiveTouchGesture(
+            gestureState = state,
+            onTouchEnd = { events += "stop" }
+        )
+
+        assertEquals(listOf("stop"), events)
+        assertNull(state.onMove(pointerY = 0f, uptimeMillis = 2_100))
+        assertEquals(0f..100f, state.visibleRange)
     }
 }

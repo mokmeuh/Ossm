@@ -34,6 +34,7 @@ import com.ossm.remote.model.BleConnectionState
 import com.ossm.remote.overlay.OverlayService
 import com.ossm.remote.ui.navigation.BottomNavScreens
 import com.ossm.remote.ui.navigation.Screen
+import com.ossm.remote.ui.navigation.shouldOpenControlAfterConnect
 import com.ossm.remote.ui.navigation.shouldReturnToScanAfterDisconnect
 import com.ossm.remote.ui.screens.*
 import com.ossm.remote.ui.theme.*
@@ -239,10 +240,14 @@ fun OssmApp(
     val controlPageIndex = BottomNavScreens.indexOfFirst { it.route == Screen.Control.route }
 
     LaunchedEffect(connectionState) {
-        if (shouldReturnToScanAfterDisconnect(previousConnectionState, connectionState) &&
-            pagerState.currentPage != scanPageIndex
-        ) {
-            pagerState.animateScrollToPage(scanPageIndex)
+        when {
+            shouldOpenControlAfterConnect(previousConnectionState, connectionState, currentRoute) -> {
+                pagerState.animateScrollToPage(controlPageIndex)
+            }
+            shouldReturnToScanAfterDisconnect(previousConnectionState, connectionState) &&
+                pagerState.currentPage != scanPageIndex -> {
+                pagerState.animateScrollToPage(scanPageIndex)
+            }
         }
         previousConnectionState = connectionState
     }
@@ -302,7 +307,6 @@ fun OssmApp(
                     },
                     onConnect = { address ->
                         bleVm.connect(address)
-                        scope.launch { pagerState.animateScrollToPage(controlPageIndex) }
                     },
                     onStop = bleVm::stopScan
                 )

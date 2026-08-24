@@ -1,9 +1,12 @@
 #include "streaming.h"
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <optional>
 #include <queue>
 
+#include "live_trajectory.h"
 #include "streaming_logic.h"
 #include "constants/Config.h"
 #include "ossm/state/calibration.h"
@@ -35,8 +38,8 @@ static void startStreamingTask(void *pvParameters) {
     auto best = std::chrono::steady_clock::now();
     PositionTime lastPositionTime{};
     bool hasLastPosition = false;
-    std::optional<LiveSmoothTarget> pendingLive;
     bool modeArmed = false;
+    bool liveSession = false;
 
     targetQueue = {};
     initializeLiveSmoothQueue();
@@ -48,7 +51,28 @@ static void startStreamingTask(void *pvParameters) {
     stepper->setSpeedInHz(maxSpeed);
     stepper->setAcceleration(maxAccel);
 
+    constexpr double kMaximumLiveDtSeconds = 0.010;
+    constexpr double kAccelerationRampSeconds = 0.050;
+    const uint32_t liveAccelLimit =
+        streaming_logic::liveAccelerationLimit(maxAccel);
+    live_trajectory::Engine liveEngine({
+        static_cast<double>(maxSpeed),
+        static_cast<double>(liveAccelLimit),
+        static_cast<double>(liveAccelLimit) / kAccelerationRampSeconds,
+        0,
+        0,
+        kMaximumLiveDtSeconds,
+    });
+    liveEngine.initialize(stepper->getCurrentPosition(), millis());
+    auto previousTickTime = std::chrono::steady_clock::now();
+    TickType_t lastWakeTime = xTaskGetTickCount();
+
     while (isInCorrectState()) {
+        vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(1));
+        const auto tickTime = std::chrono::steady_clock::now();
+        const double measuredDt =
+            std::chrono::duration<double>(tickTime - previousTickTime).count();
+        previousTickTime = tickTime;
         const int32_t currentPosition = stepper->getCurrentPosition();
         const int32_t measuredTravel =
             static_cast<int32_t>(calibration.measuredStrokeSteps);
@@ -68,39 +92,69 @@ static void startStreamingTask(void *pvParameters) {
             modeArmed = resumeLiveSmooth();
         }
         if (!liveSmoothMotionAllowed()) {
-            pendingLive.reset();
+            liveEngine.cancel();
             targetQueue = {};
             stepper->forceStop();
             stepper->disableOutputs();
-            vTaskDelay(1);
             continue;
         }
 
-        const auto now = std::chrono::steady_clock::now();
+        const auto now = tickTime;
         const uint16_t currentBuffer =
             std::chrono::duration_cast<std::chrono::milliseconds>(now - best)
                 .count();
-        if (!pendingLive.has_value()) {
-            LiveSmoothTarget target{};
-            if (pollLiveSmoothTarget(millis(), target)) pendingLive = target;
+        const uint32_t nowMs = millis();
+        const live_trajectory::Limits liveLimits{
+            maxSpeed * (settings.speed / 100.0f),
+            static_cast<double>(liveAccelLimit),
+            static_cast<double>(liveAccelLimit) / kAccelerationRampSeconds,
+            -allowedStroke - allowedDepth,
+            -allowedDepth,
+            kMaximumLiveDtSeconds,
+        };
+        liveEngine.setLimits(liveLimits);
+        if (settings.speed == 0) {
+            clearLiveSmoothTargets();
+            if (liveSession) {
+                stepper->forceStop();
+                liveEngine.initialize(stepper->getCurrentPosition(), nowMs);
+                liveSession = false;
+                continue;
+            }
+        }
+        LiveSmoothTarget liveTarget{};
+        if (pollLiveSmoothTarget(nowMs, liveTarget)) {
+            const uint16_t durationMs = streaming_logic::remainingDurationMs(
+                liveTarget.packet.deadlineMs,
+                nowMs,
+                liveTarget.packet.durationMs);
+            const int32_t targetPosition = streaming_logic::scaleStreamPosition(
+                liveTarget.packet.positionPermille / 10U,
+                allowedStroke,
+                allowedDepth);
+            if (durationMs > 0U &&
+                liveEngine.setTarget(targetPosition, durationMs, nowMs)) {
+                liveSession = true;
+            }
+        }
+        if (liveSession) {
+            const auto output = liveEngine.tick(measuredDt, nowMs);
+            if (output.commandChanged) {
+                stepper->setAcceleration(static_cast<uint32_t>(
+                    std::max(1.0, std::ceil(std::abs(output.acceleration)))));
+                stepper->setSpeedInHz(static_cast<uint32_t>(
+                    std::max(1.0, std::ceil(std::abs(output.velocity)))));
+                stepper->moveTo(output.commandPosition, false);
+            }
+            if (!liveEngine.hasTarget()) liveSession = false;
+            continue;
         }
 
-        const bool isLiveSmooth = pendingLive.has_value();
+        const bool isLiveSmooth = false;
         PositionTime targetPositionTime{};
-        if (isLiveSmooth) {
-            const uint32_t nowMs = millis();
-            targetPositionTime.position =
-                pendingLive->packet.positionPermille / 10U;
-            targetPositionTime.inTime =
-                streaming_logic::remainingDurationMs(
-                    pendingLive->packet.deadlineMs,
-                    nowMs,
-                    pendingLive->packet.durationMs);
-            targetPositionTime.setTime = now;
-        } else if (!targetQueue.empty()) {
+        if (!targetQueue.empty()) {
             targetPositionTime = targetQueue.front();
         } else {
-            vTaskDelay(1);
             continue;
         }
 
@@ -110,27 +164,17 @@ static void startStreamingTask(void *pvParameters) {
             streaming_logic::streamDirection(streamDistance);
         if (!streaming_logic::shouldScheduleStreamPosition(
                 hasLastPosition, streamDistance)) {
-            if (isLiveSmooth) {
-                pendingLive.reset();
-            } else {
-                targetQueue.pop();
-            }
-            vTaskDelay(1);
+            targetQueue.pop();
             continue;
         }
         const bool sameDirection =
             !hasLastPosition ||
             lastPositionTime.direction == targetPositionTime.direction;
         if (!sameDirection && stepper->isRunning()) {
-            vTaskDelay(1);
             continue;
         }
 
-        if (isLiveSmooth) {
-            pendingLive.reset();
-        } else {
-            targetQueue.pop();
-        }
+        targetQueue.pop();
 
         float timeSeconds = targetPositionTime.inTime / 1000.0f;
         if (!isLiveSmooth && USE_LATENCY_COMPENSATION) {
@@ -166,7 +210,10 @@ static void startStreamingTask(void *pvParameters) {
             isLiveSmooth
                 ? maxSpeed * (settings.speed / 100.0f)
                 : streaming_logic::timedStreamSpeedLimit(maxSpeed);
-        const uint32_t accelLimit = maxAccel * (settings.sensation / 100.0);
+        const uint32_t accelLimit =
+            isLiveSmooth
+                ? streaming_logic::liveAccelerationLimit(maxAccel)
+                : maxAccel * (settings.sensation / 100.0);
         const int32_t targetPosition =
             streaming_logic::scaleStreamPosition(
                 targetPositionTime.position, maxStroke, depth);
@@ -178,14 +225,16 @@ static void startStreamingTask(void *pvParameters) {
             accelLimit,
             1_mm);
         if (!profile.valid) {
-            vTaskDelay(1);
             continue;
         }
 
-        uint32_t acceleration = profile.acceleration;
-        if (stepper->isRunning()) {
-            acceleration = max(stepper->getAcceleration(), acceleration);
-        }
+        const bool stepperIsRunning = stepper->isRunning();
+        const uint32_t acceleration =
+            streaming_logic::selectStreamAcceleration(
+                isLiveSmooth,
+                stepperIsRunning,
+                stepperIsRunning ? stepper->getAcceleration() : 0U,
+                profile.acceleration);
         stepper->setAcceleration(acceleration);
         stepper->setSpeedInHz(profile.speed);
         stepper->moveTo(profile.targetPosition, false);
@@ -201,10 +250,11 @@ static void startStreamingTask(void *pvParameters) {
             profile.speed,
             acceleration,
             isLiveSmooth ? liveSmoothQueueDepth() : targetQueue.size());
-        vTaskDelay(1);
     }
 
     stopLiveSmoothOutOfBand();
+    liveEngine.cancel();
+    stepper->forceStop();
     vTaskDelete(nullptr);
 }
 

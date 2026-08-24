@@ -19,6 +19,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.SystemClock
+import androidx.annotation.VisibleForTesting
 import androidx.core.content.ContextCompat
 import com.ossm.remote.model.BleConnectionState
 import com.ossm.remote.model.BleDevice
@@ -136,9 +137,12 @@ class BleManager @Inject constructor(
     private val liveTargetUpdates = Channel<OssmCommand.Stream>(Channel.CONFLATED)
     private val liveTargetScheduler = LiveTargetScheduler()
     private val liveTargetLock = Any()
+    private var liveSpeedArmed = false
     private val normalGattWrites = Channel<GattWriteRequest>(Channel.UNLIMITED)
     private val urgentGattWrites = Channel<GattWriteRequest>(Channel.CONFLATED)
     @Volatile private var activeWriteCompletion: CompletableDeferred<Int>? = null
+    @VisibleForTesting
+    internal var gattWriteAttemptObserver: ((BluetoothGattCharacteristic, ByteArray, Int) -> Unit)? = null
     private var reconnectJob: Job? = null
     @Volatile private var manualDisconnectRequested = false
 
@@ -366,6 +370,7 @@ class BleManager @Inject constructor(
     fun disconnect() {
         manualDisconnectRequested = true
         reconnectJob?.cancel()
+        _streamingReady.value = false
         cancelLiveTargets()
         sendStop()
         forceResetConnection()
@@ -918,8 +923,23 @@ class BleManager @Inject constructor(
             // Jamais de position tant que le setup streaming n'est pas vérifié :
             // sans stroke=100/depth=100 confirmés, la bande de course est imprévisible
             // (cause du bug « slider 0-100 ≠ 0-100 du home »).
-            if (!_streamingReady.value) return
-            liveTargetUpdates.trySend(command.copy(receivedAtMs = command.receivedAtMs ?: SystemClock.elapsedRealtime()))
+            if (!_streamingReady.value) {
+                log(LogLevel.WARNING, "LIVE", "Cible ignorée : entrée streaming non prête")
+                return
+            }
+            synchronized(liveTargetLock) {
+                if (!_streamingReady.value) return
+                if (!liveSpeedArmed) {
+                    writeRaw("set:speed:100")
+                    liveSpeedArmed = true
+                    _lastCommand.value = "set:speed:100"
+                    log(LogLevel.INFO, "CMD", "Vitesse Live réarmée après relâchement")
+                }
+                liveTargetScheduler.resume()
+                liveTargetUpdates.trySend(
+                    command.copy(receivedAtMs = command.receivedAtMs ?: SystemClock.elapsedRealtime())
+                )
+            }
             return
         }
 
@@ -1132,10 +1152,17 @@ class BleManager @Inject constructor(
         }
 
         if (verified) {
+            synchronized(liveTargetLock) {
+                liveSpeedArmed = false
+                liveTargetScheduler.resume()
+            }
             _streamingReady.value = true
-            liveTargetScheduler.resume()
             _lastCommand.value = "streaming prêt (stroke=100 depth=100)"
-            log(LogLevel.INFO, "CMD", "Streaming vérifié : plage live 0-100 = home→fond (speed=${_machineState.value.speed})")
+            log(
+                LogLevel.INFO,
+                "CMD",
+                "Streaming vérifié : plage live 0-100 = home→fond; vitesse réarmée au premier toucher",
+            )
         } else {
             val stt = _machineState.value
             log(
@@ -1274,6 +1301,7 @@ class BleManager @Inject constructor(
             null
         }
         activeWriteCompletion = callback
+        gattWriteAttemptObserver?.invoke(request.characteristic, request.value.copyOf(), writeType)
         val accepted = try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 activeGatt.writeCharacteristic(request.characteristic, request.value, writeType) ==
@@ -1398,20 +1426,39 @@ class BleManager @Inject constructor(
         when (write.transport) {
             LiveTransportSelection.BLOCKED -> return
             LiveTransportSelection.BINARY_V1 -> {
-                writeGattAndAwait(smoothCharacteristic ?: return, write.payload)
+                if (!writeGattAndAwait(smoothCharacteristic ?: return, write.payload)) {
+                    log(LogLevel.ERROR, "LIVE", "Cible binaire non livrée seq=${target.sequence}")
+                    return
+                }
                 _lastCommand.value = "live-v1:${target.positionPercent}:${target.durationMs} seq=${target.sequence}"
+                log(
+                    LogLevel.INFO,
+                    "LIVE",
+                    "Cible livrée transport=binaire pos=${target.positionPercent} durée=${target.durationMs} seq=${target.sequence}",
+                )
             }
             LiveTransportSelection.LEGACY_TEXT -> {
                 val characteristic = commandCharacteristic ?: return
-                writeGattAndAwait(characteristic, write.payload)
+                if (!writeGattAndAwait(characteristic, write.payload)) {
+                    log(LogLevel.ERROR, "LIVE", "Cible texte non livrée seq=${target.sequence}")
+                    return
+                }
                 _lastCommand.value = write.payload.toString(Charsets.UTF_8)
+                log(
+                    LogLevel.INFO,
+                    "LIVE",
+                    "Cible livrée transport=texte pos=${target.positionPercent} durée=${target.durationMs} seq=${target.sequence}",
+                )
             }
         }
     }
 
     private fun cancelLiveTargets() {
         while (liveTargetUpdates.tryReceive().isSuccess) Unit
-        synchronized(liveTargetLock) { liveTargetScheduler.stop() }
+        synchronized(liveTargetLock) {
+            liveSpeedArmed = false
+            liveTargetScheduler.stop()
+        }
     }
 
     fun resumeStreamingTargets() {
@@ -1481,6 +1528,7 @@ class BleManager @Inject constructor(
     }
 
     fun emergencyStop() {
+        _streamingReady.value = false
         sendStop()
         if (_connectionState.value is BleConnectionState.EmergencyStop) return
         _connectionState.value = BleConnectionState.EmergencyStop

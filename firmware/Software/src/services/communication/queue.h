@@ -28,6 +28,7 @@ void latchLiveSmoothEndpointPressure();
 live_smooth::OfferResult offerLiveSmoothTarget(
     const live_smooth::Packet& packet, uint32_t nowMs);
 bool pollLiveSmoothTarget(uint32_t nowMs, LiveSmoothTarget& target);
+void clearLiveSmoothTargets();
 void stopLiveSmoothOutOfBand();
 bool resumeLiveSmooth();
 std::size_t liveSmoothQueueDepth();

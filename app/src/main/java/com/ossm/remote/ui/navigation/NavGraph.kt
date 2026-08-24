@@ -21,8 +21,6 @@ sealed class Screen(val route: String, val label: String, val icon: ImageVector)
 val BottomNavScreens = listOf(
     Screen.Scan,
     Screen.Control,
-    Screen.Funscript,
-    Screen.VideoSync,
     Screen.Profiles,
     Screen.Diagnostics
 )

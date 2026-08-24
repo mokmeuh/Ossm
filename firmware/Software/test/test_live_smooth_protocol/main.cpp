@@ -161,6 +161,39 @@ void test_mode_can_arm_after_setup_makes_the_envelope_safe() {
                       queue.offer(packet(1, 500, 950), 100));
 }
 
+void test_safety_recovery_requires_explicit_safe_reentry() {
+    QueueModel queue(safeState());
+    TEST_ASSERT_TRUE(queue.resume());
+    TEST_ASSERT_EQUAL(OfferResult::Accepted, queue.offer(packet(1, 500), 0));
+
+    auto unsafe = safeState();
+    unsafe.homingValid = false;
+    queue.updateSafety(unsafe);
+    queue.updateSafety(safeState());
+
+    TEST_ASSERT_FALSE(queue.motionAllowed());
+    TEST_ASSERT_EQUAL(OfferResult::SafetyInhibited,
+                      queue.offer(packet(2, 500), 20));
+    TEST_ASSERT_TRUE(queue.resume());
+    TEST_ASSERT_EQUAL(OfferResult::Accepted,
+                      queue.offer(packet(2, 500), 40));
+}
+
+void test_mode_exit_stays_disarmed_until_explicit_safe_reentry() {
+    QueueModel queue(safeState());
+    TEST_ASSERT_TRUE(queue.resume());
+    TEST_ASSERT_EQUAL(OfferResult::Accepted, queue.offer(packet(1, 500), 0));
+
+    queue.stopOutOfBand();
+
+    TEST_ASSERT_FALSE(queue.motionAllowed());
+    TEST_ASSERT_EQUAL(OfferResult::SafetyInhibited,
+                      queue.offer(packet(2, 500), 20));
+    TEST_ASSERT_TRUE(queue.resume());
+    TEST_ASSERT_EQUAL(OfferResult::Accepted,
+                      queue.offer(packet(2, 500), 40));
+}
+
 void test_deterministic_trace_reports_queue_outcomes() {
     QueueModel queue(safeState());
     std::size_t accepted = 0;
@@ -213,6 +246,8 @@ int main(int, char**) {
     RUN_TEST(test_invalid_homing_envelope_and_endpoint_pressure_inhibit_motion);
     RUN_TEST(test_deadline_is_rebased_from_sender_to_receiver_clock_domain);
     RUN_TEST(test_mode_can_arm_after_setup_makes_the_envelope_safe);
+    RUN_TEST(test_safety_recovery_requires_explicit_safe_reentry);
+    RUN_TEST(test_mode_exit_stays_disarmed_until_explicit_safe_reentry);
     RUN_TEST(test_deterministic_trace_reports_queue_outcomes);
     return UNITY_END();
 }

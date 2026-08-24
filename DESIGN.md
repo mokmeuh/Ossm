@@ -15,20 +15,21 @@ This contract covers the Android Compose control surface only. Preserve the exis
 
 ## Control Primitives
 
-- STOP remains the dominant protected 110dp action and must never be covered by the pattern bubble.
-- Pause/play and settings use matching 80dp circular footprints.
-- Save is a small square action on the right side of the control header because it saves control settings.
+- Outside Live, STOP remains the dominant protected 110dp action and must never be covered by the pattern bubble. Live exposes no Stop or Pause action because finger release is its stop mechanism.
+- Pause/play retains its 80dp circular footprint outside Live. Settings uses the existing glass/border tokens in a 40dp square target inside the active control-card header.
+- The control-card header renders only the active mode name. Its opener, weighted title, settings, and optional Save action occupy one non-overlapping row; Save remains absent in Live.
 - Sensation is one scalar slider from 0% to 100%, with neutral labeling and matching +/- controls.
-- Live mode uses a continuous-preview, release-to-commit position slider. UI callbacks expose positions only; transport cadence and actuator speed remain outside the UI layer.
+- Live mode uses a large vertical real-time control surface. The finger position is the target while contact is active; release or cancellation sends Stop only and never commits a final target. UI callbacks expose positions only; transport cadence and actuator speed remain outside the UI layer.
+- The settings gear exposes Precision for the active pattern. Overrides are keyed independently by pattern, default on outside Live, and default off for Live so changing Live never changes Simple Stroke or another mode. In Live only, the same dialog also exposes the existing invert-direction switch; the Live card never renders a standalone invert row.
 - Pattern selection uses a fixed small opener on the left side of the control title. Opening it replaces the visible control surface with one picker overlay; the picker uses a vertical list and closes after selection or dismissal. The opener is not draggable.
 - Safety settings expose persisted depth-limit sliders and explicit microphone targets for speed, depth, and sensation within the existing dialog.
 
 ## Compact Active Layout
 
 - The active control surface never owns vertical scrolling. Pattern pickers and dialogs may scroll internally, but the STOP rail and active control card remain fixed in the available window.
-- Portrait uses a compact 110dp top action rail: settings and pause/play retain at least 56dp effective targets while STOP remains the dominant protected 110dp action. The active control card consumes the remaining height budget and reduces decorative spacing before hiding safety or status information.
-- Landscape uses a narrow 112dp side action rail with STOP, settings, and pause/play stacked beside one flexible control card. STOP stays fully visible, above all overlays, and is never covered by the pattern picker.
-- The Moto G acceptance bounds are the real app content area after system bars and bottom navigation. All active Live information, including readiness feedback, value, fine range, and endpoint labels, must fit without a main-surface swipe in both orientations.
+- Portrait uses a compact 110dp top action rail outside Live: pause/play retains at least a 56dp effective target while STOP remains the dominant protected 110dp action. Live removes this rail entirely so the active control card uses the available height.
+- Landscape uses a narrow 112dp side action rail with STOP and pause/play outside Live. Live removes this rail entirely; otherwise STOP stays fully visible, above all overlays, and is never covered by the pattern picker.
+- The Moto G acceptance bounds are the real app content area after system bars and bottom navigation. The Live card takes the flexible remaining height while retaining comfortable outer margins and leaving the header, settings gear, and bottom navigation visible. All active Live information, including readiness feedback, value, fine range, and endpoint labels, must fit without a main-surface swipe in both orientations.
 - Compact cards use the existing `OssmBackground`/`OssmSecondary`, `GlassCard`, border, and accent tokens. The redesign does not introduce a second material language or generic component system.
 
 ## Precision Scalar Slider
@@ -45,13 +46,16 @@ This contract covers the Android Compose control surface only. Preserve the exis
 
 ## Live Position Slider
 
-- Live does not use the centered scalar `+/-10` and `+/-5` levels. It owns a dedicated continuous-drag state model with a 56dp effective target and the same no-jump pointer-down guarantee.
-- While horizontal movement continues, Live never zooms or re-ranges. A cumulative 8dp displacement from the stationary anchor counts as movement, updates the preview linearly, and restarts the stationary timer.
+- Live owns a dedicated vertical control surface with a minimum `420dp x 280dp` portrait footprint and `180dp x 280dp` compact-landscape footprint, then expands to consume the remaining card height. The vertical track is 18dp/16dp and the thumb radius is 28dp/22dp. The full surface is interactive, not only the visual rail.
+- Vertical mapping is absolute and direct: the bottom edge is Home/0, the top edge is Fond/100, and pointer-down immediately emits the touched position. Every vertical move beyond the 8px jitter threshold emits its new target while the finger remains down.
+- Release and pointer cancellation follow exactly the same path: reset the transient precision range and send Stop. Neither path sends, validates, commits, or replays a final position.
+- Live precision narrowing is opt-in and disabled by default. With Precision disabled, stationary time never changes the global `0-100` range; real-time vertical control and release-to-stop behavior remain unchanged.
+- While vertical movement continues, Live never zooms or re-ranges. A cumulative 8px displacement from the stationary anchor counts as movement, updates the target immediately, and restarts the stationary timer.
 - The first 2000ms continuously stationary always activates `10-90`. Each further uninterrupted 2000ms interval reduces the current half-span by 10 points and recenters on the finger's current mapped value: half-span `30`, then `20`, then `10`, then the safe minimum `5`.
 - For example, after `10-90`, moving to 40 and holding produces `10-70`; the next level centers the then-current value with half-span 20. Near global endpoints, the window shifts inside `0..100` to preserve its intended span.
-- Narrowing retains the current target and resets the relative grab origin at the current finger position. Subsequent horizontal displacement maps linearly across the current range span, so no stationary transition or resumed movement creates an absolute-position jump.
+- Narrowing retains the current target and resets the relative grab origin at the current finger position. Subsequent vertical displacement maps linearly across the current range span, so no stationary transition or resumed movement creates an absolute-position jump.
 - Resumed movement restarts the 2000ms timer but retains the narrowed range. Each newly entered range emits one `TextHandleMove` haptic and displays its exact low/high labels.
-- Successful release commits exactly once. Release, pointer cancellation, disabled-state transition, disposal, or orientation change returns the visual range to `0-100`; cancellation never commits or ghost-sends.
+- Release, pointer cancellation, disabled-state transition, disposal, or orientation change returns the visual range to `0-100` and requests Stop without a position callback.
 
 ## Accessibility Constraints
 
@@ -62,7 +66,7 @@ This contract covers the Android Compose control surface only. Preserve the exis
 
 ## Accepted Debt
 
-- Deterministic Compose tests and preview captures cover layout contracts in this task, but physical thumb reach, system-bar insets, font scaling above 1.0, TalkBack traversal, and rendered Moto G portrait/landscape screenshots remain device-level acceptance for task 23.
+- Deterministic state and layout-contract tests cover this task. Per the user-owned QA boundary, rendered Moto G portrait/landscape appearance, physical thumb reach, system-bar insets, font scaling above 1.0, and TalkBack traversal remain device-level acceptance.
 - Range sliders in safety dialogs keep their existing Material gesture behavior in this slice. The progressive primitive applies to scalar sliders; dual-thumb range editing requires a separate ambiguity and safety design before migration.
 
 ## Accessibility And Safety

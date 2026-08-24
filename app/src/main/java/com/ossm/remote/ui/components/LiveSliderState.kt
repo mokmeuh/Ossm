@@ -3,7 +3,8 @@ package com.ossm.remote.ui.components
 import kotlin.math.abs
 
 internal class LiveSliderState(
-    private val movementThresholdPx: Float = 8f
+    private val movementThresholdPx: Float = 8f,
+    private val precisionEnabled: Boolean = false
 ) {
     var valuePercent: Float = 0f
         private set
@@ -11,42 +12,49 @@ internal class LiveSliderState(
         private set
 
     private var active = false
-    private var trackWidthPx = 1f
-    private var dragOriginX = 0f
+    private var trackHeightPx = 1f
+    private var dragOriginY = 0f
     private var dragOriginValue = 0f
-    private var stationaryAnchorX = 0f
-    private var latestPointerX = 0f
+    private var stationaryAnchorY = 0f
+    private var latestPointerY = 0f
     private var stationarySinceMillis = 0L
     private var halfSpan: Float? = null
 
-    fun onDown(valuePercent: Float, pointerX: Float, trackWidthPx: Float, uptimeMillis: Long) {
+    fun onDown(pointerY: Float, trackHeightPx: Float, uptimeMillis: Long): Float {
         active = true
-        this.valuePercent = valuePercent.coerceIn(GLOBAL_RANGE)
-        this.trackWidthPx = trackWidthPx.coerceAtLeast(1f)
-        dragOriginX = pointerX
-        dragOriginValue = this.valuePercent
-        stationaryAnchorX = pointerX
-        latestPointerX = pointerX
-        stationarySinceMillis = uptimeMillis
         visibleRange = GLOBAL_RANGE
         halfSpan = null
+        this.trackHeightPx = trackHeightPx.coerceAtLeast(1f)
+        valuePercent = livePositionForPointer(pointerY, this.trackHeightPx)
+        dragOriginY = pointerY
+        dragOriginValue = this.valuePercent
+        stationaryAnchorY = pointerY
+        latestPointerY = pointerY
+        stationarySinceMillis = uptimeMillis
+        return valuePercent
     }
 
-    fun onMove(pointerX: Float, uptimeMillis: Long): Boolean {
-        if (!active) return false
-        latestPointerX = pointerX
-        if (abs(pointerX - stationaryAnchorX) <= movementThresholdPx) return false
+    fun onMove(pointerY: Float, uptimeMillis: Long): Float? {
+        if (!active) return null
+        latestPointerY = pointerY
+        if (abs(pointerY - stationaryAnchorY) <= movementThresholdPx) return null
 
         val span = visibleRange.endInclusive - visibleRange.start
-        valuePercent = (dragOriginValue + (pointerX - dragOriginX) / trackWidthPx * span)
-            .coerceIn(GLOBAL_RANGE)
-        stationaryAnchorX = pointerX
+        valuePercent = if (visibleRange == GLOBAL_RANGE) {
+            livePositionForPointer(pointerY, trackHeightPx)
+        } else {
+            (dragOriginValue + (dragOriginY - pointerY) / trackHeightPx * span)
+                .coerceIn(GLOBAL_RANGE)
+        }
+        stationaryAnchorY = pointerY
         stationarySinceMillis = uptimeMillis
-        return true
+        return valuePercent
     }
 
     fun advanceTime(uptimeMillis: Long): Boolean {
-        if (!active || uptimeMillis - stationarySinceMillis < NARROW_DELAY_MILLIS) return false
+        if (!precisionEnabled || !active || uptimeMillis - stationarySinceMillis < NARROW_DELAY_MILLIS) {
+            return false
+        }
         val currentHalfSpan = halfSpan
         val nextHalfSpan = when {
             currentHalfSpan == null -> FIRST_HALF_SPAN
@@ -61,20 +69,12 @@ internal class LiveSliderState(
         }
         halfSpan = nextHalfSpan
         stationarySinceMillis = uptimeMillis
-        dragOriginX = latestPointerX
+        dragOriginY = latestPointerY
         dragOriginValue = valuePercent
         return true
     }
 
-    fun release(): Float? {
-        if (!active) return null
-        active = false
-        val committed = valuePercent
-        resetRange()
-        return committed
-    }
-
-    fun cancel() {
+    fun endTouch() {
         active = false
         resetRange()
     }
@@ -97,4 +97,12 @@ internal class LiveSliderState(
         const val FIRST_HALF_SPAN = 40f
         const val MINIMUM_HALF_SPAN = 5f
     }
+}
+
+internal fun livePositionForPointer(
+    pointerY: Float,
+    trackHeightPx: Float
+): Float {
+    val height = trackHeightPx.coerceAtLeast(1f)
+    return ((1f - pointerY.coerceIn(0f, height) / height) * 100f).coerceIn(0f, 100f)
 }

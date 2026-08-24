@@ -1363,9 +1363,6 @@ class ControlSessionStore @Inject constructor(
     }
 
     private fun sendStreamPositionTarget(target: Int) {
-        if ((bleManager.machineState.value.speed ?: 0) < 100) {
-            bleManager.liveSet("speed", 100)
-        }
         val producer = if (_uiState.value.rangeWizard != null) {
             LiveTargetProducer.RANGE_WIZARD
         } else {

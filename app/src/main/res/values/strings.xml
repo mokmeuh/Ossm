@@ -50,11 +50,8 @@
     <string name="ctl_patterns_collapse">Fermer</string>
     <string name="ctl_patterns_open">Ouvrir les patterns</string>
     <string name="ctl_no_patterns">Aucun pattern détecté pour ce firmware.</string>
-    <string name="ctl_live_hint_ready">Glisse le slider pour previsualiser, relache pour envoyer une seule position (0 %% = home, 100 %% = fond).</string>
     <string name="ctl_live_home">Home</string>
     <string name="ctl_live_deep">Fond</string>
-    <string name="ctl_live_release_once">Relâche pour valider</string>
-    <string name="ctl_live_preparing_short">Préparation…</string>
     <string name="live_range_global">Live 0–100</string>
     <string name="live_range_narrowed">Live précis · %1$d–%2$d</string>
     <string name="live_state_description">%1$s, position %2$d pour cent</string>
@@ -77,6 +74,9 @@
     <string name="precision_range_global">Plage 0–100</string>
     <string name="precision_range_level">Précision ±%1$d · %2$d–%3$d</string>
     <string name="precision_state_description">%1$s, valeur %2$d pour cent</string>
+    <string name="ctl_control_settings">Réglages du contrôle</string>
+    <string name="ctl_precision_option">Précision</string>
+    <string name="ctl_precision_option_hint">Rétrécit progressivement la plage après une immobilité du doigt. Ce choix est indépendant pour chaque pattern.</string>
     <string name="ctl_reorder_title">Réorganiser les patterns</string>
     <string name="ctl_reorder_hint">Appui long puis glisse pour déplacer.</string>
     <string name="ctl_save">Enregistrer</string>

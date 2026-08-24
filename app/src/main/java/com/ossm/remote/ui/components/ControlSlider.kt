@@ -17,6 +17,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -45,6 +46,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
+
+internal val LocalControlPrecisionEnabled = staticCompositionLocalOf { true }
 
 @Composable
 fun ControlSlider(
@@ -113,6 +116,7 @@ fun ControlSlider(
             PrecisionScalarSlider(
                 valuePercent = toPercent(value),
                 enabled = enabled,
+                precisionEnabled = LocalControlPrecisionEnabled.current,
                 activeColor = activeColor,
                 currentMarkerPercent = currentMarker?.let(::toPercent),
                 onValueChange = { onValueChange(fromPercent(it)) },
@@ -142,6 +146,7 @@ fun ControlSlider(
 internal fun PrecisionScalarSlider(
     valuePercent: Float,
     enabled: Boolean,
+    precisionEnabled: Boolean,
     activeColor: Color,
     onValueChange: (Float) -> Unit,
     onValueCommit: (Float) -> Unit,
@@ -174,8 +179,8 @@ internal fun PrecisionScalarSlider(
             syncVisualState()
         }
     }
-    LaunchedEffect(dragging) {
-        while (dragging) {
+    LaunchedEffect(dragging, precisionEnabled) {
+        while (dragging && precisionEnabled) {
             delay(25)
             if (gestureState.advanceTime(SystemClock.uptimeMillis())) {
                 syncVisualState()
