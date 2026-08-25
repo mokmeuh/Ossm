@@ -17,6 +17,7 @@ struct SettingPercents {
     float speed;
     float stroke;
     float sensation;
+    float acceleration = 33;
     float depth;
     float buffer;
     StrokePatterns pattern;

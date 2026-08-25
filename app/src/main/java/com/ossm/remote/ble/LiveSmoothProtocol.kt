@@ -187,9 +187,7 @@ internal class LiveTargetScheduler {
     private var stopped = true
     private var nextSequence = 0
     private var lastDispatchAtMs: Long? = null
-    private var lastDispatchDurationMs: Int? = null
     private var lastDispatchedPosition: Int? = null
-    private var lastDispatchedProducer: LiveTargetProducer? = null
     private var lastDirection = 0
     private var lastTouchSample: TouchSample? = null
     private var lastDeadlineAbsoluteMs = -1L
@@ -224,7 +222,7 @@ internal class LiveTargetScheduler {
         if (stopped) return null
         val candidate = pending ?: return null
         val previousDispatchAt = lastDispatchAtMs
-        val requiredIntervalMs = requiredDispatchIntervalMs(candidate)
+        val requiredIntervalMs = LiveSmoothProtocol.MINIMUM_INPUT_INTERVAL_MS
         if (previousDispatchAt != null && nowMs - previousDispatchAt < requiredIntervalMs) {
             return null
         }
@@ -236,15 +234,8 @@ internal class LiveTargetScheduler {
 
         val isTouchProducer = candidate.producer == LiveTargetProducer.TOUCH ||
             candidate.producer == LiveTargetProducer.RANGE_WIZARD
-        val dispatchPosition = if (previousPosition != null && isTouchProducer) {
-            val delta = candidate.positionPercent - previousPosition
-            previousPosition + delta.coerceIn(-MAX_TOUCH_STEP_PERCENT, MAX_TOUCH_STEP_PERCENT)
-        } else {
-            candidate.positionPercent
-        }
-        if (dispatchPosition == candidate.positionPercent) {
-            pending = null
-        }
+        val dispatchPosition = candidate.positionPercent
+        pending = null
 
         val direction = previousPosition?.let { dispatchPosition.compareTo(it) } ?: 0
         val reversal = direction != 0 && lastDirection != 0 && direction != lastDirection
@@ -269,9 +260,7 @@ internal class LiveTargetScheduler {
         val sequence = nextSequence
         nextSequence = (nextSequence + 1) and 0xffff
         lastDispatchAtMs = nowMs
-        lastDispatchDurationMs = duration
         lastDispatchedPosition = dispatchPosition
-        lastDispatchedProducer = candidate.producer
         return ScheduledLiveTarget(
             positionPercent = dispatchPosition,
             durationMs = duration,
@@ -285,16 +274,15 @@ internal class LiveTargetScheduler {
         val candidate = pending
         if (stopped || candidate == null) return 0L
         val previousDispatchAt = lastDispatchAtMs ?: return 0L
-        return (requiredDispatchIntervalMs(candidate) - (nowMs - previousDispatchAt)).coerceAtLeast(0L)
+        return (LiveSmoothProtocol.MINIMUM_INPUT_INTERVAL_MS - (nowMs - previousDispatchAt))
+            .coerceAtLeast(0L)
     }
 
     fun stop() {
         stopped = true
         pending = null
         lastDispatchAtMs = null
-        lastDispatchDurationMs = null
         lastDispatchedPosition = null
-        lastDispatchedProducer = null
         lastDirection = 0
         lastTouchSample = null
     }
@@ -304,24 +292,9 @@ internal class LiveTargetScheduler {
         stopped = false
         pending = null
         lastDispatchAtMs = null
-        lastDispatchDurationMs = null
         lastDispatchedPosition = null
-        lastDispatchedProducer = null
         lastDirection = 0
         lastTouchSample = null
-    }
-
-    private fun requiredDispatchIntervalMs(candidate: PendingTarget): Long {
-        val previousDurationMs = lastDispatchDurationMs
-        val previousProducer = lastDispatchedProducer
-        return if (previousDurationMs != null &&
-            isTouchProducer(previousProducer) &&
-            isTouchProducer(candidate.producer)
-        ) {
-            maxOf(LiveSmoothProtocol.MINIMUM_INPUT_INTERVAL_MS, previousDurationMs.toLong())
-        } else {
-            LiveSmoothProtocol.MINIMUM_INPUT_INTERVAL_MS
-        }
     }
 
     private fun calculateTouchVelocity(
@@ -346,16 +319,12 @@ internal class LiveTargetScheduler {
         return movementDurationMs.coerceIn(MIN_TOUCH_DURATION_MS, MAX_TOUCH_DURATION_MS)
     }
 
-    private fun isTouchProducer(producer: LiveTargetProducer?): Boolean =
-        producer == LiveTargetProducer.TOUCH || producer == LiveTargetProducer.RANGE_WIZARD
-
     companion object {
-        const val MAX_TOUCH_STEP_PERCENT = 5
-        const val MAX_TOUCH_SPEED_PERCENT_PER_SECOND = 100
+        const val MAX_TOUCH_SPEED_PERCENT_PER_SECOND = 150
         const val MIN_TOUCH_DURATION_MS = 60
         const val MAX_TOUCH_DURATION_MS = 600
         const val REVERSAL_MIN_DURATION_MS = 100
-        private const val DEFAULT_TOUCH_DURATION_MS = 120
+        private const val DEFAULT_TOUCH_DURATION_MS = 300
         private const val MIN_TIMELINE_DURATION_MS = 20
         private const val MAX_TIMELINE_DURATION_MS = 2_000
         private const val MIN_DEADLINE_LEAD_MS = 40

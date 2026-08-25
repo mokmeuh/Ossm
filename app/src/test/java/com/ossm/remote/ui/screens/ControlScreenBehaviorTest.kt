@@ -50,6 +50,22 @@ class ControlScreenBehaviorTest {
     }
 
     @Test
+    fun `acceleration setting is available only for Live`() {
+        val simpleStroke = KnownStrokeEnginePatterns.first { it.key == "simpleStroke" }
+
+        assertTrue(shouldShowLiveAccelerationSetting(KnownStreamingPattern))
+        assertFalse(shouldShowLiveAccelerationSetting(simpleStroke))
+        assertFalse(shouldShowLiveAccelerationSetting(null))
+    }
+
+    @Test
+    fun `hold explanation hides once movement exceeds touch slop`() {
+        assertTrue(shouldKeepHoldInfoVisible(distancePx = 7.9f, touchSlopPx = 8f))
+        assertTrue(shouldKeepHoldInfoVisible(distancePx = 8f, touchSlopPx = 8f))
+        assertFalse(shouldKeepHoldInfoVisible(distancePx = 8.1f, touchSlopPx = 8f))
+    }
+
+    @Test
     fun `precision defaults off for Live and on for stroke engine patterns`() {
         val simpleStroke = KnownStrokeEnginePatterns.first { it.key == "simpleStroke" }
 

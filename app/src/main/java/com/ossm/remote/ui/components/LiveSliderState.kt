@@ -3,7 +3,7 @@ package com.ossm.remote.ui.components
 import kotlin.math.abs
 
 internal class LiveSliderState(
-    private val movementThresholdPx: Float = 8f,
+    private val movementThresholdPx: Float = 0f,
     private val precisionEnabled: Boolean = false
 ) {
     var valuePercent: Float = 0f
@@ -21,11 +21,25 @@ internal class LiveSliderState(
     private var halfSpan: Float? = null
 
     fun onDown(pointerY: Float, trackHeightPx: Float, uptimeMillis: Long): Float {
+        return onDown(
+            valuePercent = livePositionForPointer(pointerY, trackHeightPx),
+            pointerY = pointerY,
+            trackHeightPx = trackHeightPx,
+            uptimeMillis = uptimeMillis
+        )
+    }
+
+    fun onDown(
+        valuePercent: Float,
+        pointerY: Float,
+        trackHeightPx: Float,
+        uptimeMillis: Long
+    ): Float {
         active = true
         visibleRange = GLOBAL_RANGE
         halfSpan = null
         this.trackHeightPx = trackHeightPx.coerceAtLeast(1f)
-        valuePercent = livePositionForPointer(pointerY, this.trackHeightPx)
+        this.valuePercent = valuePercent.coerceIn(GLOBAL_RANGE)
         dragOriginY = pointerY
         dragOriginValue = this.valuePercent
         stationaryAnchorY = pointerY
@@ -40,12 +54,8 @@ internal class LiveSliderState(
         if (abs(pointerY - stationaryAnchorY) <= movementThresholdPx) return null
 
         val span = visibleRange.endInclusive - visibleRange.start
-        valuePercent = if (visibleRange == GLOBAL_RANGE) {
-            livePositionForPointer(pointerY, trackHeightPx)
-        } else {
-            (dragOriginValue + (dragOriginY - pointerY) / trackHeightPx * span)
-                .coerceIn(GLOBAL_RANGE)
-        }
+        valuePercent = (dragOriginValue + (dragOriginY - pointerY) / trackHeightPx * span)
+            .coerceIn(GLOBAL_RANGE)
         stationaryAnchorY = pointerY
         stationarySinceMillis = uptimeMillis
         return valuePercent
@@ -98,6 +108,21 @@ internal class LiveSliderState(
         const val MINIMUM_HALF_SPAN = 5f
     }
 }
+
+internal fun liveThumbCenterY(
+    valuePercent: Float,
+    trackHeightPx: Float,
+    trackInsetPx: Float
+): Float {
+    val height = trackHeightPx.coerceAtLeast(1f)
+    val inset = trackInsetPx.coerceIn(0f, height / 2f)
+    val top = inset
+    val bottom = height - inset
+    return bottom - (bottom - top) * (valuePercent.coerceIn(0f, 100f) / 100f)
+}
+
+internal fun isLiveThumbHit(pointerY: Float, thumbY: Float, hitRadiusPx: Float): Boolean =
+    abs(pointerY - thumbY) <= hitRadiusPx.coerceAtLeast(0f)
 
 internal fun livePositionForPointer(
     pointerY: Float,

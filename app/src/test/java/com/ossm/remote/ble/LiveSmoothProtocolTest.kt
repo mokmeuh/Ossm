@@ -88,17 +88,16 @@ class LiveSmoothProtocolTest {
             streamingReady = true,
         )!!
         assertEquals(LiveTransportSelection.LEGACY_TEXT, legacy.transport)
-        assertEquals("stream:98:120", legacy.payload.toString(Charsets.UTF_8))
+        assertEquals("stream:98:300", legacy.payload.toString(Charsets.UTF_8))
     }
 
     @Test
-    fun `touch segment duration follows measured velocity and actual emitted delta`() {
+    fun `direct touch duration follows measured velocity and full displacement`() {
         val fast = LiveTargetScheduler().apply { resume() }
         assertTrue(fast.offer(touchTarget(positionPercent = 20, receivedAtMs = 0)))
         assertNotNull(fast.poll(0))
         assertTrue(fast.offer(touchTarget(positionPercent = 60, receivedAtMs = 5)))
-        assertNull(fast.poll(LiveSmoothProtocol.MINIMUM_INPUT_INTERVAL_MS))
-        val fastMove = fast.poll(120)!!
+        val fastMove = fast.poll(LiveSmoothProtocol.MINIMUM_INPUT_INTERVAL_MS)!!
 
         val slow = LiveTargetScheduler().apply { resume() }
         assertTrue(
@@ -122,9 +121,9 @@ class LiveSmoothProtocolTest {
         )
         val slowMove = slow.poll(5_000)!!
 
-        assertEquals(25, fastMove.positionPercent)
-        assertEquals(25, slowMove.positionPercent)
-        assertEquals(LiveTargetScheduler.MIN_TOUCH_DURATION_MS, fastMove.durationMs)
+        assertEquals(60, fastMove.positionPercent)
+        assertEquals(60, slowMove.positionPercent)
+        assertEquals(267, fastMove.durationMs)
         assertEquals(LiveTargetScheduler.MAX_TOUCH_DURATION_MS, slowMove.durationMs)
         assertTrue(fastMove.durationMs < slowMove.durationMs)
     }
@@ -138,97 +137,62 @@ class LiveSmoothProtocolTest {
         scheduler.offer(touchTarget(positionPercent = 90, receivedAtMs = 5))
         scheduler.offer(touchTarget(positionPercent = 25, receivedAtMs = 10))
 
-        assertNull(scheduler.poll(first.durationMs.toLong() - 1L))
-        val firstRetainedStep = scheduler.poll(first.durationMs.toLong())!!
-        assertEquals(15, firstRetainedStep.positionPercent)
-        assertEquals(first.sequence + 1, firstRetainedStep.sequence)
-        assertTrue(firstRetainedStep.deadlineMs > first.deadlineMs)
-        assertEquals(20, scheduler.poll(180)?.positionPercent)
-        assertEquals(25, scheduler.poll(240)?.positionPercent)
-        assertNull(scheduler.poll(300))
+        assertNull(scheduler.poll(19))
+        val latest = scheduler.poll(20)!!
+        assertEquals(25, latest.positionPercent)
+        assertEquals(first.sequence + 1, latest.sequence)
+        assertTrue(latest.deadlineMs > first.deadlineMs)
+        assertNull(scheduler.poll(40))
     }
 
     @Test
-    fun `abrupt touch request cannot reach endpoint before bounded timeline`() {
+    fun `abrupt touch request dispatches one bounded direct target`() {
         val scheduler = LiveTargetScheduler().apply { resume() }
         scheduler.offer(touchTarget(positionPercent = 20, receivedAtMs = 0))
         val first = scheduler.poll(0)!!
         scheduler.offer(touchTarget(positionPercent = 80, receivedAtMs = 5))
 
-        val dispatches = buildList<Pair<Long, ScheduledLiveTarget>> {
-            var nowMs = first.durationMs.toLong()
-            while (lastOrNull()?.second?.positionPercent != 80) {
-                assertNull(scheduler.poll(nowMs - 1L))
-                val target = scheduler.poll(nowMs)!!
-                add(nowMs to target)
-                nowMs += target.durationMs
-            }
-        }
-        val positions = listOf(first.positionPercent) + dispatches.map { it.second.positionPercent }
-        val finalDispatch = dispatches.last()
-        val earliestCompletionAtSpeedLimitMs = first.durationMs + (80 - 20) * 1_000L / 100L
+        assertNull(scheduler.poll(19))
+        val direct = scheduler.poll(20)!!
 
-        assertEquals(80, positions.last())
-        assertTrue(
-            positions.zipWithNext().all { (from, to) ->
-                to - from in 1..LiveTargetScheduler.MAX_TOUCH_STEP_PERCENT
-            }
-        )
-        assertTrue(
-            dispatches.zipWithNext().all { (previous, next) ->
-                next.first >= previous.first + previous.second.durationMs
-            }
-        )
-        assertTrue(finalDispatch.first + finalDispatch.second.durationMs >= earliestCompletionAtSpeedLimitMs)
-        assertEquals(0L, scheduler.millisecondsUntilReady(1_000))
+        assertEquals(80, direct.positionPercent)
+        assertEquals(400, direct.durationMs)
+        assertNull(scheduler.poll(40))
     }
 
     @Test
-    fun `retained touch durations scale with each emitted delta`() {
+    fun `slow direct touch duration is bounded without intermediate steps`() {
         val scheduler = LiveTargetScheduler().apply { resume() }
         scheduler.offer(touchTarget(positionPercent = 20, receivedAtMs = 0))
         scheduler.poll(0)
         scheduler.offer(touchTarget(positionPercent = 33, receivedAtMs = 1_300))
 
         val first = scheduler.poll(1_300)!!
-        assertEquals(25, first.positionPercent)
-        assertEquals(500, first.durationMs)
-        assertNull(scheduler.poll(1_799))
-
-        val second = scheduler.poll(1_800)!!
-        assertEquals(30, second.positionPercent)
-        assertEquals(500, second.durationMs)
-        assertNull(scheduler.poll(2_299))
-
-        val final = scheduler.poll(2_300)!!
-        assertEquals(33, final.positionPercent)
-        assertEquals(300, final.durationMs)
+        assertEquals(33, first.positionPercent)
+        assertEquals(LiveTargetScheduler.MAX_TOUCH_DURATION_MS, first.durationMs)
+        assertNull(scheduler.poll(1_320))
     }
 
     @Test
-    fun `retained touch steps never overlap the prior segment`() {
+    fun `direct touch targets use only the twenty millisecond cadence`() {
         val scheduler = LiveTargetScheduler().apply { resume() }
         scheduler.offer(touchTarget(positionPercent = 10, receivedAtMs = 0))
         val initial = scheduler.poll(0)!!
         scheduler.offer(touchTarget(positionPercent = 30, receivedAtMs = 5))
 
-        assertEquals(initial.durationMs.toLong(), scheduler.millisecondsUntilReady(0))
-        assertNull(scheduler.poll(initial.durationMs.toLong() - 1L))
-        val firstRetainedStep = scheduler.poll(initial.durationMs.toLong())!!
-        assertEquals(LiveTargetScheduler.MIN_TOUCH_DURATION_MS.toLong(), scheduler.millisecondsUntilReady(120))
-        assertNull(scheduler.poll(179))
-        assertEquals(20, scheduler.poll(180)?.positionPercent)
-        assertEquals(LiveTargetScheduler.MIN_TOUCH_DURATION_MS, firstRetainedStep.durationMs)
+        assertEquals(LiveSmoothProtocol.MINIMUM_INPUT_INTERVAL_MS, scheduler.millisecondsUntilReady(0))
+        assertNull(scheduler.poll(19))
+        val direct = scheduler.poll(20)!!
+        assertEquals(30, direct.positionPercent)
+        assertEquals(133, direct.durationMs)
     }
 
     @Test
-    fun `stop immediately discards remaining interpolation steps`() {
+    fun `stop immediately discards a pending direct target`() {
         val scheduler = LiveTargetScheduler().apply { resume() }
         scheduler.offer(touchTarget(positionPercent = 10, receivedAtMs = 0))
-        val initial = scheduler.poll(0)!!
+        scheduler.poll(0)
         scheduler.offer(touchTarget(positionPercent = 90, receivedAtMs = 5))
-        assertNull(scheduler.poll(LiveSmoothProtocol.MINIMUM_INPUT_INTERVAL_MS))
-        assertEquals(15, scheduler.poll(initial.durationMs.toLong())?.positionPercent)
 
         scheduler.stop()
 

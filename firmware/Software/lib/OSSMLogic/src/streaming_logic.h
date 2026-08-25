@@ -46,8 +46,20 @@ inline uint32_t timedStreamSpeedLimit(uint32_t machineMaxSpeed) {
     return machineMaxSpeed;
 }
 
-inline uint32_t liveAccelerationLimit(uint32_t machineMaxAcceleration) {
-    return std::max(machineMaxAcceleration / 4U, 100U);
+inline uint32_t liveAccelerationLimit(uint32_t machineMaxAcceleration,
+                                      float accelerationPercent) {
+    if (machineMaxAcceleration == 0U) return 0U;
+
+    constexpr uint32_t kNonzeroFloor = 100U;
+    const double clampedPercent = std::isfinite(accelerationPercent)
+                                      ? std::clamp<double>(
+                                            accelerationPercent, 0.0, 100.0)
+                                      : 0.0;
+    const uint32_t requested = static_cast<uint32_t>(
+        static_cast<double>(machineMaxAcceleration) *
+        (clampedPercent / 100.0));
+    const uint32_t floor = std::min(kNonzeroFloor, machineMaxAcceleration);
+    return std::clamp(requested, floor, machineMaxAcceleration);
 }
 
 inline uint32_t selectStreamAcceleration(bool isLiveSmooth,

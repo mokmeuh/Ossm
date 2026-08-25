@@ -2,6 +2,8 @@ package com.ossm.remote.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -21,6 +23,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
@@ -28,6 +31,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Save
@@ -48,6 +52,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RangeSlider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -82,6 +87,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.ossm.remote.R
 import com.ossm.remote.adaptive.AdaptivePace
@@ -99,6 +106,7 @@ import com.ossm.remote.ui.components.GlassCard
 import com.ossm.remote.ui.components.HomeButton
 import com.ossm.remote.ui.components.LocalControlPrecisionEnabled
 import com.ossm.remote.ui.components.PatternButton
+import com.ossm.remote.ui.components.PrecisionScalarSlider
 import com.ossm.remote.ui.components.ProgressiveSpeedBar
 import com.ossm.remote.ui.components.StopButton
 import com.ossm.remote.ui.components.StreamPositionSlider
@@ -110,6 +118,8 @@ import com.ossm.remote.ui.theme.OssmGlass
 import com.ossm.remote.ui.theme.OssmGlassBorder
 import com.ossm.remote.ui.theme.OssmOnSurface
 import com.ossm.remote.ui.theme.OssmPrimary
+import com.ossm.remote.ui.theme.OssmSurface
+import kotlin.math.roundToInt
 import com.ossm.remote.ui.theme.OssmPrimaryLight
 import com.ossm.remote.ui.theme.OssmSecondary
 import com.ossm.remote.ui.theme.OssmSurface
@@ -167,7 +177,8 @@ fun ControlScreen(
     onListeningCeilingCommit: (Float) -> Unit,
     onListeningTargetSpeedChange: (Boolean) -> Unit,
     onListeningTargetDepthChange: (Boolean) -> Unit,
-    onLiveInvertToggle: (Boolean) -> Unit
+    onLiveInvertToggle: (Boolean) -> Unit,
+    onLiveAccelerationChange: (Int) -> Unit
 ) {
     val connected = connectionState is BleConnectionState.Connected
     val machineBusy = machineState.isHoming || machineState.isPreflight
@@ -814,7 +825,7 @@ fun ControlScreen(
     }
 
     if (showInfoDialog) {
-        ButtonsInfoDialog(
+        ControlSettingsDialog(
             speedChecked = uiState.speedGuard.enabled,
             onSpeedCheckedChange = onSpeedGuardEnabledChange,
             depthChecked = uiState.depthGuard.enabled,
@@ -829,6 +840,9 @@ fun ControlScreen(
             showLiveInvert = shouldShowLiveInvertSetting(activePattern),
             liveInvertChecked = uiState.liveInvert,
             onLiveInvertCheckedChange = onLiveInvertToggle,
+            showLiveAcceleration = shouldShowLiveAccelerationSetting(activePattern),
+            liveAccelerationPercent = uiState.liveAccelerationPercent,
+            onLiveAccelerationChange = onLiveAccelerationChange,
             onDismiss = { showInfoDialog = false }
         )
     }
@@ -1085,6 +1099,9 @@ internal fun controlHeaderTitle(pattern: OssmPattern?): String = pattern?.name.o
 internal fun shouldShowLiveInvertSetting(pattern: OssmPattern?): Boolean =
     pattern?.mode == PatternControlMode.STREAMING
 
+internal fun shouldShowLiveAccelerationSetting(pattern: OssmPattern?): Boolean =
+    pattern?.mode == PatternControlMode.STREAMING
+
 internal data class ControlActionVisibility(
     val showStop: Boolean,
     val showPause: Boolean,
@@ -1186,7 +1203,7 @@ private fun PausePlayButton(
 }
 
 @Composable
-private fun ButtonsInfoDialog(
+private fun ControlSettingsDialog(
     speedChecked: Boolean,
     onSpeedCheckedChange: (Boolean) -> Unit,
     depthChecked: Boolean,
@@ -1199,81 +1216,325 @@ private fun ButtonsInfoDialog(
     showLiveInvert: Boolean,
     liveInvertChecked: Boolean,
     onLiveInvertCheckedChange: (Boolean) -> Unit,
+    showLiveAcceleration: Boolean,
+    liveAccelerationPercent: Int,
+    onLiveAccelerationChange: (Int) -> Unit,
     onDismiss: () -> Unit
 ) {
     var depthLimits by remember { mutableStateOf(depthLimitMin..depthLimitMax) }
+    var accelerationDraft by remember { mutableIntStateOf(liveAccelerationPercent) }
+    var heldExplanation by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(depthLimitMin, depthLimitMax) {
         depthLimits = depthLimitMin..depthLimitMax
     }
-    AlertDialog(
+    LaunchedEffect(liveAccelerationPercent) {
+        accelerationDraft = liveAccelerationPercent
+    }
+
+    val precisionHint = stringResource(R.string.ctl_precision_option_hint)
+    val invertHint = stringResource(R.string.ctl_live_invert_hint)
+    val accelerationHint = stringResource(R.string.ctl_live_acceleration_hint)
+    val speedGuardHint = stringResource(R.string.ctl_speed_guard_hint)
+    val depthGuardHint = stringResource(R.string.ctl_depth_guard_hint)
+    val depthLimitsHint = stringResource(R.string.ctl_depth_limits_hint)
+
+    Dialog(
         onDismissRequest = onDismiss,
-        containerColor = OssmSurface,
-        title = { Text(stringResource(R.string.ctl_control_settings), color = OssmOnSurface) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                SliderGuardRow(
-                    title = stringResource(R.string.ctl_precision_option),
-                    description = stringResource(R.string.ctl_precision_option_hint),
-                    checked = precisionChecked,
-                    onCheckedChange = onPrecisionCheckedChange
-                )
-                if (showLiveInvert) {
-                    HorizontalDivider(color = OssmGlassBorder)
-                    SliderGuardRow(
-                        title = stringResource(R.string.ctl_live_invert),
-                        description = stringResource(R.string.ctl_live_invert_hint),
-                        checked = liveInvertChecked,
-                        onCheckedChange = onLiveInvertCheckedChange
-                    )
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        BoxWithConstraints(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Surface(
+                modifier = Modifier
+                    .padding(horizontal = 16.dp, vertical = 24.dp)
+                    .widthIn(max = 720.dp)
+                    .fillMaxWidth()
+                    .heightIn(max = maxHeight * 0.9f),
+                shape = RoundedCornerShape(24.dp),
+                color = OssmSurface.copy(alpha = 0.98f),
+                tonalElevation = 10.dp,
+                shadowElevation = 18.dp,
+                border = androidx.compose.foundation.BorderStroke(1.dp, OssmGlassBorder)
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = stringResource(R.string.ctl_control_settings),
+                            color = OssmOnSurface,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f)
+                        )
+                        IconButton(onClick = onDismiss) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = stringResource(R.string.ctl_close_settings),
+                                tint = OssmPrimaryLight
+                            )
+                        }
+                    }
+
+                    Box(modifier = Modifier.weight(1f, fill = false)) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            SettingsToggleRow(
+                                title = stringResource(R.string.ctl_precision_option),
+                                explanation = precisionHint,
+                                checked = precisionChecked,
+                                onCheckedChange = onPrecisionCheckedChange,
+                                onExplanationVisibilityChange = { visible ->
+                                    heldExplanation = precisionHint.takeIf { visible }
+                                }
+                            )
+                            if (showLiveAcceleration) {
+                                HorizontalDivider(color = OssmGlassBorder)
+                                SettingLabelWithInfo(
+                                    title = stringResource(
+                                        R.string.ctl_live_acceleration_value,
+                                        accelerationDraft
+                                    ),
+                                    explanation = accelerationHint,
+                                    onExplanationVisibilityChange = { visible ->
+                                        heldExplanation = accelerationHint.takeIf { visible }
+                                    }
+                                )
+                                PrecisionScalarSlider(
+                                    valuePercent = (accelerationDraft - 10) / 90f * 100f,
+                                    enabled = true,
+                                    precisionEnabled = precisionChecked,
+                                    activeColor = OssmAccent,
+                                    onValueChange = { percent ->
+                                        accelerationDraft = (10f + percent * 0.9f)
+                                            .roundToInt()
+                                            .coerceIn(10, 100)
+                                    },
+                                    onValueCommit = { percent ->
+                                        val acceleration = (10f + percent * 0.9f)
+                                            .roundToInt()
+                                            .coerceIn(10, 100)
+                                        accelerationDraft = acceleration
+                                        onLiveAccelerationChange(acceleration)
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = 56.dp)
+                                )
+                            }
+                            if (showLiveInvert) {
+                                HorizontalDivider(color = OssmGlassBorder)
+                                SettingsToggleRow(
+                                    title = stringResource(R.string.ctl_live_invert),
+                                    explanation = invertHint,
+                                    checked = liveInvertChecked,
+                                    onCheckedChange = onLiveInvertCheckedChange,
+                                    onExplanationVisibilityChange = { visible ->
+                                        heldExplanation = invertHint.takeIf { visible }
+                                    }
+                                )
+                            }
+                            HorizontalDivider(color = OssmGlassBorder)
+                            Text(
+                                text = stringResource(R.string.ctl_guards_intro),
+                                color = OssmOnSurface.copy(alpha = 0.8f),
+                                fontSize = 13.sp
+                            )
+                            SettingsToggleRow(
+                                title = stringResource(R.string.ctl_speed),
+                                explanation = speedGuardHint,
+                                checked = speedChecked,
+                                onCheckedChange = onSpeedCheckedChange,
+                                onExplanationVisibilityChange = { visible ->
+                                    heldExplanation = speedGuardHint.takeIf { visible }
+                                }
+                            )
+                            SettingsToggleRow(
+                                title = stringResource(R.string.ctl_depth_guard),
+                                explanation = depthGuardHint,
+                                checked = depthChecked,
+                                onCheckedChange = onDepthCheckedChange,
+                                onExplanationVisibilityChange = { visible ->
+                                    heldExplanation = depthGuardHint.takeIf { visible }
+                                }
+                            )
+                            SettingLabelWithInfo(
+                                title = stringResource(
+                                    R.string.ctl_depth_limits_value,
+                                    (depthLimits.start * 100).toInt(),
+                                    (depthLimits.endInclusive * 100).toInt()
+                                ),
+                                explanation = depthLimitsHint,
+                                onExplanationVisibilityChange = { visible ->
+                                    heldExplanation = depthLimitsHint.takeIf { visible }
+                                }
+                            )
+                            RangeSlider(
+                                value = depthLimits,
+                                onValueChange = { depthLimits = it },
+                                onValueChangeFinished = {
+                                    onDepthLimitsChange(depthLimits.start, depthLimits.endInclusive)
+                                },
+                                valueRange = 0f..1f,
+                                colors = SliderDefaults.colors(
+                                    thumbColor = OssmAccent,
+                                    activeTrackColor = OssmAccent
+                                )
+                            )
+                            HorizontalDivider(color = OssmGlassBorder)
+                            InfoLine(
+                                stringResource(R.string.ctl_stop_info_title),
+                                stringResource(R.string.ctl_stop_info_hint)
+                            )
+                            InfoLine(
+                                stringResource(R.string.ctl_pause_info_title),
+                                stringResource(R.string.ctl_pause_info_hint)
+                            )
+                        }
+
+                        heldExplanation?.let { explanation ->
+                            Surface(
+                                modifier = Modifier
+                                    .align(Alignment.TopCenter)
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 8.dp, vertical = 12.dp),
+                                shape = RoundedCornerShape(14.dp),
+                                color = OssmSecondary.copy(alpha = 0.98f),
+                                tonalElevation = 12.dp,
+                                shadowElevation = 14.dp,
+                                border = androidx.compose.foundation.BorderStroke(1.dp, OssmPrimaryLight)
+                            ) {
+                                Text(
+                                    text = explanation,
+                                    color = OssmOnSurface,
+                                    fontSize = 13.sp,
+                                    modifier = Modifier.padding(16.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    Button(
+                        onClick = onDismiss,
+                        modifier = Modifier.align(Alignment.End),
+                        colors = ButtonDefaults.buttonColors(containerColor = OssmPrimary)
+                    ) {
+                        Text(stringResource(R.string.ctl_understood))
+                    }
                 }
-                HorizontalDivider(color = OssmGlassBorder)
-                Text(
-                    "Ces protections demandent une confirmation avant d'appliquer une hausse soudaine. Le petit carré ouvre ce réglage; il ne modifie jamais les protections directement.",
-                    color = OssmOnSurface.copy(alpha = 0.8f),
-                    fontSize = 13.sp
-                )
-                SliderGuardRow(
-                    title = "Vitesse",
-                    description = "Confirmer les hausses brusques de vitesse.",
-                    checked = speedChecked,
-                    onCheckedChange = onSpeedCheckedChange
-                )
-                SliderGuardRow(
-                    title = "Profondeur",
-                    description = "Confirmer les hausses brusques de profondeur ou de course.",
-                    checked = depthChecked,
-                    onCheckedChange = onDepthCheckedChange
-                )
-                Text(
-                    "Limites de profondeur: ${(depthLimits.start * 100).toInt()}% - ${(depthLimits.endInclusive * 100).toInt()}%",
-                    color = OssmPrimaryLight,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                RangeSlider(
-                    value = depthLimits,
-                    onValueChange = { depthLimits = it },
-                    onValueChangeFinished = {
-                        onDepthLimitsChange(depthLimits.start, depthLimits.endInclusive)
-                    },
-                    valueRange = 0f..1f,
-                    colors = SliderDefaults.colors(
-                        thumbColor = OssmAccent,
-                        activeTrackColor = OssmAccent
-                    )
-                )
-                HorizontalDivider(color = OssmGlassBorder)
-                InfoLine("STOP", "Coupe immediatement le mouvement (vitesse a zero).")
-                InfoLine("Pause/Play (jaune/vert)", "Jaune = en mouvement, appuie pour mettre en pause. Vert = en pause, appuie pour reprendre exactement a la meme position/intensite.")
-            }
-        },
-        confirmButton = {
-            Button(onClick = onDismiss, colors = ButtonDefaults.buttonColors(containerColor = OssmPrimary)) {
-                Text("Compris")
             }
         }
-    )
+    }
 }
+
+@Composable
+private fun SettingsToggleRow(
+    title: String,
+    explanation: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    onExplanationVisibilityChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 56.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        SettingLabelWithInfo(
+            title = title,
+            explanation = explanation,
+            onExplanationVisibilityChange = onExplanationVisibilityChange,
+            modifier = Modifier.weight(1f)
+        )
+        Spacer(Modifier.width(12.dp))
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            modifier = Modifier.sizeIn(minWidth = 56.dp, minHeight = 56.dp),
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = OssmPrimary,
+                checkedTrackColor = OssmPrimary.copy(alpha = 0.35f)
+            )
+        )
+    }
+}
+
+@Composable
+private fun SettingLabelWithInfo(
+    title: String,
+    explanation: String,
+    onExplanationVisibilityChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = title,
+            color = OssmOnSurface,
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.weight(1f)
+        )
+        PressHoldInfo(
+            explanation = explanation,
+            onVisibilityChange = onExplanationVisibilityChange
+        )
+    }
+}
+
+@Composable
+private fun PressHoldInfo(
+    explanation: String,
+    onVisibilityChange: (Boolean) -> Unit
+) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .size(40.dp)
+            .clip(CircleShape)
+            .background(OssmGlass)
+            .border(1.dp, OssmGlassBorder, CircleShape)
+            .pointerInput(explanation) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    onVisibilityChange(true)
+                    try {
+                        while (true) {
+                            val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id }
+                                ?: break
+                            if (!change.pressed ||
+                                !shouldKeepHoldInfoVisible(
+                                    distancePx = (change.position - down.position).getDistance(),
+                                    touchSlopPx = viewConfiguration.touchSlop
+                                )
+                            ) break
+                        }
+                    } finally {
+                        onVisibilityChange(false)
+                    }
+                }
+            }
+    ) {
+        Icon(
+            imageVector = Icons.Default.Info,
+            contentDescription = stringResource(R.string.ctl_hold_for_info),
+            tint = OssmPrimaryLight,
+            modifier = Modifier.size(20.dp)
+        )
+    }
+}
+
+internal fun shouldKeepHoldInfoVisible(distancePx: Float, touchSlopPx: Float): Boolean =
+    distancePx <= touchSlopPx
 
 @Composable
 private fun InfoLine(title: String, description: String) {

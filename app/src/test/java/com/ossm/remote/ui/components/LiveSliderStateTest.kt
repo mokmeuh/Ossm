@@ -5,6 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.math.roundToInt
 
 class LiveSliderStateTest {
     @Test
@@ -30,6 +31,49 @@ class LiveSliderStateTest {
         state.onMove(pointerY = 0f, uptimeMillis = 50)?.let { emitted += it.toInt() }
 
         assertEquals(listOf(0, 25, 50, 75, 100), emitted)
+    }
+
+    @Test
+    fun `slow one pixel moves emit continuously instead of accumulating into a jump`() {
+        val state = LiveSliderState()
+        val emitted = mutableListOf<Int>()
+
+        state.onDown(pointerY = 100f, trackHeightPx = 100f, uptimeMillis = 0)
+        for (pointerY in 99 downTo 95) {
+            state.onMove(pointerY = pointerY.toFloat(), uptimeMillis = (100 - pointerY).toLong())
+                ?.let { emitted += it.roundToInt() }
+        }
+
+        assertEquals(listOf(1, 2, 3, 4, 5), emitted)
+    }
+
+    @Test
+    fun `thumb capture accepts current value and rejects distant values`() {
+        val thumbY = liveThumbCenterY(
+            valuePercent = 20f,
+            trackHeightPx = 400f,
+            trackInsetPx = 40f
+        )
+
+        assertTrue(isLiveThumbHit(pointerY = thumbY + 20f, thumbY = thumbY, hitRadiusPx = 24f))
+        assertFalse(isLiveThumbHit(pointerY = 40f, thumbY = thumbY, hitRadiusPx = 24f))
+    }
+
+    @Test
+    fun `captured drag is relative and never jumps to initial pointer position`() {
+        val state = LiveSliderState()
+
+        assertEquals(
+            20f,
+            state.onDown(
+                valuePercent = 20f,
+                pointerY = 310f,
+                trackHeightPx = 400f,
+                uptimeMillis = 0
+            ),
+            0.001f
+        )
+        assertEquals(25f, state.onMove(pointerY = 290f, uptimeMillis = 20)!!, 0.001f)
     }
 
     @Test

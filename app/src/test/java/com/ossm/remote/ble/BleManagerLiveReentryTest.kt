@@ -128,17 +128,16 @@ class BleManagerLiveReentryTest {
     }
 
     @Test
-    fun `touch move hold dispatches documented targets before release stop`() {
+    fun `touch move hold dispatches binary smooth targets before release stop`() {
         val writes = Collections.synchronizedList(mutableListOf<WireWrite>())
         installConnectedGattHarness(writes)
 
         manager.sendCommand(touchStream(positionPercent = 20, receivedAtMs = 0))
-        awaitWrite(writes) { it.text == "stream:80:120" }
+        awaitWrite(writes) { it.livePacket?.positionPermille == 800 }
 
         nowMs.set(80)
         manager.sendCommand(touchStream(positionPercent = 70, receivedAtMs = 80))
-        nowMs.set(200)
-        awaitWrite(writes) { it.text == "stream:75:60" }
+        awaitWrite(writes) { it.livePacket?.positionPermille == 300 }
 
         Thread.sleep(80)
         manager.sendCommand(OssmCommand.Stop)
@@ -148,7 +147,7 @@ class BleManagerLiveReentryTest {
         assertTrue("Release Stop must be delivered", stopIndex >= 0)
         assertTrue(
             "At least one real-time position target must reach GATT before release Stop: $writes",
-            writes.take(stopIndex).any { it.text?.startsWith("stream:") == true },
+            writes.take(stopIndex).any { it.livePacket != null },
         )
         assertFalse(
             "No position target may be delivered after release Stop: $writes",
@@ -281,6 +280,10 @@ class BleManagerLiveReentryTest {
     }
 
     private data class WireWrite(val characteristicUuid: UUID, val payload: ByteArray) {
+        val livePacket: LiveSmoothPacket?
+            get() = payload.takeIf {
+                characteristicUuid.toString() == LiveSmoothProtocol.CHARACTERISTIC_UUID
+            }?.let(LiveSmoothProtocol::decode)
         val text: String?
             get() = payload.toString(Charsets.UTF_8).takeIf { value ->
                 value.startsWith("set:") || value.startsWith("stream:")

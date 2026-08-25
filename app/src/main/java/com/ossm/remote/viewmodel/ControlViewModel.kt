@@ -89,6 +89,7 @@ data class ControlUiState(
     val listeningDepthCurrent: Float? = null,
     // Inversion du sens du mode Live (réglable par l'utilisateur).
     val liveInvert: Boolean = false,
+    val liveAccelerationPercent: Int = 33,
     // Auto Random mix
     val autoSelectedKeys: Set<String> = setOf("simpleStroke", "teasingPounding", "roboStroke"),
     val autoMaxSpeed: Float = 0.7f,        // speed ceiling for the mix (never exceeded)
@@ -186,6 +187,8 @@ class ControlViewModel @Inject constructor(
     fun setDepthRandom(enabled: Boolean) = controlSessionStore.setDepthRandom(enabled)
 
     fun setLiveInvert(enabled: Boolean) = controlSessionStore.setLiveInvert(enabled)
+
+    fun setLiveAcceleration(percent: Int) = controlSessionStore.setLiveAcceleration(percent)
 
     fun setListeningMode(enabled: Boolean) = controlSessionStore.setListeningMode(enabled)
 

@@ -24,6 +24,7 @@ enum class Commands {
     // SET VALUES
     setDepth,
     setSensation,
+    setAcceleration,
     setPattern,
     setSpeed,
     setStroke,
@@ -70,6 +71,8 @@ inline CommandValue setCommandValue(const String& str) {
         return {Commands::setDepth, value, 0};
     } else if (command == "sensation") {
         return {Commands::setSensation, value, 0};
+    } else if (command == "acceleration") {
+        return {Commands::setAcceleration, value, 0};
     } else if (command == "pattern") {
         return {Commands::setPattern, value, 0};
     } else if (command == "speed") {

@@ -19,4 +19,11 @@ class BleManagerSensationTest {
 
         assertEquals("set:sensation:100", command)
     }
+
+    @Test
+    fun `Live acceleration command formats and clamps protocol percentage`() {
+        assertEquals("set:acceleration:33", buildLiveAccelerationCommand(33))
+        assertEquals("set:acceleration:10", buildLiveAccelerationCommand(-1))
+        assertEquals("set:acceleration:100", buildLiveAccelerationCommand(101))
+    }
 }

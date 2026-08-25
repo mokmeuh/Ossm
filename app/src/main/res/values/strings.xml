@@ -94,8 +94,23 @@
     <string name="ctl_listening_title">Mode à l\'écoute (micro)</string>
     <string name="ctl_listening_hint">Le micro fait monter l\'intensité quand tu réagis. Traité sur l\'appareil, jamais enregistré.</string>
     <string name="ctl_live_max_accel">Accélération max</string>
+    <string name="ctl_live_acceleration_value">Accélération Live : %1$d%%</string>
+    <string name="ctl_live_acceleration_hint">Limite la rapidité avec laquelle le moteur atteint sa vitesse en Live. Une valeur basse adoucit les changements; une valeur haute les rend plus directs.</string>
     <string name="ctl_live_invert">Inverser le sens du Live</string>
     <string name="ctl_live_invert_hint">Si le chariot part dans le mauvais sens ou cogne au repos, bascule ceci.</string>
+    <string name="ctl_close_settings">Fermer les réglages</string>
+    <string name="ctl_hold_for_info">Maintenir pour afficher l’explication</string>
+    <string name="ctl_understood">Compris</string>
+    <string name="ctl_guards_intro">Ces protections demandent une confirmation avant une hausse soudaine.</string>
+    <string name="ctl_speed_guard_hint">Demande une confirmation avant d’appliquer une hausse brusque de vitesse.</string>
+    <string name="ctl_depth_guard">Profondeur</string>
+    <string name="ctl_depth_guard_hint">Demande une confirmation avant d’appliquer une hausse brusque de profondeur ou de course.</string>
+    <string name="ctl_depth_limits_value">Limites de profondeur : %1$d%%–%2$d%%</string>
+    <string name="ctl_depth_limits_hint">Définit la plage physique autorisée. Le retrait et le fond restent toujours à l’intérieur de ces limites.</string>
+    <string name="ctl_stop_info_title">STOP</string>
+    <string name="ctl_stop_info_hint">Coupe immédiatement le mouvement en ramenant la vitesse à zéro.</string>
+    <string name="ctl_pause_info_title">Pause/Play (jaune/vert)</string>
+    <string name="ctl_pause_info_hint">Jaune indique le mouvement. Vert indique la pause et permet de reprendre à la même position et intensité.</string>
 
     <!-- Ecran Scanner -->
     <string name="scan_stop">Arrêter le scan</string>

@@ -57,9 +57,9 @@ internal fun liveControlMinimumHeight(compact: Boolean): Dp = if (compact) 180.d
 
 internal fun liveControlMinimumWidth(compact: Boolean): Dp = 280.dp
 
-internal fun liveSliderTrackThickness(compact: Boolean): Dp = if (compact) 16.dp else 18.dp
+internal fun liveSliderTrackThickness(compact: Boolean): Dp = if (compact) 52.dp else 72.dp
 
-internal fun liveSliderThumbRadius(compact: Boolean): Dp = if (compact) 22.dp else 28.dp
+internal fun liveSliderThumbRadius(compact: Boolean): Dp = if (compact) 28.dp else 36.dp
 
 internal data class LiveEndpointLabels(val top: Int, val bottom: Int)
 
@@ -238,13 +238,25 @@ private fun LivePositionTrack(
                     if (!enabled) return@pointerInput
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
+                        val trackInsetPx = thumbRadius.toPx() + 6.dp.toPx()
+                        val thumbY = liveThumbCenterY(
+                            valuePercent = displayedFraction * 100f,
+                            trackHeightPx = size.height.toFloat(),
+                            trackInsetPx = trackInsetPx
+                        )
+                        if (!isLiveThumbHit(
+                                pointerY = down.position.y,
+                                thumbY = thumbY,
+                                hitRadiusPx = thumbRadius.toPx() + 12.dp.toPx()
+                            )
+                        ) return@awaitEachGesture
                         down.consume()
                         draftPercent = gestureState.onDown(
+                            valuePercent = draftPercent,
                             pointerY = down.position.y,
-                            trackHeightPx = size.height.toFloat(),
+                            trackHeightPx = (size.height - 2f * trackInsetPx).coerceAtLeast(1f),
                             uptimeMillis = down.uptimeMillis
                         )
-                        onChange.value(draftPercent)
                         dragging = true
                         visibleRange = gestureState.visibleRange
                         try {
@@ -272,36 +284,40 @@ private fun LivePositionTrack(
                     }
                 }
         ) {
-            val centerX = size.width / 2f
-            val trackWidth = trackThickness.toPx()
-            val radius = trackWidth / 2f
             val trackInset = thumbRadius.toPx() + 6.dp.toPx()
             val trackTop = trackInset
             val trackBottom = (size.height - trackInset).coerceAtLeast(trackTop)
             val trackHeight = (trackBottom - trackTop).coerceAtLeast(0f)
             val thumbY = trackBottom - trackHeight * displayedFraction
+            val horizontalInset = 8.dp.toPx()
+            val trackLeft = horizontalInset
+            val trackWidth = (size.width - horizontalInset * 2f).coerceAtLeast(0f)
+            val trackRadius = 18.dp.toPx()
             drawRoundRect(
                 color = activeColor.copy(alpha = if (enabled) 0.24f else 0.10f),
-                topLeft = androidx.compose.ui.geometry.Offset(centerX - radius, trackTop),
+                topLeft = androidx.compose.ui.geometry.Offset(trackLeft, trackTop),
                 size = androidx.compose.ui.geometry.Size(trackWidth, trackHeight),
-                cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius)
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(trackRadius)
             )
             drawRoundRect(
-                color = activeColor.copy(alpha = if (enabled) 1f else 0.28f),
-                topLeft = androidx.compose.ui.geometry.Offset(centerX - radius, thumbY),
+                color = activeColor.copy(alpha = if (enabled) 0.62f else 0.18f),
+                topLeft = androidx.compose.ui.geometry.Offset(trackLeft, thumbY),
                 size = androidx.compose.ui.geometry.Size(trackWidth, trackBottom - thumbY),
-                cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius)
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(trackRadius)
             )
-            drawCircle(
+            val thumbHeight = trackThickness.toPx()
+            drawRoundRect(
                 color = activeColor.copy(alpha = if (enabled) 1f else 0.35f),
-                radius = thumbRadius.toPx(),
-                center = androidx.compose.ui.geometry.Offset(centerX, thumbY)
+                topLeft = androidx.compose.ui.geometry.Offset(trackLeft, thumbY - thumbHeight / 2f),
+                size = androidx.compose.ui.geometry.Size(trackWidth, thumbHeight),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(thumbHeight / 2f)
             )
-            drawCircle(
+            drawRoundRect(
                 color = OssmOnSurface.copy(alpha = if (enabled) 0.7f else 0.2f),
-                radius = thumbRadius.toPx() + 3.dp.toPx(),
-                center = androidx.compose.ui.geometry.Offset(centerX, thumbY),
-                style = Stroke(width = 1.dp.toPx())
+                topLeft = androidx.compose.ui.geometry.Offset(trackLeft, thumbY - thumbHeight / 2f),
+                size = androidx.compose.ui.geometry.Size(trackWidth, thumbHeight),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(thumbHeight / 2f),
+                style = Stroke(width = 2.dp.toPx())
             )
         }
         Text(

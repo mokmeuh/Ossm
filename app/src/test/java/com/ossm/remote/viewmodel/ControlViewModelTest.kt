@@ -70,6 +70,7 @@ class ControlViewModelTest {
     private lateinit var listeningCeilingFlow: MutableStateFlow<Float>
     private lateinit var listeningTargetSpeedFlow: MutableStateFlow<Boolean>
     private lateinit var listeningTargetDepthFlow: MutableStateFlow<Boolean>
+    private lateinit var liveAccelerationFlow: MutableStateFlow<Int>
     private lateinit var audioLevelFlow: MutableStateFlow<Float>
 
     @Before
@@ -96,6 +97,7 @@ class ControlViewModelTest {
         // Défaut du dépôt après correction : aucune cible audio active par défaut.
         listeningTargetSpeedFlow = MutableStateFlow(false)
         listeningTargetDepthFlow = MutableStateFlow(false)
+        liveAccelerationFlow = MutableStateFlow(33)
         audioLevelFlow = MutableStateFlow(0f)
 
         every { bleManager.availablePatterns } returns patternsFlow
@@ -118,7 +120,9 @@ class ControlViewModelTest {
         every { safetySettingsRepository.listeningTargetSpeedEnabled } returns listeningTargetSpeedFlow
         every { safetySettingsRepository.listeningTargetDepthEnabled } returns listeningTargetDepthFlow
         every { safetySettingsRepository.liveInvertEnabled } returns MutableStateFlow(false)
+        every { safetySettingsRepository.liveAccelerationPercent } returns liveAccelerationFlow
         coEvery { safetySettingsRepository.setLiveInvertEnabled(any()) } returns Unit
+        coEvery { safetySettingsRepository.setLiveAccelerationPercent(any()) } returns Unit
         audioLevelMonitor = mockk(relaxed = true)
         every { audioLevelMonitor.level } returns audioLevelFlow
         cadenceDetector = mockk(relaxed = true)
@@ -157,8 +161,23 @@ class ControlViewModelTest {
             assertEquals(1f, state.listeningCeiling)
             assertEquals(10, state.speedGuard.thresholdPercent)
             assertEquals(5, state.depthGuard.thresholdPercent)
+            assertEquals(33, state.liveAccelerationPercent)
             cancelAndIgnoreRemainingEvents()
         }
+    }
+
+    @Test
+    fun `Live acceleration clamps persists and sends while connected in Live`() = runTest {
+        patternsFlow.value = listOf(OssmPattern("live", "Live", PatternControlMode.STREAMING))
+        connectionStateFlow.value = BleConnectionState.Connected("OSSM", "AA:BB:CC:DD:EE:FF")
+        advanceUntilIdle()
+
+        viewModel.setLiveAcceleration(4)
+        advanceUntilIdle()
+
+        assertEquals(10, viewModel.uiState.value.liveAccelerationPercent)
+        coVerify { safetySettingsRepository.setLiveAccelerationPercent(10) }
+        verify { bleManager.setLiveAcceleration(10) }
     }
 
     @Test

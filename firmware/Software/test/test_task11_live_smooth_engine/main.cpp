@@ -1,5 +1,7 @@
 #include <unity.h>
 
+#include <limits>
+
 #define ESP_LOGI(tag, format, ...)
 
 #include "streaming_logic.h"
@@ -28,11 +30,28 @@ void test_legacy_motion_profile_characterization() {
     TEST_ASSERT_EQUAL_INT32(1000, profile.targetPosition);
 }
 
-void test_live_acceleration_limit_is_quarter_machine_max_with_floor() {
+void test_live_acceleration_limit_scales_configured_percent() {
     TEST_ASSERT_EQUAL_UINT32(
-        125000, streaming_logic::liveAccelerationLimit(500000));
+        165000, streaming_logic::liveAccelerationLimit(500000, 33));
     TEST_ASSERT_EQUAL_UINT32(
-        100, streaming_logic::liveAccelerationLimit(200));
+        250000, streaming_logic::liveAccelerationLimit(500000, 50));
+    TEST_ASSERT_EQUAL_UINT32(
+        500000, streaming_logic::liveAccelerationLimit(500000, 100));
+}
+
+void test_live_acceleration_limit_clamps_to_nonzero_floor_and_machine_max() {
+    TEST_ASSERT_EQUAL_UINT32(
+        100, streaming_logic::liveAccelerationLimit(500000, 0));
+    TEST_ASSERT_EQUAL_UINT32(
+        50, streaming_logic::liveAccelerationLimit(50, -10));
+    TEST_ASSERT_EQUAL_UINT32(
+        500000, streaming_logic::liveAccelerationLimit(500000, 150));
+    TEST_ASSERT_EQUAL_UINT32(
+        0, streaming_logic::liveAccelerationLimit(0, 33));
+    TEST_ASSERT_EQUAL_UINT32(
+        100,
+        streaming_logic::liveAccelerationLimit(
+            500000, std::numeric_limits<float>::quiet_NaN()));
 }
 
 void test_running_live_motion_selects_lower_planned_acceleration() {
@@ -141,7 +160,8 @@ int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_legacy_stream_command_bytes_and_mapping_are_unchanged);
     RUN_TEST(test_legacy_motion_profile_characterization);
-    RUN_TEST(test_live_acceleration_limit_is_quarter_machine_max_with_floor);
+    RUN_TEST(test_live_acceleration_limit_scales_configured_percent);
+    RUN_TEST(test_live_acceleration_limit_clamps_to_nonzero_floor_and_machine_max);
     RUN_TEST(test_running_live_motion_selects_lower_planned_acceleration);
     RUN_TEST(test_planner_rejects_zero_distance_and_short_duration);
     RUN_TEST(test_planner_rejects_distance_that_clamps_to_zero);

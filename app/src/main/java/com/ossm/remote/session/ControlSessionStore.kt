@@ -220,6 +220,12 @@ class ControlSessionStore @Inject constructor(
         }
 
         storeScope.launch {
+            safetySettingsRepository.liveAccelerationPercent.collect { percent ->
+                _uiState.update { it.copy(liveAccelerationPercent = percent) }
+            }
+        }
+
+        storeScope.launch {
             bleManager.streamingReady.collect { ready ->
                 if (ready) {
                     // Le firmware vient de se replacer en position 0 (home) : on
@@ -363,7 +369,7 @@ class ControlSessionStore @Inject constructor(
                 // activation already reset the state (speed=0 etc.) above.
             }
             PatternControlMode.STREAMING -> {
-                bleManager.sendCommand(OssmCommand.ActivatePattern(pattern))
+                bleManager.enterStreaming(_uiState.value.liveAccelerationPercent)
             }
             PatternControlMode.PROGRESSIVE -> {
                 bleManager.sendCommand(OssmCommand.ActivatePattern(pattern))
@@ -586,6 +592,19 @@ class ControlSessionStore @Inject constructor(
         }
     }
 
+    fun setLiveAcceleration(percent: Int) {
+        val acceleration = ControlSafetySettingsRepository.normalizeLiveAcceleration(percent)
+        _uiState.update { it.copy(liveAccelerationPercent = acceleration) }
+        storeScope.launch { safetySettingsRepository.setLiveAccelerationPercent(acceleration) }
+
+        val state = _uiState.value
+        if (bleManager.connectionState.value is BleConnectionState.Connected &&
+            state.activePattern?.mode == PatternControlMode.STREAMING
+        ) {
+            bleManager.setLiveAcceleration(acceleration)
+        }
+    }
+
     fun stop() {
         cancelSessionJobs()
         _uiState.update { it.copy(isRunning = false, isPaused = false, autoRunning = false, autoIntensity = 0f, speed = 0f, pendingManualChange = null) }
@@ -606,7 +625,7 @@ class ControlSessionStore @Inject constructor(
         _uiState.update { it.copy(isRunning = false, speed = 0f, pendingManualChange = null) }
         when (pattern?.mode) {
             PatternControlMode.SIMPLE_PENETRATION -> bleManager.home("simplePenetration", 0)
-            PatternControlMode.STREAMING -> bleManager.sendCommand(OssmCommand.EnterStreaming)
+            PatternControlMode.STREAMING -> bleManager.enterStreaming(_uiState.value.liveAccelerationPercent)
             else -> bleManager.home("strokeEngine", pattern?.id ?: 0)
         }
     }
@@ -1396,7 +1415,7 @@ class ControlSessionStore @Inject constructor(
                 pendingManualChange = null
             )
         }
-        bleManager.sendCommand(OssmCommand.EnterStreaming)
+        bleManager.enterStreaming(_uiState.value.liveAccelerationPercent)
     }
 
     fun captureRangePoint() {

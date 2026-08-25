@@ -40,6 +40,7 @@ static void startStreamingTask(void *pvParameters) {
     bool hasLastPosition = false;
     bool modeArmed = false;
     bool liveSession = false;
+    int8_t liveMotorDirection = 0;
 
     targetQueue = {};
     initializeLiveSmoothQueue();
@@ -48,17 +49,18 @@ static void startStreamingTask(void *pvParameters) {
         Config::Driver::maxSpeedMmPerSecond * (1_mm);
     const uint32_t maxAccel =
         Config::Driver::maxAcceleration * (1_mm);
+    uint32_t appliedLiveAccelLimit = maxAccel;
     stepper->setSpeedInHz(maxSpeed);
     stepper->setAcceleration(maxAccel);
 
     constexpr double kMaximumLiveDtSeconds = 0.010;
     constexpr double kAccelerationRampSeconds = 0.050;
-    const uint32_t liveAccelLimit =
-        streaming_logic::liveAccelerationLimit(maxAccel);
+    const uint32_t initialLiveAccelLimit =
+        streaming_logic::liveAccelerationLimit(maxAccel, settings.acceleration);
     live_trajectory::Engine liveEngine({
         static_cast<double>(maxSpeed),
-        static_cast<double>(liveAccelLimit),
-        static_cast<double>(liveAccelLimit) / kAccelerationRampSeconds,
+        static_cast<double>(initialLiveAccelLimit),
+        static_cast<double>(initialLiveAccelLimit) / kAccelerationRampSeconds,
         0,
         0,
         kMaximumLiveDtSeconds,
@@ -88,10 +90,32 @@ static void startStreamingTask(void *pvParameters) {
             currentPosition,
             false,
         });
+        const uint32_t nowMs = millis();
+        const uint32_t liveAccelLimit = streaming_logic::liveAccelerationLimit(
+            maxAccel, settings.acceleration);
+        const live_trajectory::Limits liveLimits{
+            maxSpeed * (settings.speed / 100.0f),
+            static_cast<double>(liveAccelLimit),
+            static_cast<double>(liveAccelLimit) / kAccelerationRampSeconds,
+            -allowedStroke - allowedDepth,
+            -allowedDepth,
+            kMaximumLiveDtSeconds,
+        };
+        liveEngine.setLimits(liveLimits);
         if (!modeArmed) {
             modeArmed = resumeLiveSmooth();
+            if (modeArmed) {
+                liveEngine.initialize(currentPosition, nowMs);
+                stepper->setAcceleration(maxAccel);
+                appliedLiveAccelLimit = maxAccel;
+                stepper->enableOutputs();
+                liveMotorDirection = 0;
+            }
         }
         if (!liveSmoothMotionAllowed()) {
+            modeArmed = false;
+            liveSession = false;
+            liveMotorDirection = 0;
             liveEngine.cancel();
             targetQueue = {};
             stepper->forceStop();
@@ -103,22 +127,13 @@ static void startStreamingTask(void *pvParameters) {
         const uint16_t currentBuffer =
             std::chrono::duration_cast<std::chrono::milliseconds>(now - best)
                 .count();
-        const uint32_t nowMs = millis();
-        const live_trajectory::Limits liveLimits{
-            maxSpeed * (settings.speed / 100.0f),
-            static_cast<double>(liveAccelLimit),
-            static_cast<double>(liveAccelLimit) / kAccelerationRampSeconds,
-            -allowedStroke - allowedDepth,
-            -allowedDepth,
-            kMaximumLiveDtSeconds,
-        };
-        liveEngine.setLimits(liveLimits);
         if (settings.speed == 0) {
             clearLiveSmoothTargets();
             if (liveSession) {
                 stepper->forceStop();
                 liveEngine.initialize(stepper->getCurrentPosition(), nowMs);
                 liveSession = false;
+                liveMotorDirection = 0;
                 continue;
             }
         }
@@ -138,15 +153,32 @@ static void startStreamingTask(void *pvParameters) {
             }
         }
         if (liveSession) {
+            if (appliedLiveAccelLimit != liveAccelLimit) {
+                stepper->setAcceleration(liveAccelLimit);
+                appliedLiveAccelLimit = liveAccelLimit;
+            }
             const auto output = liveEngine.tick(measuredDt, nowMs);
-            if (output.commandChanged) {
-                stepper->setAcceleration(static_cast<uint32_t>(
-                    std::max(1.0, std::ceil(std::abs(output.acceleration)))));
+            const int8_t requestedDirection =
+                output.velocity > 0.0 ? 1 : (output.velocity < 0.0 ? -1 : 0);
+            if (requestedDirection != 0) {
                 stepper->setSpeedInHz(static_cast<uint32_t>(
                     std::max(1.0, std::ceil(std::abs(output.velocity)))));
-                stepper->moveTo(output.commandPosition, false);
+                if (requestedDirection != liveMotorDirection) {
+                    const int32_t safeEndpoint =
+                        requestedDirection < 0 ? liveLimits.minPosition
+                                               : liveLimits.maxPosition;
+                    stepper->moveTo(safeEndpoint, false);
+                    liveMotorDirection = requestedDirection;
+                } else {
+                    stepper->applySpeedAcceleration();
+                }
             }
-            if (!liveEngine.hasTarget()) liveSession = false;
+            if (!liveEngine.hasTarget()) {
+                stepper->forceStop();
+                liveEngine.initialize(stepper->getCurrentPosition(), nowMs);
+                liveSession = false;
+                liveMotorDirection = 0;
+            }
             continue;
         }
 
@@ -212,7 +244,8 @@ static void startStreamingTask(void *pvParameters) {
                 : streaming_logic::timedStreamSpeedLimit(maxSpeed);
         const uint32_t accelLimit =
             isLiveSmooth
-                ? streaming_logic::liveAccelerationLimit(maxAccel)
+                ? streaming_logic::liveAccelerationLimit(
+                      maxAccel, settings.acceleration)
                 : maxAccel * (settings.sensation / 100.0);
         const int32_t targetPosition =
             streaming_logic::scaleStreamPosition(

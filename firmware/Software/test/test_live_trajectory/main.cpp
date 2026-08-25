@@ -85,6 +85,29 @@ void test_retarget_replaces_only_endpoint_and_preserves_kinematics() {
     TEST_ASSERT_EQUAL_INT32(300, engine.targetPosition());
 }
 
+void test_rapid_target_replacement_preserves_bounded_continuity() {
+    Engine engine(kLimits);
+    engine.initialize(0, 0);
+    TEST_ASSERT_TRUE(engine.setTarget(800, 500, 0));
+
+    double previousVelocity = engine.velocity();
+    double previousAcceleration = engine.acceleration();
+    for (uint32_t tick = 1; tick <= 200; ++tick) {
+        const int32_t target = (tick % 2U == 0U) ? 800 : -800;
+        TEST_ASSERT_TRUE(engine.setTarget(target, 500, tick));
+        engine.tick(0.001, tick);
+
+        TEST_ASSERT_LESS_OR_EQUAL_DOUBLE(
+            kLimits.maxAcceleration * 0.001 + 1e-9,
+            std::abs(engine.velocity() - previousVelocity));
+        TEST_ASSERT_LESS_OR_EQUAL_DOUBLE(
+            kLimits.maxJerk * 0.001 + 1e-9,
+            std::abs(engine.acceleration() - previousAcceleration));
+        previousVelocity = engine.velocity();
+        previousAcceleration = engine.acceleration();
+    }
+}
+
 void test_reversal_passes_through_zero_velocity() {
     Engine engine(kLimits);
     engine.initialize(0, 0);
@@ -155,12 +178,14 @@ void test_cancelled_target_cannot_resurrect_without_explicit_rearm() {
     TEST_ASSERT_TRUE(engine.setTarget(400, 100, 13));
 }
 
-void test_normal_stop_restarts_from_current_stepper_position_and_resumes() {
+void test_transient_safety_stop_reinitializes_at_measured_position_and_resumes() {
     Engine engine(kLimits);
     engine.initialize(0, 0);
     TEST_ASSERT_TRUE(engine.setTarget(800, 100, 1));
     for (uint32_t tick = 2; tick <= 100; ++tick) engine.tick(0.001, tick);
 
+    engine.cancel();
+    TEST_ASSERT_FALSE(engine.isArmed());
     engine.initialize(-321, 101);
 
     TEST_ASSERT_TRUE(engine.isArmed());
@@ -252,12 +277,13 @@ int main(int, char**) {
     RUN_TEST(test_one_millisecond_ticks_obey_speed_acceleration_and_jerk_bounds);
     RUN_TEST(test_duration_is_speed_intent_bounded_by_machine_speed);
     RUN_TEST(test_retarget_replaces_only_endpoint_and_preserves_kinematics);
+    RUN_TEST(test_rapid_target_replacement_preserves_bounded_continuity);
     RUN_TEST(test_reversal_passes_through_zero_velocity);
     RUN_TEST(test_envelope_rejects_target_without_changing_active_target);
     RUN_TEST(test_sparse_target_remains_active_and_reports_freshness);
     RUN_TEST(test_cancel_clears_target_and_kinematics_immediately);
     RUN_TEST(test_cancelled_target_cannot_resurrect_without_explicit_rearm);
-    RUN_TEST(test_normal_stop_restarts_from_current_stepper_position_and_resumes);
+    RUN_TEST(test_transient_safety_stop_reinitializes_at_measured_position_and_resumes);
     RUN_TEST(test_target_settles_exactly_without_endpoint_micro_oscillation);
     RUN_TEST(test_identical_inputs_are_deterministic);
     RUN_TEST(test_stalled_tick_is_bounded_and_emits_only_whole_step_changes);

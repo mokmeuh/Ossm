@@ -143,7 +143,7 @@ fun ControlSlider(
 }
 
 @Composable
-internal fun PrecisionScalarSlider(
+fun PrecisionScalarSlider(
     valuePercent: Float,
     enabled: Boolean,
     precisionEnabled: Boolean,

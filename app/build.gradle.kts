@@ -24,8 +24,8 @@ android {
         applicationId = "com.ossm.remote"
         minSdk = 26
         targetSdk = 35
-        versionCode = 128
-        versionName = "1.6.8"
+        versionCode = 133
+        versionName = "1.7.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         resValue("string", "app_name", "OSSM V$versionName")
     }

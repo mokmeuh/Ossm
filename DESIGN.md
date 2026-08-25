@@ -21,6 +21,9 @@ This contract covers the Android Compose control surface only. Preserve the exis
 - Sensation is one scalar slider from 0% to 100%, with neutral labeling and matching +/- controls.
 - Live mode uses a large vertical real-time control surface. The finger position is the target while contact is active; release or cancellation sends Stop only and never commits a final target. UI callbacks expose positions only; transport cadence and actuator speed remain outside the UI layer.
 - The settings gear exposes Precision for the active pattern. Overrides are keyed independently by pattern, default on outside Live, and default off for Live so changing Live never changes Simple Stroke or another mode. In Live only, the same dialog also exposes the existing invert-direction switch; the Live card never renders a standalone invert row.
+- The settings gear opens a responsive rectangular `ControlSettingsDialog`, not a narrow alert. It follows the phone width with 16dp outer gutters, caps its width on larger windows, keeps its title and close action fixed, and gives the settings body sole ownership of vertical scrolling. The surface uses `OssmGlass`, `OssmGlassBorder`, and the existing dark-glass elevation language.
+- Live settings expose a persisted integer acceleration percentage from 10% to 100%, defaulting to 33%. The value is absent outside Live. Changing it commits the displayed integer without changing Precision, inversion, the Live position range, homing, mapping, or release-to-stop behavior.
+- `PressHoldInfo` is the dedicated explanation affordance beside setting labels. Pressing only its 40dp icon target reveals a non-modal dark-glass explanation overlay; release, pointer cancellation, or movement beyond touch slop hides it. The affordance never wraps a row or slider, and the overlay has no pointer handler, so slider gestures remain independent.
 - Pattern selection uses a fixed small opener on the left side of the control title. Opening it replaces the visible control surface with one picker overlay; the picker uses a vertical list and closes after selection or dismissal. The opener is not draggable.
 - Safety settings expose persisted depth-limit sliders and explicit microphone targets for speed, depth, and sensation within the existing dialog.
 
@@ -44,6 +47,13 @@ This contract covers the Android Compose control surface only. Preserve the exis
 - Successful pointer release commits exactly once and immediately returns visual feedback to `0..100`. Pointer cancellation, disabled-state transition, or disposal cancels without commit or ghost callback. A fresh gesture after orientation change starts from the latest external value.
 - Existing +/- controls remain available and preserve their guarded incremental/ramp behavior; their effective target is at least 56dp.
 
+## Live Position Surface
+
+- Live uses the full available inner card width as its vertical position surface. The current position is a full-width horizontal grip, matching the user-marked reference rectangle instead of a narrow center rail.
+- A new gesture starts only when the initial pointer is vertically near the current grip. Touching another value never teleports the target or sends a Live command.
+- After a valid capture, horizontal drift is ignored and may leave the visual grip without cancelling control; vertical displacement remains relative to the captured value.
+- Slow movement has no fixed pixel deadband. Distinct integer percentages are forwarded continuously, while duplicate transport positions remain filtered by the existing BLE scheduler.
+
 ## Live Position Slider
 
 - Live owns a dedicated vertical control surface with a minimum `420dp x 280dp` portrait footprint and `180dp x 280dp` compact-landscape footprint, then expands to consume the remaining card height. The vertical track is 18dp/16dp and the thumb radius is 28dp/22dp. The full surface is interactive, not only the visual rail.
@@ -61,6 +71,7 @@ This contract covers the Android Compose control surface only. Preserve the exis
 
 - Slider semantics expose the current value, active precision level/range, enabled state, and a progress action. The semantics bounds cover the full 56dp interaction region, not only the visual track.
 - Toggle and checkbox rows expose a minimum 56dp effective height and one coherent label/state target; descriptive copy must not create a second ambiguous click target.
+- `PressHoldInfo` exposes an explicit localized content description and remains separate from switches and sliders. Setting meaning is never encoded only by the transient overlay: the setting label, current value, and control semantics remain available to TalkBack.
 - Compact layouts must preserve readable 11sp minimum labels, single-line pattern names with ellipsis, sufficient contrast from existing tokens, and logical TalkBack traversal with STOP before the active control card.
 - Precision feedback is not color-only. Text and one haptic per entered level communicate the state; cancellation and release reset are announced through the returned global-range description.
 

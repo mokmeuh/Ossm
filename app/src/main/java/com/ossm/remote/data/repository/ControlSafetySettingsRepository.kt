@@ -63,6 +63,10 @@ class ControlSafetySettingsRepository @Inject constructor(
         prefs[LIVE_INVERT_ENABLED] ?: false
     }
 
+    val liveAccelerationPercent: Flow<Int> = context.controlSafetyDataStore.data.map { prefs ->
+        normalizeLiveAcceleration(prefs[LIVE_ACCELERATION_PERCENT] ?: DEFAULT_LIVE_ACCELERATION_PERCENT)
+    }
+
     val listeningCeiling: Flow<Float> = context.controlSafetyDataStore.data.map { prefs ->
         prefs[LISTENING_SPEED_MAXIMUM_V2] ?: 1f
     }
@@ -123,6 +127,12 @@ class ControlSafetySettingsRepository @Inject constructor(
         }
     }
 
+    suspend fun setLiveAccelerationPercent(percent: Int) {
+        context.controlSafetyDataStore.edit { prefs ->
+            prefs[LIVE_ACCELERATION_PERCENT] = normalizeLiveAcceleration(percent)
+        }
+    }
+
     suspend fun setListeningCeiling(value: Float) {
         context.controlSafetyDataStore.edit { prefs ->
             prefs[LISTENING_SPEED_MAXIMUM_V2] = value.coerceIn(0f, 1f)
@@ -164,9 +174,16 @@ class ControlSafetySettingsRepository @Inject constructor(
         private val DEPTH_LIMIT_MAX = floatPreferencesKey("depth_limit_max")
         private val LISTENING_MODE_ENABLED = booleanPreferencesKey("listening_mode_enabled")
         private val LIVE_INVERT_ENABLED = booleanPreferencesKey("live_invert_enabled")
+        private val LIVE_ACCELERATION_PERCENT = intPreferencesKey("live_acceleration_percent")
         private val LISTENING_SPEED_MAXIMUM_V2 = floatPreferencesKey("listening_speed_maximum_v2")
         private val LISTENING_TARGET_SPEED_ENABLED = booleanPreferencesKey("listening_target_speed_enabled")
         private val LISTENING_TARGET_DEPTH_ENABLED = booleanPreferencesKey("listening_target_depth_enabled")
         private const val MIN_DEPTH_LIMIT_SPAN = 0.05f
+        const val DEFAULT_LIVE_ACCELERATION_PERCENT = 33
+        const val MIN_LIVE_ACCELERATION_PERCENT = 10
+        const val MAX_LIVE_ACCELERATION_PERCENT = 100
+
+        internal fun normalizeLiveAcceleration(percent: Int): Int =
+            percent.coerceIn(MIN_LIVE_ACCELERATION_PERCENT, MAX_LIVE_ACCELERATION_PERCENT)
     }
 }

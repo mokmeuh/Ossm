@@ -94,8 +94,23 @@
     <string name="ctl_listening_title">Listening mode (mic)</string>
     <string name="ctl_listening_hint">The mic raises intensity when you react. Processed on-device, never recorded.</string>
     <string name="ctl_live_max_accel">Max acceleration</string>
+    <string name="ctl_live_acceleration_value">Live acceleration: %1$d%%</string>
+    <string name="ctl_live_acceleration_hint">Limits how quickly the motor reaches its speed in Live. A lower value softens changes; a higher value makes them more direct.</string>
     <string name="ctl_live_invert">Invert Live direction</string>
     <string name="ctl_live_invert_hint">If the carriage moves the wrong way or slams at rest, toggle this.</string>
+    <string name="ctl_close_settings">Close settings</string>
+    <string name="ctl_hold_for_info">Hold to show explanation</string>
+    <string name="ctl_understood">Got it</string>
+    <string name="ctl_guards_intro">These protections ask for confirmation before a sudden increase.</string>
+    <string name="ctl_speed_guard_hint">Asks for confirmation before applying a sudden speed increase.</string>
+    <string name="ctl_depth_guard">Depth</string>
+    <string name="ctl_depth_guard_hint">Asks for confirmation before applying a sudden depth or stroke increase.</string>
+    <string name="ctl_depth_limits_value">Depth limits: %1$d%%–%2$d%%</string>
+    <string name="ctl_depth_limits_hint">Defines the allowed physical range. Retract and bottom always remain inside these limits.</string>
+    <string name="ctl_stop_info_title">STOP</string>
+    <string name="ctl_stop_info_hint">Stops movement immediately by returning speed to zero.</string>
+    <string name="ctl_pause_info_title">Pause/Play (yellow/green)</string>
+    <string name="ctl_pause_info_hint">Yellow indicates movement. Green indicates pause and resumes at the same position and intensity.</string>
 
     <!-- Scan screen -->
     <string name="scan_stop">Stop scan</string>

@@ -69,6 +69,21 @@ void test_setCommandValue_depth100_boundary() {
     TEST_ASSERT_EQUAL(100, result.value);
 }
 
+void test_setCommandValue_acceleration_boundaries() {
+    auto zero = setCommandValue(String("set:acceleration:0"));
+    auto hundred = setCommandValue(String("set:acceleration:100"));
+
+    TEST_ASSERT_EQUAL(Commands::setAcceleration, zero.command);
+    TEST_ASSERT_EQUAL(0, zero.value);
+    TEST_ASSERT_EQUAL(Commands::setAcceleration, hundred.command);
+    TEST_ASSERT_EQUAL(100, hundred.value);
+}
+
+void test_setCommandValue_acceleration_outOfRange_returnsIgnore() {
+    auto result = setCommandValue(String("set:acceleration:101"));
+    TEST_ASSERT_EQUAL(Commands::ignore, result.command);
+}
+
 void test_setCommandValue_speedNegative_returnsIgnore() {
     auto result = setCommandValue(String("set:speed:-1"));
     TEST_ASSERT_EQUAL(Commands::ignore, result.command);
@@ -168,6 +183,8 @@ int main(int argc, char** argv) {
     RUN_TEST(test_setCommandValue_speed50);
     RUN_TEST(test_setCommandValue_depth0_boundary);
     RUN_TEST(test_setCommandValue_depth100_boundary);
+    RUN_TEST(test_setCommandValue_acceleration_boundaries);
+    RUN_TEST(test_setCommandValue_acceleration_outOfRange_returnsIgnore);
     RUN_TEST(test_setCommandValue_speedNegative_returnsIgnore);
     RUN_TEST(test_setCommandValue_speed101_returnsIgnore);
     RUN_TEST(test_setCommandValue_speedAbc_returnsIgnore);

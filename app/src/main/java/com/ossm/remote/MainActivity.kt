@@ -358,7 +358,8 @@ fun OssmApp(
                     onListeningCeilingCommit = controlVm::setListeningCeiling,
                     onListeningTargetSpeedChange = controlVm::setListeningTargetSpeed,
                     onListeningTargetDepthChange = controlVm::setListeningTargetDepth,
-                    onLiveInvertToggle = controlVm::setLiveInvert
+                    onLiveInvertToggle = controlVm::setLiveInvert,
+                    onLiveAccelerationChange = controlVm::setLiveAcceleration
                 )
                 }
                 Screen.Diagnostics -> {

@@ -22,6 +22,7 @@ OSSM *ossm = nullptr;
 SettingPercents OSSM::setting = {.speed = 0,
                                  .stroke = 50,
                                  .sensation = 50,
+                                 .acceleration = 33,
                                  .depth = 10,
                                  .buffer = 100,
                                  .pattern = StrokePatterns::SimpleStroke};
@@ -87,6 +88,9 @@ void OSSM::ble_click(String commandString) {
             session.playControl = PlayControls::SENSATION;
             encoder.setEncoderValue(command.value);
             settings.sensation = command.value;
+            break;
+        case Commands::setAcceleration:
+            settings.acceleration = command.value;
             break;
         case Commands::setBuffer:
             session.playControl = PlayControls::BUFFER;

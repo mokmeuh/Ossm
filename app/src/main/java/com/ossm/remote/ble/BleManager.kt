@@ -1022,6 +1022,8 @@ class BleManager @Inject constructor(
     }
 
     private var streamingEntryJob: Job? = null
+    @Volatile
+    private var requestedLiveAccelerationPercent = DEFAULT_LIVE_ACCELERATION_PERCENT
 
     /** Entrée streaming dédupliquée : un seul cycle d'entrée à la fois. */
     /**
@@ -1048,7 +1050,14 @@ class BleManager @Inject constructor(
         return ok
     }
 
-    private fun launchStreamingEntry() {
+    fun enterStreaming(accelerationPercent: Int) {
+        launchStreamingEntry(accelerationPercent)
+    }
+
+    private fun launchStreamingEntry(
+        accelerationPercent: Int = requestedLiveAccelerationPercent
+    ) {
+        requestedLiveAccelerationPercent = normalizeLiveAcceleration(accelerationPercent)
         if (streamingEntryJob?.isActive == true) return
         streamingEntryJob = scope.launch { triggerStreamingEntry() }
     }
@@ -1091,6 +1100,8 @@ class BleManager @Inject constructor(
     }
 
     private suspend fun sendStreamingSetup() {
+        writeRaw(buildLiveAccelerationCommand(requestedLiveAccelerationPercent))
+        delay(60)
         // speed = PLAFOND de vitesse des moves streaming : 100 pour que la machine
         // puisse suivre les gestes rapides (la vitesse réelle vient de pos+time).
         writeRaw("set:speed:100")
@@ -1422,6 +1433,7 @@ class BleManager @Inject constructor(
             characteristicWritable = writable,
             connected = _connectionState.value is BleConnectionState.Connected,
             streamingReady = _streamingReady.value,
+            binaryTransportVerified = writable,
         ) ?: return
         when (write.transport) {
             LiveTransportSelection.BLOCKED -> return
@@ -1480,6 +1492,15 @@ class BleManager @Inject constructor(
         val p = percent.coerceIn(0, 100)
         writeRaw("set:$param:$p")
         _lastCommand.value = "set:$param:$p"
+    }
+
+    fun setLiveAcceleration(percent: Int) {
+        val acceleration = normalizeLiveAcceleration(percent)
+        requestedLiveAccelerationPercent = acceleration
+        val command = buildLiveAccelerationCommand(acceleration)
+        writeRaw(command)
+        _lastCommand.value = command
+        log(LogLevel.INFO, "CMD", command)
     }
 
     /**
@@ -1653,3 +1674,10 @@ internal fun buildSensationCommand(command: StrokeEngineCommand): String {
     val sensation = (command.sensation * 100f).toInt().coerceIn(0, 100)
     return "set:sensation:$sensation"
 }
+
+internal fun buildLiveAccelerationCommand(percent: Int): String =
+    "set:acceleration:${normalizeLiveAcceleration(percent)}"
+
+private fun normalizeLiveAcceleration(percent: Int): Int = percent.coerceIn(10, 100)
+
+private const val DEFAULT_LIVE_ACCELERATION_PERCENT = 33
