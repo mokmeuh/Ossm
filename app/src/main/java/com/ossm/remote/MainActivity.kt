@@ -46,6 +46,8 @@ import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -150,6 +152,22 @@ class MainActivity : ComponentActivity() {
                     }
                 )
             }
+        }
+        handleSharedApk(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleSharedApk(intent)
+    }
+
+    private fun handleSharedApk(sharedIntent: Intent) {
+        lifecycleScope.launch {
+            val installerIntent = withContext(Dispatchers.IO) {
+                com.ossm.remote.updater.receiveAndInstallSharedApk(this@MainActivity, sharedIntent)
+            }
+            installerIntent?.let(::startActivity)
         }
     }
 
