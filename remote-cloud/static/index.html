@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#061018" />
+    <meta name="description" content="OSSM Remote 2.0 secure control session" />
+    <title>OSSM Remote</title>
+    <link rel="stylesheet" href="/app.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <a class="wordmark" href="/" aria-label="OSSM Remote home">OSSM <span>REMOTE</span></a>
+        <div class="status-chip" id="status" role="status">CONNECTING</div>
+      </header>
+      <section class="session-head glass-panel">
+        <p class="eyebrow">SESSION CONTROL</p>
+        <h1 id="session-title">Secure remote</h1>
+        <p id="session-copy">Open a session link containing its access key.</p>
+      </section>
+      <section class="video-stage floating glass-panel" id="video-stage" aria-label="Host video">
+        <div class="video-placeholder" id="video-placeholder">
+          <span class="pulse-dot"></span><span>HOST VIDEO STANDBY</span>
+        </div>
+        <video id="host-video" autoplay muted playsinline aria-label="Muted live video from host"></video>
+        <div class="video-tools">
+          <button class="icon-button" id="split-video" type="button" aria-label="Toggle split video" aria-pressed="false">SPLIT</button>
+          <button class="icon-button" id="full-video" type="button" aria-label="Fullscreen video" aria-pressed="false">FULL</button>
+        </div>
+      </section>
+      <section class="controls glass-panel" id="remote-controls" aria-label="Remote controls">
+        <div class="control-grid">
+          <button class="control-button" data-command='{"type":"stop"}' type="button">STOP</button>
+          <button class="control-button" data-command='{"type":"end_live_touch"}' type="button">RELEASE</button>
+          <button class="control-button" data-command='{"type":"home"}' type="button">HOME</button>
+          <button class="control-button" data-command='{"type":"pause"}' type="button">PAUSE</button>
+          <button class="control-button" data-command='{"type":"resume"}' type="button">RESUME</button>
+        </div>
+        <div class="control-grid">
+          <label>Speed <input id="speed" type="range" min="0" max="100" value="0" /></label>
+          <label>Sensation <input id="sensation" type="range" min="0" max="100" value="50" /></label>
+          <label>Live position <input id="live" type="range" min="0" max="100" value="0" /></label>
+          <label>Retraction <input id="minimum" type="range" min="0" max="100" value="0" /></label>
+          <label>Depth <input id="maximum" type="range" min="0" max="100" value="100" /></label>
+          <label>Mode <select id="pattern"><option value="simpleStroke">Simple Stroke</option><option value="streamingLive">Live</option><option value="progressive">Progressive</option><option value="autoRandom">Auto Random</option></select></label>
+        </div>
+        <button class="stop-button" id="emergency-stop" type="button"><span>EMERGENCY STOP</span><small>Instantly relay to every participant</small></button>
+      </section>
+      <section class="call-card glass-panel">
+        <div><p class="eyebrow">MEDIA</p><strong id="media-title">Camera and microphone are off</strong><p id="media-copy">Controls remain available if a call cannot connect.</p></div>
+        <button id="join-call" class="join-button" type="button">START CAMERA + VOICE</button>
+      </section>
+      <section class="call-card glass-panel" id="camera-invite">
+        <div><p class="eyebrow">CAMERA INVITE</p><strong>Open this on the camera device</strong><p>The controller stays in charge. A camera can share video and voice but cannot send motion commands.</p></div>
+        <button id="copy-camera-invite" class="join-button" type="button">COPY CAMERA INVITE</button>
+      </section>
+      <p class="hint" id="participant-hint">Host: no · Controller: no · Cameras: 0</p>
+    </main>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
