@@ -183,7 +183,8 @@ internal class LiveTargetScheduler {
 
     private data class TouchSample(val positionPercent: Int, val receivedAtMs: Long)
 
-    private var pending: PendingTarget? = null
+    private var pendingTimeline: PendingTarget? = null
+    private val pendingTouchTargets = ArrayDeque<PendingTarget>()
     private var stopped = true
     private var nextSequence = 0
     private var lastDispatchAtMs: Long? = null
@@ -199,7 +200,7 @@ internal class LiveTargetScheduler {
         val isTouchProducer = input.producer == LiveTargetProducer.TOUCH ||
             input.producer == LiveTargetProducer.RANGE_WIZARD
         if (isTouchProducer && previousSample?.positionPercent == position) return false
-        if (!isTouchProducer && (pending?.positionPercent ?: lastDispatchedPosition) == position) return false
+        if (!isTouchProducer && (pendingTimeline?.positionPercent ?: lastDispatchedPosition) == position) return false
 
         val duration = if (isTouchProducer) DEFAULT_TOUCH_DURATION_MS else {
             input.requestedDurationMs.coerceIn(MIN_TIMELINE_DURATION_MS, MAX_TIMELINE_DURATION_MS)
@@ -211,31 +212,28 @@ internal class LiveTargetScheduler {
         }
         if (isTouchProducer) {
             lastTouchSample = TouchSample(position, input.receivedAtMs)
+            replacePendingTouchPath(position, duration, input.producer, touchVelocity, previousSample)
         } else {
             lastTouchSample = null
+            pendingTouchTargets.clear()
+            pendingTimeline = PendingTarget(position, duration, input.producer, touchVelocity)
         }
-        pending = PendingTarget(position, duration, input.producer, touchVelocity)
         return true
     }
 
     fun poll(nowMs: Long): ScheduledLiveTarget? {
         if (stopped) return null
-        val candidate = pending ?: return null
+        val candidate = nextDistinctPendingTarget() ?: return null
         val previousDispatchAt = lastDispatchAtMs
         val requiredIntervalMs = LiveSmoothProtocol.MINIMUM_INPUT_INTERVAL_MS
         if (previousDispatchAt != null && nowMs - previousDispatchAt < requiredIntervalMs) {
             return null
         }
         val previousPosition = lastDispatchedPosition
-        if (previousPosition == candidate.positionPercent) {
-            pending = null
-            return null
-        }
-
         val isTouchProducer = candidate.producer == LiveTargetProducer.TOUCH ||
             candidate.producer == LiveTargetProducer.RANGE_WIZARD
         val dispatchPosition = candidate.positionPercent
-        pending = null
+        removePendingTarget(candidate)
 
         val direction = previousPosition?.let { dispatchPosition.compareTo(it) } ?: 0
         val reversal = direction != 0 && lastDirection != 0 && direction != lastDirection
@@ -270,9 +268,38 @@ internal class LiveTargetScheduler {
         )
     }
 
+    /**
+     * Schedule one phone-owned target immediately (Live-entry convergence). It uses the same
+     * sequence/deadline counters as [poll] so later touch targets stay strictly newer, clears
+     * any pending touch path, and records the target as the last dispatched position so the
+     * next touch interpolates from it instead of jumping.
+     */
+    fun scheduleDirect(positionPercent: Int, durationMs: Int, nowMs: Long): ScheduledLiveTarget? {
+        if (stopped) return null
+        pendingTimeline = null
+        pendingTouchTargets.clear()
+        lastTouchSample = null
+        val position = positionPercent.coerceIn(0, 100)
+        val duration = durationMs.coerceIn(1, 0xffff)
+        val deadlineLeadMs = duration.coerceIn(MIN_DEADLINE_LEAD_MS, MAX_DEADLINE_LEAD_MS)
+        val deadlineAbsoluteMs = maxOf(nowMs + deadlineLeadMs, lastDeadlineAbsoluteMs + 1L)
+        lastDeadlineAbsoluteMs = deadlineAbsoluteMs
+        val sequence = nextSequence
+        nextSequence = (nextSequence + 1) and 0xffff
+        lastDispatchAtMs = nowMs
+        lastDispatchedPosition = position
+        lastDirection = 0
+        return ScheduledLiveTarget(
+            positionPercent = position,
+            durationMs = duration,
+            producer = LiveTargetProducer.TOUCH,
+            sequence = sequence,
+            deadlineMs = deadlineAbsoluteMs and 0xffff_ffffL,
+        )
+    }
+
     fun millisecondsUntilReady(nowMs: Long): Long {
-        val candidate = pending
-        if (stopped || candidate == null) return 0L
+        if (stopped || !hasPendingTarget()) return 0L
         val previousDispatchAt = lastDispatchAtMs ?: return 0L
         return (LiveSmoothProtocol.MINIMUM_INPUT_INTERVAL_MS - (nowMs - previousDispatchAt))
             .coerceAtLeast(0L)
@@ -280,7 +307,8 @@ internal class LiveTargetScheduler {
 
     fun stop() {
         stopped = true
-        pending = null
+        pendingTimeline = null
+        pendingTouchTargets.clear()
         lastDispatchAtMs = null
         lastDispatchedPosition = null
         lastDirection = 0
@@ -290,12 +318,72 @@ internal class LiveTargetScheduler {
     fun resume() {
         if (!stopped) return
         stopped = false
-        pending = null
+        pendingTimeline = null
+        pendingTouchTargets.clear()
         lastDispatchAtMs = null
         lastDispatchedPosition = null
         lastDirection = 0
         lastTouchSample = null
     }
+
+    private fun replacePendingTouchPath(
+        position: Int,
+        durationMs: Int,
+        producer: LiveTargetProducer,
+        touchVelocityPercentPerSecond: Float?,
+        previousSample: TouchSample?,
+    ) {
+        val start = lastDispatchedPosition
+            ?: pendingTouchTargets.lastOrNull()?.positionPercent
+            ?: previousSample?.positionPercent
+        pendingTouchTargets.clear()
+        buildTouchPath(start, position, touchVelocityPercentPerSecond).forEach { next ->
+            pendingTouchTargets.addLast(
+                PendingTarget(next, durationMs, producer, touchVelocityPercentPerSecond)
+            )
+        }
+        pendingTimeline = null
+    }
+
+    private fun buildTouchPath(
+        start: Int?,
+        target: Int,
+        touchVelocityPercentPerSecond: Float?,
+    ): List<Int> {
+        if (start == null || start == target) return listOf(target)
+        val delta = target - start
+        val distance = abs(delta)
+        val slowTouch = touchVelocityPercentPerSecond != null &&
+            touchVelocityPercentPerSecond <= MAX_INTERPOLATED_TOUCH_SPEED_PERCENT_PER_SECOND
+        if (distance > TOUCH_FINE_INTERPOLATION_LIMIT_PERCENT && !slowTouch) return listOf(target)
+        val direction = delta.compareTo(0)
+        return buildList {
+            var next = start
+            while (next != target) {
+                val remaining = abs(target - next)
+                next += direction * minOf(TOUCH_LOOKAHEAD_STEP_PERCENT, remaining)
+                add(next)
+            }
+        }
+    }
+
+    private fun nextDistinctPendingTarget(): PendingTarget? {
+        while (true) {
+            val candidate = pendingTouchTargets.firstOrNull() ?: pendingTimeline ?: return null
+            if (lastDispatchedPosition != candidate.positionPercent) return candidate
+            removePendingTarget(candidate)
+        }
+    }
+
+    private fun removePendingTarget(candidate: PendingTarget) {
+        if (pendingTouchTargets.firstOrNull() === candidate) {
+            pendingTouchTargets.removeFirst()
+        } else if (pendingTimeline === candidate) {
+            pendingTimeline = null
+        }
+    }
+
+    private fun hasPendingTarget(): Boolean = pendingTouchTargets.isNotEmpty() || pendingTimeline != null
 
     private fun calculateTouchVelocity(
         positionPercent: Int,
@@ -320,10 +408,13 @@ internal class LiveTargetScheduler {
     }
 
     companion object {
-        const val MAX_TOUCH_SPEED_PERCENT_PER_SECOND = 150
-        const val MIN_TOUCH_DURATION_MS = 60
+        const val MAX_TOUCH_SPEED_PERCENT_PER_SECOND = 80
+        const val MIN_TOUCH_DURATION_MS = 120
         const val MAX_TOUCH_DURATION_MS = 600
         const val REVERSAL_MIN_DURATION_MS = 100
+        const val TOUCH_FINE_INTERPOLATION_LIMIT_PERCENT = 20
+        const val TOUCH_LOOKAHEAD_STEP_PERCENT = 5
+        const val MAX_INTERPOLATED_TOUCH_SPEED_PERCENT_PER_SECOND = 80f
         private const val DEFAULT_TOUCH_DURATION_MS = 300
         private const val MIN_TIMELINE_DURATION_MS = 20
         private const val MAX_TIMELINE_DURATION_MS = 2_000

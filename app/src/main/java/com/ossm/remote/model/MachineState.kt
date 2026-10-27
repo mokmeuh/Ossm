@@ -8,7 +8,9 @@ data class MachineState(
     val depth: Int? = null,
     val pattern: Int? = null,
     // Position réelle du chariot en mm (0 = home ; s'éloigne vers le fond).
-    val positionMm: Float? = null
+    val positionMm: Float? = null,
+    // Fresh firmware homing flag when the state payload exposes it; null on older firmware.
+    val homed: Boolean? = null
 ) {
     val isHoming: Boolean
         get() = state.contains("homing", ignoreCase = true)

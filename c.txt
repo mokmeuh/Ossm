@@ -1,2 +1,0 @@
-[main 353aa1a] v1.28.19 - slider vitesse: plafond rouge + barre live pilotee par le micro (mode ecoute); slider profondeur: barre position live + boutons +/- sur la derniere barre selectionnee
- 8 files changed, 163 insertions(+), 23 deletions(-)

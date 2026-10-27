@@ -25,6 +25,7 @@ import com.ossm.remote.model.BleConnectionState
 import com.ossm.remote.model.BleDevice
 import com.ossm.remote.model.DiagnosticsLog
 import com.ossm.remote.model.KnownFallbackPatterns
+import com.ossm.remote.model.KnownAppDrivenPatterns
 import com.ossm.remote.model.KnownAutoRandomPattern
 import com.ossm.remote.model.KnownProgressivePattern
 import com.ossm.remote.model.KnownStreamingPattern
@@ -37,6 +38,8 @@ import com.ossm.remote.model.OssmCommand
 import com.ossm.remote.model.OssmPattern
 import com.ossm.remote.model.PatternControlMode
 import com.ossm.remote.model.StrokeEngineCommand
+import com.ossm.remote.usb.UsbSerialTransport
+import com.ossm.remote.usb.UsbControlProtocol
 import com.google.gson.JsonParser
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -55,10 +58,13 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.math.abs
+import kotlin.math.roundToInt
 import java.util.UUID
 
 internal enum class KnownDeviceReconnectAction {
@@ -70,14 +76,87 @@ internal fun chooseKnownDeviceReconnectAction(
     hasConnectPermission: Boolean,
     bluetoothEnabled: Boolean,
     hasKnownAddress: Boolean,
-    connectionIdle: Boolean,
+    connectionState: BleConnectionState,
 ): KnownDeviceReconnectAction = if (
-    hasConnectPermission && bluetoothEnabled && hasKnownAddress && connectionIdle
+    hasConnectPermission &&
+        bluetoothEnabled &&
+        hasKnownAddress &&
+        connectionState.allowsKnownDeviceReconnect()
 ) {
     KnownDeviceReconnectAction.CONNECT_KNOWN_DEVICE
 } else {
     KnownDeviceReconnectAction.NONE
 }
+
+internal fun BleConnectionState.allowsKnownDeviceReconnect(): Boolean =
+    this is BleConnectionState.Disconnected ||
+        this is BleConnectionState.Error ||
+        this is BleConnectionState.EmergencyStop
+
+internal fun isCurrentScanGeneration(expected: Long, active: Long): Boolean = expected == active
+
+/**
+ * Identifies the one stroke-engine activation whose writes are still allowed to finish.
+ *
+ * Mode entry performs several delayed, notification-verified writes. A newer selection must
+ * invalidate the older sequence before it can publish its completion callback; otherwise an
+ * old retry can consume the newer selection's pending speed and re-apply its captured zero.
+ */
+internal class StrokeEngineActivationController {
+    private var nextToken = 0L
+    private var activeToken: Long? = null
+
+    @Synchronized
+    fun begin(): Long {
+        val token = ++nextToken
+        activeToken = token
+        return token
+    }
+
+    @Synchronized
+    fun isCurrent(token: Long): Boolean = activeToken == token
+
+    @Synchronized
+    fun finish(token: Long): Boolean {
+        if (activeToken != token) return false
+        activeToken = null
+        return true
+    }
+
+    @Synchronized
+    fun cancel() {
+        activeToken = null
+    }
+}
+
+/**
+ * Generation fence for phone-owned Live writes. Invalidating a Live gesture must reject
+ * queued arm-speed/target writes that have not reached the GATT call, while leaving unrelated
+ * setup and scalar writes alone.
+ */
+internal class LiveWriteGenerationGate {
+    @Volatile
+    private var generation = 0L
+
+    fun current(): Long = generation
+
+    @Synchronized
+    fun invalidate(): Long {
+        generation += 1L
+        return generation
+    }
+
+    fun accepts(candidate: Long?): Boolean = candidate == null || candidate == generation
+}
+
+internal fun isStrokeEngineParamsConfirmed(
+    state: MachineState,
+    depthPercent: Int,
+    strokePercent: Int,
+): Boolean = state.state.contains("strokeEngine", ignoreCase = true) &&
+    state.isReady &&
+    state.depth == depthPercent &&
+    state.stroke == strokePercent
 
 internal enum class PostCccdAction {
     READ_STATE,
@@ -106,7 +185,8 @@ internal fun chooseGattWriteType(properties: Int, preferResponse: Boolean): Int 
 @Singleton
 @SuppressLint("MissingPermission")
 class BleManager @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val usbSerialTransport: UsbSerialTransport,
 ) {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
@@ -125,6 +205,8 @@ class BleManager @Inject constructor(
     @Volatile private var liveSmoothCapabilityPayload: ByteArray? = null
     // Vrai quand la séquence post-connexion (MTU → CCCD → lectures/config) est finie.
     @Volatile private var postSetupDone = false
+    private val _postSetupReady = MutableStateFlow(false)
+    val postSetupReady: StateFlow<Boolean> = _postSetupReady.asStateFlow()
     @Volatile private var postSetupStarted = false
     @Volatile private var stateBootstrapPending = false
     private var stateBootstrapAttempts = 0
@@ -133,14 +215,26 @@ class BleManager @Inject constructor(
     private var lastCommandTime = 0L
     private var emergencyRestoreJob: Job? = null
     private var scanJob: Job? = null
+    private val strokeEngineActivationLock = Any()
+    private val strokeEngineActivationController = StrokeEngineActivationController()
+    private var strokeEngineActivationJob: Job? = null
     private val liveDepthRangeUpdates = Channel<LiveDepthRange>(Channel.CONFLATED)
     private val liveTargetUpdates = Channel<OssmCommand.Stream>(Channel.CONFLATED)
+    private val liveParameterWrites = LiveParameterCoalescer()
+    private val liveParameterSignal = Channel<Unit>(Channel.CONFLATED)
     private val liveTargetScheduler = LiveTargetScheduler()
     private val liveTargetLock = Any()
     private var liveSpeedArmed = false
+
+    private val _linkSuspect = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(extraBufferCapacity = 4)
+    /** 2.3.29: emitted on each missed connection ping (link suspect, not yet reset). */
+    val linkSuspectEvents: kotlinx.coroutines.flow.Flow<Unit> = _linkSuspect
     private val normalGattWrites = Channel<GattWriteRequest>(Channel.UNLIMITED)
     private val urgentGattWrites = Channel<GattWriteRequest>(Channel.CONFLATED)
+    private val liveWriteGeneration = LiveWriteGenerationGate()
+    private val gattReads = Channel<GattReadRequest>(Channel.UNLIMITED)
     @Volatile private var activeWriteCompletion: CompletableDeferred<Int>? = null
+    @Volatile private var activeReadCompletion: CompletableDeferred<ByteArray?>? = null
     @VisibleForTesting
     internal var gattWriteAttemptObserver: ((BluetoothGattCharacteristic, ByteArray, Int) -> Unit)? = null
     private var reconnectJob: Job? = null
@@ -152,6 +246,13 @@ class BleManager @Inject constructor(
         val value: ByteArray,
         val preferResponse: Boolean,
         val completion: CompletableDeferred<Boolean>? = null,
+        val liveGeneration: Long? = null,
+    )
+
+    private data class GattReadRequest(
+        val epoch: Long,
+        val characteristic: BluetoothGattCharacteristic,
+        val completion: CompletableDeferred<ByteArray?>,
     )
 
     // Anti-throttle scan Android : le système ignore SILENCIEUSEMENT les startScan()
@@ -162,6 +263,8 @@ class BleManager @Inject constructor(
     // glissante des démarrages et on attend si on approche la limite.
     private val recentScanStarts = ArrayDeque<Long>()
     @Volatile private var isScanning = false
+    @Volatile private var scanGeneration = 0L
+    @Volatile private var activeScanCallback: ScanCallback? = null
 
     private val _connectionState = MutableStateFlow<BleConnectionState>(BleConnectionState.Disconnected)
     val connectionState: StateFlow<BleConnectionState> = _connectionState.asStateFlow()
@@ -181,6 +284,15 @@ class BleManager @Inject constructor(
     private val _machineState = MutableStateFlow(MachineState())
     val machineState: StateFlow<MachineState> = _machineState.asStateFlow()
 
+    private val _firmwareRemoteLeaseReadiness = MutableStateFlow(FirmwareRemoteLeaseReadiness())
+    val firmwareRemoteLeaseReadiness: StateFlow<FirmwareRemoteLeaseReadiness> =
+        _firmwareRemoteLeaseReadiness.asStateFlow()
+
+    private val _firmwareRemoteLeaseDiagnostics =
+        MutableSharedFlow<FirmwareRemoteLeaseDiagnostic>(extraBufferCapacity = 8)
+    val firmwareRemoteLeaseDiagnostics: SharedFlow<FirmwareRemoteLeaseDiagnostic> =
+        _firmwareRemoteLeaseDiagnostics.asSharedFlow()
+
     // Vrai uniquement quand la machine a CONFIRMÉ (via l'état NOTIFY) être en mode
     // streaming avec stroke=100/depth=100 — c.-à-d. que le mapping linéaire
     // « slider 0-100 = home→fond » est effectif. Tant que c'est faux, aucun
@@ -193,16 +305,77 @@ class BleManager @Inject constructor(
         scope.launch { runLiveTargetWorker() }
         scope.launch {
             for (range in liveDepthRangeUpdates) {
-                writeRaw("set:depth:${range.depthPercent}")
+                // Awaited, one pair at a time: a fast depth drag can no longer pile writes
+                // into the normal GATT queue (the conflated channel keeps only the newest pair).
+                writeRawAndAwait("set:depth:${range.depthPercent}")
                 delay(LIVE_DEPTH_RANGE_WRITE_GAP_MS)
-                writeRaw("set:stroke:${range.strokePercent}")
+                writeRawAndAwait("set:stroke:${range.strokePercent}")
                 _lastCommand.value = "set:depth:${range.depthPercent} set:stroke:${range.strokePercent}"
+            }
+        }
+        scope.launch {
+            for (signal in liveParameterSignal) {
+                while (true) {
+                    val (param, value) = liveParameterWrites.poll() ?: break
+                    writeRawAndAwait("set:$param:$value")
+                }
+            }
+        }
+        scope.launch {
+            usbSerialTransport.frames.collect { frame ->
+                if (frame.type == UsbControlProtocol.TYPE_STATE) {
+                    handleCharacteristicPayload(BleConstants.STATE_CHAR_UUID.toString(), frame.payload)
+                }
+            }
+        }
+        scope.launch {
+            usbSerialTransport.ready.collect { ready ->
+                if (ready) activateUsbControl() else deactivateUsbControl()
             }
         }
         scheduleKnownDeviceReconnect(RECONNECT_AFTER_RELAUNCH_DELAY_MS)
     }
 
+    private fun activateUsbControl() {
+        reconnectJob?.cancel()
+        scanJob?.cancel()
+        stopScan()
+        healthCheckJob?.cancel()
+        cancelStrokeEngineActivation()
+        connectionEpoch++
+        liveParameterWrites.clear()
+        gatt?.let { activeGatt ->
+            runCatching { activeGatt.disconnect() }
+            runCatching { activeGatt.close() }
+        }
+        gatt = null
+        commandCharacteristic = null
+        notifyCharacteristic = null
+        liveSmoothCharacteristic = null
+        liveSmoothCapabilityPayload = null
+        resetPostSetupReadiness()
+        _streamingReady.value = false
+        cancelLiveTargets()
+        _connectionState.value = BleConnectionState.Connected("OSSM USB-C", "USB-C")
+        completePostSetupReadiness()
+        log(LogLevel.INFO, "USB", "OSSM connecté par USB-C — liaison BLE OSSM désactivée")
+    }
+
+    private fun deactivateUsbControl() {
+        if ((_connectionState.value as? BleConnectionState.Connected)?.address != "USB-C") return
+        cancelStrokeEngineActivation()
+        _streamingReady.value = false
+        resetPostSetupReadiness()
+        cancelLiveTargets()
+        _machineState.value = MachineState()
+        _firmwareRemoteLeaseReadiness.value = FirmwareRemoteLeaseReadiness()
+        _connectionState.value = BleConnectionState.Disconnected
+        log(LogLevel.WARNING, "USB", "USB-C retiré — contrôle désarmé")
+        scheduleKnownDeviceReconnect(RECONNECT_AFTER_DROP_DELAY_MS)
+    }
+
     fun startScan() {
+        if (usbSerialTransport.ready.value) return
         if (!hasPermissions()) {
             log(LogLevel.ERROR, "SCAN", "Permissions BLE manquantes")
             return
@@ -221,25 +394,31 @@ class BleManager @Inject constructor(
             .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
             .build()
 
+        val generation = ++scanGeneration
+        val callback = createScanCallback(generation)
         scanJob?.cancel()
         scanJob = scope.launch {
             // Code 1 (SCAN_FAILED_ALREADY_STARTED) : un scan précédent avec le même
             // callback est encore enregistré — on l'arrête toujours avant de relancer.
-            try { bleScanner?.stopScan(scanCallback) } catch (_: Exception) {}
+            val previousCallback = activeScanCallback
+            try { bleScanner?.stopScan(previousCallback ?: callback) } catch (_: Exception) {}
+            if (activeScanCallback === previousCallback) activeScanCallback = null
             isScanning = false
             // Anti-throttle : attend si on a déjà consommé le quota de scans récents.
             awaitScanThrottleWindow()
             delay(150)
+            if (!isCurrentScanGeneration(generation, scanGeneration)) return@launch
             recordScanStart()
             try {
-                bleScanner?.startScan(scanFilters, scanSettings, scanCallback)
+                activeScanCallback = callback
+                bleScanner?.startScan(scanFilters, scanSettings, callback)
                 isScanning = true
                 log(LogLevel.INFO, "SCAN", "Scan actif (${recentScanStarts.size}/$SCAN_THROTTLE_MAX dans la fenêtre 30 s)")
             } catch (e: Exception) {
                 log(LogLevel.ERROR, "SCAN", "startScan a échoué: ${e.message}")
             }
             delay(BleConstants.SCAN_TIMEOUT_MS)
-            stopScan()
+            stopScan(generation)
             if (_connectionState.value is BleConnectionState.Scanning) {
                 _connectionState.value = BleConnectionState.Disconnected
                 log(LogLevel.INFO, "SCAN", "Scan terminé - ${_scannedDevices.value.size} appareils trouvés")
@@ -278,9 +457,18 @@ class BleManager @Inject constructor(
     }
 
     fun stopScan() {
-        try { bleScanner?.stopScan(scanCallback) } catch (_: Exception) {}
+        stopScan(scanGeneration)
+    }
+
+    private fun stopScan(expectedGeneration: Long) {
+        if (!isCurrentScanGeneration(expectedGeneration, scanGeneration)) return
+        activeScanCallback?.let { callback ->
+            try { bleScanner?.stopScan(callback) } catch (_: Exception) {}
+        }
+        activeScanCallback = null
         isScanning = false
         scanJob?.cancel()
+        scanJob = null
         if (_connectionState.value is BleConnectionState.Scanning) {
             _connectionState.value = BleConnectionState.Disconnected
         }
@@ -299,7 +487,7 @@ class BleManager @Inject constructor(
         return filters
     }
 
-    private val scanCallback = object : ScanCallback() {
+    private fun createScanCallback(generation: Long): ScanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
             val device = result.device
             val name = device.name ?: "Inconnu"
@@ -319,8 +507,17 @@ class BleManager @Inject constructor(
         }
 
         override fun onScanFailed(errorCode: Int) {
+            if (!isCurrentScanGeneration(generation, scanGeneration) ||
+                _connectionState.value !is BleConnectionState.Scanning
+            ) {
+                return
+            }
             log(LogLevel.ERROR, "SCAN", "Scan échoué, code=$errorCode")
-            _connectionState.value = BleConnectionState.Error("Scan échoué ($errorCode)")
+            stopScan(generation)
+            _connectionState.compareAndSet(
+                BleConnectionState.Disconnected,
+                BleConnectionState.Error("Scan échoué ($errorCode)"),
+            )
         }
     }
 
@@ -333,6 +530,7 @@ class BleManager @Inject constructor(
         reconnectJob?.cancel()
         stopScan()
         healthCheckJob?.cancel()
+        cancelStrokeEngineActivation()
         val device = bluetoothAdapter?.getRemoteDevice(address) ?: run {
             log(LogLevel.ERROR, "CONNECT", "Appareil introuvable: $address")
             return
@@ -350,13 +548,14 @@ class BleManager @Inject constructor(
         }
         gatt = null
         connectionEpoch++
+        liveParameterWrites.clear()
         commandCharacteristic = null
         speedKnobCharacteristic = null
         latencyCompensationCharacteristic = null
         capabilityCharacteristic = null
         liveSmoothCharacteristic = null
         liveSmoothCapabilityPayload = null
-        postSetupDone = false
+        resetPostSetupReadiness()
         postSetupStarted = false
         stateBootstrapPending = false
         stateBootstrapAttempts = 0
@@ -401,6 +600,9 @@ class BleManager @Inject constructor(
                 if (!requested || staleFor > HEALTH_CHECK_INTERVAL_MS + HEALTH_CHECK_REPLY_TIMEOUT_MS) {
                     misses++
                     log(LogLevel.WARNING, "GATT", "Ping connexion sans réponse ($misses/$HEALTH_CHECK_MAX_MISSES)")
+                    // 2.3.29 safety: the first missed ping already cancels phone producers
+                    // (STOP); nothing resumes by itself when the link comes back.
+                    _linkSuspect.tryEmit(Unit)
                 } else {
                     misses = 0
                 }
@@ -416,9 +618,11 @@ class BleManager @Inject constructor(
     private fun forceResetConnection() {
         healthCheckJob?.cancel()
         streamingEntryJob?.cancel()
+        cancelStrokeEngineActivation()
         _streamingReady.value = false
         cancelLiveTargets()
         connectionEpoch++
+        liveParameterWrites.clear()
         gatt?.let {
             try { it.disconnect() } catch (_: Exception) {}
             try { it.close() } catch (_: Exception) {}
@@ -430,7 +634,7 @@ class BleManager @Inject constructor(
         capabilityCharacteristic = null
         liveSmoothCharacteristic = null
         liveSmoothCapabilityPayload = null
-        postSetupDone = false
+        resetPostSetupReadiness()
         postSetupStarted = false
         stateBootstrapPending = false
         stateBootstrapAttempts = 0
@@ -458,13 +662,14 @@ class BleManager @Inject constructor(
                 }
                 newState == BluetoothProfile.STATE_DISCONNECTED -> {
                     val wasConnected = _connectionState.value is BleConnectionState.Connected
+                    cancelStrokeEngineActivation()
                     commandCharacteristic = null
                     speedKnobCharacteristic = null
                     latencyCompensationCharacteristic = null
                     capabilityCharacteristic = null
                     liveSmoothCharacteristic = null
                     liveSmoothCapabilityPayload = null
-                    postSetupDone = false
+                    resetPostSetupReadiness()
                     postSetupStarted = false
                     stateBootstrapPending = false
                     stateBootstrapAttempts = 0
@@ -477,6 +682,7 @@ class BleManager @Inject constructor(
                     _streamingReady.value = false
                     cancelLiveTargets()
                     connectionEpoch++
+                    liveParameterWrites.clear()
                     if (wasConnected) {
                         log(LogLevel.WARNING, "GATT", "Déconnexion inattendue de $deviceName — nettoyage GATT et retour scan")
                         _connectionState.value = BleConnectionState.EmergencyStop
@@ -498,6 +704,7 @@ class BleManager @Inject constructor(
                     this@BleManager.gatt = null
                     _availablePatterns.value = KnownFallbackPatterns
                     _machineState.value = MachineState()
+                    _firmwareRemoteLeaseReadiness.value = FirmwareRemoteLeaseReadiness()
                     log(LogLevel.INFO, "GATT", "GATT fermé et libéré (status=$status) — rescan possible sans redémarrer l'app")
                     if (!manualDisconnectRequested) scheduleKnownDeviceReconnect(RECONNECT_AFTER_DROP_DELAY_MS)
                 }
@@ -661,6 +868,7 @@ class BleManager @Inject constructor(
         private fun failGattSetup(message: String) {
             stateBootstrapPending = false
             stateBootstrapTimeoutJob?.cancel()
+            resetPostSetupReadiness()
             _connectionState.value = BleConnectionState.Error(message)
             log(LogLevel.ERROR, "GATT", message)
         }
@@ -681,9 +889,8 @@ class BleManager @Inject constructor(
                     log(LogLevel.WARNING, "GATT", "Liste de patterns indisponible, Stroke Engine seulement")
                 }
                 delay(500)
-                postSetupDone = true
-                // Bouton vitesse → indépendant (réécrit aussi à chaque entrée streaming).
-                writeSpeedKnobIndependent()
+                configureSpeedKnobIndependent()
+                completePostSetupReadiness()
                 // No forced mode entry on connect: the machine keeps the homing/state the
                 // user left it in. The user picks a pattern when ready.
             }
@@ -696,6 +903,7 @@ class BleManager @Inject constructor(
             status: Int
         ) {
             if (status != BluetoothGatt.GATT_SUCCESS) {
+                if (gatt === this@BleManager.gatt) activeReadCompletion?.complete(null)
                 log(LogLevel.WARNING, "READ", "Lecture échouée ${characteristic.uuid} status=$status")
                 if (characteristic.uuid == BleConstants.STATE_CHAR_UUID && stateBootstrapPending) {
                     stateBootstrapPending = false
@@ -705,6 +913,7 @@ class BleManager @Inject constructor(
                 return
             }
             val validPayload = handleCharacteristicPayload(characteristic.uuid.toString(), value)
+            if (gatt === this@BleManager.gatt) activeReadCompletion?.complete(value.copyOf())
             completeStateBootstrapIfReady(gatt, characteristic, validPayload)
         }
 
@@ -715,6 +924,7 @@ class BleManager @Inject constructor(
             status: Int
         ) {
             if (status != BluetoothGatt.GATT_SUCCESS) {
+                if (gatt === this@BleManager.gatt) activeReadCompletion?.complete(null)
                 log(LogLevel.WARNING, "READ", "Lecture échouée ${characteristic.uuid} status=$status")
                 if (characteristic.uuid == BleConstants.STATE_CHAR_UUID && stateBootstrapPending) {
                     stateBootstrapPending = false
@@ -723,10 +933,12 @@ class BleManager @Inject constructor(
                 }
                 return
             }
+            val value = characteristic.value ?: byteArrayOf()
             val validPayload = handleCharacteristicPayload(
                 characteristic.uuid.toString(),
-                characteristic.value ?: byteArrayOf(),
+                value,
             )
+            if (gatt === this@BleManager.gatt) activeReadCompletion?.complete(value.copyOf())
             completeStateBootstrapIfReady(gatt, characteristic, validPayload)
         }
 
@@ -795,18 +1007,26 @@ class BleManager @Inject constructor(
         return when {
             source.equals(BleConstants.STATE_CHAR_UUID.toString(), ignoreCase = true) -> {
                 val newState = parseStateJson(message) ?: return false
-                    val prev = _machineState.value
-                    _machineState.value = newState
-                    if (prev.state != newState.state) {
-                        log(LogLevel.INFO, "STATE", "${prev.state} → ${newState.state}")
+                val prev = _machineState.value
+                _machineState.value = newState
+                runCatching { JsonParser.parseString(message).asJsonObject }
+                    .getOrNull()
+                    ?.let { stateJson ->
+                        _firmwareRemoteLeaseReadiness.value = parseFirmwareRemoteLeaseReadiness(
+                            stateJson,
+                            _connectionState.value,
+                        )
                     }
-                    // La machine a quitté le streaming (menu, erreur, long-press physique…):
-                    // le mapping live n'est plus garanti, on désarme le pad.
-                    if (_streamingReady.value && !newState.state.contains("streaming", ignoreCase = true)) {
-                        _streamingReady.value = false
-                        cancelLiveTargets()
-                        log(LogLevel.WARNING, "STATE", "Sortie du streaming — live désarmé")
-                    }
+                if (prev.state != newState.state) {
+                    log(LogLevel.INFO, "STATE", "${prev.state} → ${newState.state}")
+                }
+                // La machine a quitté le streaming (menu, erreur, long-press physique…):
+                // le mapping live n'est plus garanti, on désarme le pad.
+                if (_streamingReady.value && !newState.state.contains("streaming", ignoreCase = true)) {
+                    _streamingReady.value = false
+                    cancelLiveTargets()
+                    log(LogLevel.WARNING, "STATE", "Sortie du streaming — live désarmé")
+                }
                 true
             }
             source.equals(BleConstants.PATTERN_LIST_UUID.toString(), ignoreCase = true) -> {
@@ -834,29 +1054,18 @@ class BleManager @Inject constructor(
 
     private var lastStateParseErrorMs: Long = 0L
 
-    private fun parseStateJson(payload: String): MachineState? {
-        return try {
-            val obj = JsonParser.parseString(payload).asJsonObject
-            MachineState(
-                state = obj.get("state")?.takeIf { !it.isJsonNull }?.asString ?: "unknown",
-                speed = obj.get("speed")?.takeIf { !it.isJsonNull }?.asInt,
-                stroke = obj.get("stroke")?.takeIf { !it.isJsonNull }?.asInt,
-                sensation = obj.get("sensation")?.takeIf { !it.isJsonNull }?.asInt,
-                depth = obj.get("depth")?.takeIf { !it.isJsonNull }?.asInt,
-                pattern = obj.get("pattern")?.takeIf { !it.isJsonNull }?.asInt,
-                positionMm = obj.get("position")?.takeIf { !it.isJsonNull }?.asFloat
-            )
-        } catch (e: Exception) {
-            // Truncated JSON is normal when MTU < payload size. Throttle log to once / 5s.
-            val now = System.currentTimeMillis()
-            if (now - lastStateParseErrorMs > 5000) {
-                lastStateParseErrorMs = now
-                val preview = payload.take(64).replace("\n", " ")
-                log(LogLevel.WARNING, "STATE", "JSON tronqué (MTU=$currentMtu): $preview")
+    private fun parseStateJson(payload: String): MachineState? =
+        parseMachineStatePayload(payload).also { parsed ->
+            if (parsed == null) {
+                // Truncated JSON is normal when MTU < payload size. Throttle log to once / 5s.
+                val now = System.currentTimeMillis()
+                if (now - lastStateParseErrorMs > 5000) {
+                    lastStateParseErrorMs = now
+                    val preview = payload.take(64).replace("\n", " ")
+                    log(LogLevel.WARNING, "STATE", "JSON tronqué (MTU=$currentMtu): $preview")
+                }
             }
-            null
         }
-    }
 
     private fun parsePatternListJson(payload: String): List<OssmPattern> {
         return try {
@@ -886,10 +1095,10 @@ class BleManager @Inject constructor(
             if (fromDevice != null) fallback.copy(name = fromDevice.name) else fallback
         }
         // Même composition que KnownFallbackPatterns : les modes applicatifs
-        // (Auto Random, Progressif, Live) existent TOUJOURS, la liste machine ne
+        // (Auto Random, Naturel, Progressif, Live) existent TOUJOURS, la liste machine ne
         // fait que rafraîchir les noms des patterns stroke-engine. Simple
         // Penetration reste hors du sélecteur (convention établie).
-        return listOf(KnownAutoRandomPattern, KnownProgressivePattern, KnownStreamingPattern) + updatedStrokeEngine
+        return KnownAppDrivenPatterns + updatedStrokeEngine
     }
 
     private fun sanitizePatternKey(raw: String): String {
@@ -918,6 +1127,127 @@ class BleManager @Inject constructor(
     @Volatile
     var liveInvert: Boolean = false
 
+    /**
+     * Phone-owned remote-session speed ceiling. Null preserves ordinary local
+     * behavior (including the existing 100% Live re-arm/setup writes).
+     */
+    @Volatile
+    private var phoneHostSpeedCeilingPercent: Int? = null
+
+    fun setPhoneHostSpeedCeiling(value: Float?) {
+        val previous = phoneHostSpeedCeilingPercent
+        val ceiling = value?.coerceIn(0f, 1f)?.let { (it * 100f).toInt() }
+        phoneHostSpeedCeilingPercent = ceiling
+        if (ceiling == null || ceiling >= (previous ?: 100)) return
+        if (ceiling == 0) {
+            cancelLiveTargets()
+            writeRaw("set:speed:0", urgent = true)
+            _lastCommand.value = "set:speed:0"
+            return
+        }
+        if (!canEnforcePhoneHostSpeedCeiling()) {
+            // Only a Live that is actually armed or in progress is refused (and logged). A ceiling
+            // change while no Live is running (ordinary stroke-engine session) is not a refusal:
+            // a later Live target is still rejected at [sendCommand] / the GATT target path.
+            if (isPhoneHostLiveEngaged()) rejectUnsupportedPhoneHostLive()
+            return
+        }
+        synchronized(liveTargetLock) {
+            if (!liveSpeedArmed) return
+        }
+        // A lowered ceiling must reach an already armed streaming session;
+        // otherwise the next target would still run at the previous 100% setup.
+        liveSet("speed", ceiling, urgent = true)
+    }
+
+    /** True when Live is armed (speed re-armed for targets) or the streaming mode is entered. */
+    private fun isPhoneHostLiveEngaged(): Boolean =
+        synchronized(liveTargetLock) { liveSpeedArmed } || _streamingReady.value
+
+    private fun clampPhoneHostSpeedPercent(percent: Int): Int =
+        percent.coerceIn(0, phoneHostSpeedCeilingPercent ?: 100)
+
+    /**
+     * Partial phone ceilings are safe only on the binary Live backend. The
+     * legacy `stream:<position>:<time>` fallback has a firmware speed limit
+     * independent of `set:speed`, so it cannot enforce a nonzero partial cap.
+     * USB Live frames are binary; GATT requires the verified Live characteristic
+     * and capability marker. Null/100 preserve ordinary legacy behavior.
+     */
+    fun canEnforcePhoneHostSpeedCeiling(): Boolean {
+        val ceiling = phoneHostSpeedCeilingPercent ?: return true
+        if (ceiling == 0 || ceiling >= 100) return true
+        if (usbSerialTransport.ready.value) return true
+        return canEnforcePhoneHostSpeedCeilingOnGatt()
+    }
+
+    private fun canEnforcePhoneHostSpeedCeilingOnGatt(assumeStreamingReady: Boolean = false): Boolean {
+        val ceiling = phoneHostSpeedCeilingPercent ?: return true
+        if (ceiling == 0 || ceiling >= 100) return true
+        if (_connectionState.value !is BleConnectionState.Connected ||
+            !(_streamingReady.value || assumeStreamingReady)
+        ) return false
+        val characteristic = liveSmoothCharacteristic ?: return false
+        val writable = characteristic.properties and (
+            BluetoothGattCharacteristic.PROPERTY_WRITE or
+                BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE
+            ) != 0
+        val capabilityVerified = liveSmoothCapabilityPayload?.let {
+            ResistanceProtocol.decodeCapability(it).value != null
+        } == true
+        return writable && capabilityVerified
+    }
+
+    private fun rejectUnsupportedPhoneHostLive() {
+        val wasArmed = synchronized(liveTargetLock) { liveSpeedArmed }
+        cancelLiveTargets()
+        if (wasArmed) {
+            writeRaw("set:speed:0", urgent = true)
+            _lastCommand.value = "set:speed:0"
+        }
+        log(
+            LogLevel.WARNING,
+            "LIVE",
+            "Live refusé : ce transport texte ne peut pas appliquer le plafond téléphone; " +
+                "utilisez le Live binaire ou un plafond téléphone à 100 %",
+        )
+    }
+
+    /** Record the explicit French rejection used by the remote Store seam. */
+    fun rejectRemoteLiveTargetForPhoneLimit() = rejectUnsupportedPhoneHostLive()
+
+    /**
+     * 2.3.28: arms the Live speed exactly like the first touch does in [sendCommand] (same
+     * phone ceiling, same generation, same scheduler resume), so a producer without a finger
+     * (Voix) has an armed speed before its first target. Every refusal is journaled.
+     */
+    fun armLiveSpeed(reason: String): Boolean {
+        if (!_streamingReady.value) {
+            log(LogLevel.WARNING, "LIVE", "Vitesse Live non armée ($reason) : entrée streaming non prête")
+            return false
+        }
+        if (!canEnforcePhoneHostSpeedCeiling()) {
+            rejectUnsupportedPhoneHostLive()
+            return false
+        }
+        synchronized(liveTargetLock) {
+            val generation = liveWriteGeneration.current()
+            val liveSpeed = clampPhoneHostSpeedPercent(100)
+            if (liveSpeed <= 0) {
+                log(LogLevel.WARNING, "LIVE", "Vitesse Live non armée ($reason) : plafond téléphone à 0")
+                return false
+            }
+            if (!liveSpeedArmed) {
+                writeRaw("set:speed:$liveSpeed", liveGeneration = generation)
+                liveSpeedArmed = true
+                _lastCommand.value = "set:speed:$liveSpeed"
+                log(LogLevel.INFO, "CMD", "Vitesse Live armée ($reason)")
+            }
+            liveTargetScheduler.resume()
+        }
+        return true
+    }
+
     fun sendCommand(command: OssmCommand) {
         if (command is OssmCommand.Stream) {
             // Jamais de position tant que le setup streaming n'est pas vérifié :
@@ -927,12 +1257,25 @@ class BleManager @Inject constructor(
                 log(LogLevel.WARNING, "LIVE", "Cible ignorée : entrée streaming non prête")
                 return
             }
+            if (!canEnforcePhoneHostSpeedCeiling()) {
+                rejectUnsupportedPhoneHostLive()
+                return
+            }
             synchronized(liveTargetLock) {
-                if (!_streamingReady.value) return
+                val generation = liveWriteGeneration.current()
+                if (clampPhoneHostSpeedPercent(100) <= 0) {
+                    log(LogLevel.WARNING, "LIVE", "Cible ignorée : plafond téléphone à 0")
+                    return
+                }
+                if (!_streamingReady.value) {
+                    log(LogLevel.WARNING, "LIVE", "Cible ignorée : entrée streaming non prête")
+                    return
+                }
                 if (!liveSpeedArmed) {
-                    writeRaw("set:speed:100")
+                    val liveSpeed = clampPhoneHostSpeedPercent(100)
+                    writeRaw("set:speed:$liveSpeed", liveGeneration = generation)
                     liveSpeedArmed = true
-                    _lastCommand.value = "set:speed:100"
+                    _lastCommand.value = "set:speed:$liveSpeed"
                     log(LogLevel.INFO, "CMD", "Vitesse Live réarmée après relâchement")
                 }
                 liveTargetScheduler.resume()
@@ -962,7 +1305,8 @@ class BleManager @Inject constructor(
                         _lastCommand.value = "menu → simplePenetration"
                         log(LogLevel.INFO, "CMD", "menu → simplePenetration")
                     }
-                    PatternControlMode.STROKE_ENGINE, PatternControlMode.PROGRESSIVE -> {
+                    PatternControlMode.STROKE_ENGINE, PatternControlMode.PROGRESSIVE,
+                    PatternControlMode.NATURAL -> {
                         val id = pattern.id ?: 0
                         scope.launch {
                             navigateToMode("strokeEngine")
@@ -978,9 +1322,6 @@ class BleManager @Inject constructor(
                     PatternControlMode.AUTO_RANDOM -> {
                         log(LogLevel.INFO, "CMD", "Auto Random selected in app; waiting for mix start")
                     }
-                    PatternControlMode.ADAPTIVE -> {
-                        log(LogLevel.INFO, "CMD", "Adaptive selected in app; waiting for engine start")
-                    }
                     PatternControlMode.LAUNCH_ONLY -> {
                         scope.launch { navigateToMode(pattern.key) }
                         val label = "menu → ${pattern.key}"
@@ -990,7 +1331,7 @@ class BleManager @Inject constructor(
                 }
             }
             is OssmCommand.UpdateStrokeEngine -> {
-                val speed = toPercent(command.command.speed)
+                val speed = clampPhoneHostSpeedPercent(toPercent(command.command.speed))
                 val depthMax = toPercent(command.command.depthMax)
                 val stroke = toPercent(command.command.depthMax - command.command.depthMin)
                 scope.launch {
@@ -1078,14 +1419,35 @@ class BleManager @Inject constructor(
      * stream:pos:time serait ignoré → « le Live ne fait rien ».
      */
     @SuppressLint("MissingPermission")
-    private fun writeSpeedKnobIndependent() {
+    private suspend fun configureSpeedKnobIndependent(): Boolean {
         val char = speedKnobCharacteristic ?: run {
             log(LogLevel.WARNING, "GATT", "Caractéristique speed-knob absente (firmware ancien ?)")
-            return
+            return false
         }
         val bytes = "false".toByteArray(Charsets.UTF_8)
-        enqueueGattWrite(char, bytes)
-        log(LogLevel.INFO, "GATT", "Speed knob → independent (BLE speed non plafonné)")
+        val setupWasDone = postSetupDone
+        postSetupDone = true
+        return try {
+            val written = writeGattAndAwait(char, bytes, preferResponse = true)
+            if (!written) {
+                log(LogLevel.WARNING, "GATT", "Speed knob indépendant non livré")
+                false
+            } else {
+                val confirmed = isSpeedKnobIndependentValue(readGattAndAwait(char))
+                log(
+                    if (confirmed) LogLevel.INFO else LogLevel.WARNING,
+                    "GATT",
+                    if (confirmed) {
+                        "Speed knob → independent confirmé (BLE speed non plafonné)"
+                    } else {
+                        "Speed knob indépendant non confirmé par lecture"
+                    },
+                )
+                confirmed
+            }
+        } finally {
+            postSetupDone = setupWasDone
+        }
     }
 
     @SuppressLint("MissingPermission")
@@ -1104,13 +1466,13 @@ class BleManager @Inject constructor(
         delay(60)
         // speed = PLAFOND de vitesse des moves streaming : 100 pour que la machine
         // puisse suivre les gestes rapides (la vitesse réelle vient de pos+time).
-        writeRaw("set:speed:100")
+        writeRaw("set:speed:${clampPhoneHostSpeedPercent(100)}")
         delay(60)
         writeRaw("set:sensation:50")
         delay(60)
-        writeRaw("set:stroke:100")
-        delay(60)
         writeRaw("set:depth:100")
+        delay(60)
+        writeRaw("set:stroke:100")
         delay(60)
         if (isLatencyCompensationEnabledForLive()) {
             writeLatencyCompensationEnabled()
@@ -1137,7 +1499,7 @@ class BleManager @Inject constructor(
         // GATT n'est en vol (l'écriture faite à la connexion peut avoir été perdue).
         // Sans ça, bouton physique à 0 (requis pour entrer) = vitesse effective 0 =
         // tous les stream:pos:time ignorés.
-        writeSpeedKnobIndependent()
+        configureSpeedKnobIndependent()
         delay(150)
 
         // Mapping firmware (streaming_logic.h) :
@@ -1167,6 +1529,14 @@ class BleManager @Inject constructor(
                 liveSpeedArmed = false
                 liveTargetScheduler.resume()
             }
+            if (!convergeLiveEntryToHome()) {
+                log(
+                    LogLevel.WARNING,
+                    "LIVE",
+                    "Entrée Live interrompue pendant le retour lent au départ — live désarmé",
+                )
+                return
+            }
             _streamingReady.value = true
             _lastCommand.value = "streaming prêt (stroke=100 depth=100)"
             log(
@@ -1181,6 +1551,63 @@ class BleManager @Inject constructor(
                 "Bande jamais confirmée — live désarmé. Machine: état=${stt.state} stroke=${stt.stroke} depth=${stt.depth} speed=${stt.speed}"
             )
         }
+    }
+
+    /**
+     * 2.3.17 — cause du « saut brusque à l'entrée en Live » : le firmware entre en streaming
+     * SANS bouger (le chariot reste où le mode précédent l'a arrêté), l'UI repartait de 0 et la
+     * première cible tactile était envoyée seule avec une durée par défaut que le firmware
+     * plafonne à ~250 ms (deadline rebasée à réception + 250 ms) : le chariot traversait
+     * toute la course vers Home en un quart de seconde.
+     *
+     * Ici, une fois la bande 100/100 vérifiée et AVANT d'ouvrir la porte `streamingReady`, on
+     * rejoint Home lentement : plafond `set:speed` bas (le moteur Live binaire borne sa vitesse
+     * par `settings.speed`), cible unique Home avec une durée proportionnelle à la distance
+     * (le transport texte honore cette durée), attente bornée, puis `set:speed:0`. Aucun toucher
+     * n'est accepté pendant ce temps. Un STOP/annulation (génération Live invalidée) interrompt
+     * la convergence et laisse le Live désarmé. Position inconnue (ancien firmware) : rien à
+     * faire de sûr, on garde le comportement historique.
+     */
+    private suspend fun convergeLiveEntryToHome(): Boolean {
+        val positionMm = _machineState.value.positionMm ?: return true
+        if (!positionMm.isFinite()) return true
+        // Physical Home is stepper position 0. With the user inversion, logical Live 0 is the
+        // opposite end, whose distance is unknown without the calibrated stroke: assume max.
+        if (!liveInvert && abs(positionMm) <= LIVE_ENTRY_HOME_TOLERANCE_MM) return true
+        val speedPercent = clampPhoneHostSpeedPercent(LIVE_ENTRY_HOMING_SPEED_PERCENT)
+        if (speedPercent <= 0) return true
+        val distanceMm = if (liveInvert) LIVE_ENTRY_MAX_TRAVEL_MM else abs(positionMm)
+        val travelMs = liveEntryConvergenceDurationMs(distanceMm)
+        val generation = synchronized(liveTargetLock) { liveWriteGeneration.current() }
+        log(
+            LogLevel.INFO,
+            "LIVE",
+            "Entrée Live : chariot à ${"%.1f".format(positionMm)} mm — retour lent au départ (${travelMs} ms)",
+        )
+        writeRaw("set:speed:$speedPercent", liveGeneration = generation)
+        _lastCommand.value = "set:speed:$speedPercent (retour lent entrée Live)"
+        delay(LIVE_ENTRY_SETUP_GAP_MS)
+        val scheduled = synchronized(liveTargetLock) {
+            if (!liveWriteGeneration.accepts(generation)) return false
+            liveTargetScheduler.scheduleDirect(
+                positionPercent = mapLiveStreamPositionPercent(0, liveInvert),
+                durationMs = travelMs.toInt(),
+                nowMs = SystemClock.elapsedRealtime(),
+            )
+        } ?: return false
+        dispatchLiveTarget(scheduled, generation, entryConvergence = true)
+        var waitedMs = 0L
+        val totalWaitMs = travelMs + LIVE_ENTRY_SETTLE_MS
+        while (waitedMs < totalWaitMs) {
+            delay(LIVE_ENTRY_POLL_MS)
+            waitedMs += LIVE_ENTRY_POLL_MS
+            val stillCurrent = synchronized(liveTargetLock) { liveWriteGeneration.accepts(generation) }
+            if (!stillCurrent || _connectionState.value !is BleConnectionState.Connected) return false
+        }
+        // Idle at Home: the first explicit touch re-arms the Live speed ceiling as before.
+        writeRaw("set:speed:0", liveGeneration = generation)
+        synchronized(liveTargetLock) { liveSpeedArmed = false }
+        return synchronized(liveTargetLock) { liveWriteGeneration.accepts(generation) }
     }
 
     /**
@@ -1211,20 +1638,65 @@ class BleManager @Inject constructor(
      * En séquençant tout ici, la plage de l'écran est TOUJOURS réappliquée à l'entrée du
      * mode (aucune fuite d'état possible depuis le streaming).
      */
-    fun activatePatternVerified(patternId: Int, patternName: String, command: StrokeEngineCommand) {
-        scope.launch {
-            val ok = navigateToMode("strokeEngine")
-            writeRaw("set:pattern:$patternId")
-            delay(80)
-            _lastCommand.value = "menu → strokeEngine pattern=$patternId ($patternName)"
-            log(
-                LogLevel.INFO, "CMD",
-                "menu → strokeEngine pattern=$patternId ($patternName)" + if (!ok) " [état non confirmé]" else ""
-            )
-            applyStrokeEngineParams(
-                command,
-                reason = "Entrée mode '$patternName' (plage ${toPercent(command.depthMin)}-${toPercent(command.depthMax)}%)"
-            )
+    fun cancelStrokeEngineActivation() {
+        synchronized(strokeEngineActivationLock) {
+            strokeEngineActivationController.cancel()
+            strokeEngineActivationJob?.cancel()
+            strokeEngineActivationJob = null
+        }
+    }
+
+    fun activatePatternVerified(
+        patternId: Int,
+        patternName: String,
+        command: StrokeEngineCommand,
+    ) {
+        activatePatternVerified(
+            patternId = patternId,
+            patternName = patternName,
+            command = command,
+            onFinished = {},
+        )
+    }
+
+    fun activatePatternVerified(
+        patternId: Int,
+        patternName: String,
+        command: StrokeEngineCommand,
+        onFinished: (Boolean) -> Unit,
+    ) {
+        cancelStrokeEngineActivation()
+        val activationToken: Long
+        synchronized(strokeEngineActivationLock) {
+            activationToken = strokeEngineActivationController.begin()
+            strokeEngineActivationJob = scope.launch {
+                var succeeded = false
+                try {
+                    if (!strokeEngineActivationController.isCurrent(activationToken)) return@launch
+                    val ok = navigateToMode("strokeEngine")
+                    if (!strokeEngineActivationController.isCurrent(activationToken)) return@launch
+                    writeRaw("set:pattern:$patternId")
+                    delay(80)
+                    if (!strokeEngineActivationController.isCurrent(activationToken)) return@launch
+                    _lastCommand.value = "menu → strokeEngine pattern=$patternId ($patternName)"
+                    log(
+                        LogLevel.INFO, "CMD",
+                        "menu → strokeEngine pattern=$patternId ($patternName)" + if (!ok) " [état non confirmé]" else ""
+                    )
+                    succeeded = applyStrokeEngineParams(
+                        command,
+                        reason = "Entrée mode '$patternName' (plage ${toPercent(command.depthMin)}-${toPercent(command.depthMax)}%)",
+                        activationToken = activationToken,
+                    )
+                } finally {
+                    val shouldNotify = synchronized(strokeEngineActivationLock) {
+                        val current = strokeEngineActivationController.finish(activationToken)
+                        if (current) strokeEngineActivationJob = null
+                        current
+                    }
+                    if (shouldNotify) onFinished(succeeded)
+                }
+            }
         }
     }
 
@@ -1234,8 +1706,12 @@ class BleManager @Inject constructor(
      * la course RÉELLEMENT envoyées, visible dans l'écran Diagnostics : c'est la preuve que
      * la bande streaming 100/100 a bien été écrasée à l'entrée du mode.
      */
-    private suspend fun applyStrokeEngineParams(command: StrokeEngineCommand, reason: String) {
-        val speed = toPercent(command.speed)
+    private suspend fun applyStrokeEngineParams(
+        command: StrokeEngineCommand,
+        reason: String,
+        activationToken: Long? = null,
+    ): Boolean {
+        val speed = clampPhoneHostSpeedPercent(toPercent(command.speed))
         val depthMax = toPercent(command.depthMax)
         val stroke = toPercent(command.depthMax - command.depthMin)
         log(
@@ -1244,21 +1720,30 @@ class BleManager @Inject constructor(
         )
         var attempt = 0
         while (attempt < 3) {
+            if (activationToken != null && !strokeEngineActivationController.isCurrent(activationToken)) {
+                return false
+            }
             attempt++
             writeRaw("set:speed:$speed")
             delay(40)
+            if (activationToken != null && !strokeEngineActivationController.isCurrent(activationToken)) {
+                return false
+            }
             writeRaw("set:depth:$depthMax")
             delay(40)
             writeRaw("set:stroke:$stroke")
             delay(40)
             writeStrokeEngineSensation(command)
             val verified = awaitMachineState(2_000) {
-                it.depth == depthMax && it.stroke == stroke
+                isStrokeEngineParamsConfirmed(it, depthMax, stroke)
+            }
+            if (activationToken != null && !strokeEngineActivationController.isCurrent(activationToken)) {
+                return false
             }
             if (verified) {
                 _lastCommand.value = "params confirmés: depth=$depthMax stroke=$stroke spd=$speed"
                 log(LogLevel.INFO, "CMD", "Paramètres confirmés par la machine : depth=$depthMax stroke=$stroke")
-                return
+                return true
             }
             val st = _machineState.value
             log(
@@ -1267,6 +1752,7 @@ class BleManager @Inject constructor(
             )
         }
         log(LogLevel.ERROR, "CMD", "Paramètres JAMAIS confirmés — la machine n'utilise peut-être pas la plage affichée !")
+        return false
     }
 
     /** Attend (avec timeout) que l'état machine notifié satisfasse le prédicat. */
@@ -1277,31 +1763,143 @@ class BleManager @Inject constructor(
 
     private suspend fun runGattWriteWorker() {
         while (scope.isActive) {
-            val request = urgentGattWrites.tryReceive().getOrNull() ?: select {
-                urgentGattWrites.onReceive { it }
-                normalGattWrites.onReceive { it }
-            }
-            if (request.epoch != connectionEpoch) {
-                request.completion?.complete(false)
+            val request = urgentGattWrites.tryReceive().getOrNull() ?: normalGattWrites.tryReceive().getOrNull()
+            if (request != null) {
+                if (request.epoch != connectionEpoch || !liveWriteGeneration.accepts(request.liveGeneration)) {
+                    request.completion?.complete(false)
+                    continue
+                }
+                var setupWaitMs = 0L
+                while (!postSetupDone &&
+                    request.epoch == connectionEpoch &&
+                    liveWriteGeneration.accepts(request.liveGeneration) &&
+                    setupWaitMs < GATT_SETUP_WAIT_MS
+                ) {
+                    delay(GATT_SETUP_POLL_MS)
+                    setupWaitMs += GATT_SETUP_POLL_MS
+                }
+                if (request.epoch != connectionEpoch || !liveWriteGeneration.accepts(request.liveGeneration)) {
+                    request.completion?.complete(false)
+                    continue
+                }
+                val succeeded = performGattWrite(request)
+                request.completion?.complete(succeeded)
+                if (!succeeded && request.completion == null) {
+                    log(LogLevel.WARNING, "WRITE", "Écriture GATT non livrée")
+                }
                 continue
             }
-            var setupWaitMs = 0L
-            while (!postSetupDone && request.epoch == connectionEpoch && setupWaitMs < GATT_SETUP_WAIT_MS) {
-                delay(GATT_SETUP_POLL_MS)
-                setupWaitMs += GATT_SETUP_POLL_MS
+            val read: GattOperation = gattReads.tryReceive().getOrNull()
+                ?.let(GattOperation::Read)
+                ?: select {
+                urgentGattWrites.onReceive { GattOperation.Write(it) }
+                normalGattWrites.onReceive { GattOperation.Write(it) }
+                gattReads.onReceive { GattOperation.Read(it) }
             }
-            val succeeded = performGattWrite(request)
-            request.completion?.complete(succeeded)
-            if (!succeeded && request.completion == null) {
-                log(LogLevel.WARNING, "WRITE", "Écriture GATT non livrée")
+            when (read) {
+                is GattOperation.Write -> {
+                    if (read.request.epoch != connectionEpoch ||
+                        !liveWriteGeneration.accepts(read.request.liveGeneration)
+                    ) {
+                        read.request.completion?.complete(false)
+                        continue
+                    }
+                    val succeeded = performGattWrite(read.request)
+                    read.request.completion?.complete(succeeded)
+                    if (!succeeded && read.request.completion == null) {
+                        log(LogLevel.WARNING, "WRITE", "Écriture GATT non livrée")
+                    }
+                }
+                is GattOperation.Read -> {
+                    if (read.request.epoch != connectionEpoch || !postSetupDone) {
+                        read.request.completion.complete(null)
+                        continue
+                    }
+                    read.request.completion.complete(performGattRead(read.request.characteristic))
+                }
             }
         }
+    }
+
+    private sealed interface GattOperation {
+        data class Write(val request: GattWriteRequest) : GattOperation
+        data class Read(val request: GattReadRequest) : GattOperation
+    }
+
+    @SuppressLint("MissingPermission")
+    private suspend fun performGattRead(characteristic: BluetoothGattCharacteristic): ByteArray? {
+        val activeGatt = gatt ?: return null
+        val callback = CompletableDeferred<ByteArray?>()
+        activeReadCompletion = callback
+        val accepted = runCatching { activeGatt.readCharacteristic(characteristic) }.getOrDefault(false)
+        if (!accepted) {
+            activeReadCompletion = null
+            return null
+        }
+        val value = withTimeoutOrNull(GATT_READ_CALLBACK_TIMEOUT_MS) { callback.await() }
+        activeReadCompletion = null
+        return value
+    }
+
+    private suspend fun readGattAndAwait(characteristic: BluetoothGattCharacteristic): ByteArray? {
+        val completion = CompletableDeferred<ByteArray?>()
+        gattReads.send(GattReadRequest(connectionEpoch, characteristic, completion))
+        return completion.await()
+    }
+
+    internal suspend fun claimFirmwareRemoteLease(): Boolean =
+        executeFirmwareRemoteLeaseCommand("remote:claim", "ok:remote:claimed")
+
+    internal suspend fun heartbeatFirmwareRemoteLease(): Boolean =
+        executeFirmwareRemoteLeaseCommand("remote:heartbeat", "ok:remote:heartbeat")
+
+    internal suspend fun releaseFirmwareRemoteLease(): Boolean =
+        executeFirmwareRemoteLeaseCommand("remote:release", "ok:remote:released")
+
+    private suspend fun executeFirmwareRemoteLeaseCommand(command: String, expectedAck: String): Boolean {
+        if (usbSerialTransport.ready.value || !_firmwareRemoteLeaseReadiness.value.connected) return false
+        val characteristic = commandCharacteristic ?: return false
+        if (!writeGattAndAwait(characteristic, command.toByteArray(Charsets.UTF_8), preferResponse = true)) {
+            return false
+        }
+        val response = readGattAndAwait(characteristic)
+            ?.toString(Charsets.UTF_8)
+            ?.trim()
+        val diagnostic = firmwareRemoteLeaseDiagnosticFor(command, response)
+        if (diagnostic != null) {
+            log(LogLevel.WARNING, "REMOTE", diagnostic.consoleMessage)
+            _firmwareRemoteLeaseDiagnostics.tryEmit(diagnostic)
+        }
+        return response == expectedAck
+    }
+
+    private suspend fun writeGattAndAwait(
+        characteristic: BluetoothGattCharacteristic,
+        value: ByteArray,
+        preferResponse: Boolean = false,
+        liveGeneration: Long? = null,
+    ): Boolean {
+        val completion = CompletableDeferred<Boolean>()
+        normalGattWrites.send(
+            GattWriteRequest(
+                connectionEpoch,
+                characteristic,
+                value.copyOf(),
+                preferResponse = preferResponse,
+                completion = completion,
+                liveGeneration = liveGeneration,
+            )
+        )
+        return completion.await()
     }
 
     @SuppressLint("MissingPermission")
     private suspend fun performGattWrite(request: GattWriteRequest): Boolean {
         val activeGatt = gatt ?: return false
-        if (request.epoch != connectionEpoch || !postSetupDone) return false
+        if (request.epoch != connectionEpoch ||
+            !liveWriteGeneration.accepts(request.liveGeneration) ||
+            !postSetupDone
+        ) return false
         val writeType = chooseGattWriteType(
             properties = request.characteristic.properties,
             preferResponse = request.preferResponse,
@@ -1347,32 +1945,28 @@ class BleManager @Inject constructor(
         value: ByteArray,
         urgent: Boolean = false,
         preferResponse: Boolean = true,
+        liveGeneration: Long? = null,
     ) {
         val request = GattWriteRequest(
             connectionEpoch,
             characteristic,
             value.copyOf(),
             preferResponse,
+            liveGeneration = liveGeneration,
         )
         if (urgent) urgentGattWrites.trySend(request) else normalGattWrites.trySend(request)
     }
 
-    private suspend fun writeGattAndAwait(
-        characteristic: BluetoothGattCharacteristic,
-        value: ByteArray,
-    ): Boolean {
-        val completion = CompletableDeferred<Boolean>()
-        normalGattWrites.send(
-            GattWriteRequest(
-                connectionEpoch,
-                characteristic,
-                value.copyOf(),
-                preferResponse = false,
-                completion = completion,
-            )
-        )
-        return completion.await()
+    private fun resetPostSetupReadiness() {
+        postSetupDone = false
+        _postSetupReady.value = false
     }
+
+    private fun completePostSetupReadiness() {
+        postSetupDone = true
+        _postSetupReady.value = true
+    }
+
 
     private suspend fun runLiveTargetWorker() {
         for (command in liveTargetUpdates) {
@@ -1393,11 +1987,13 @@ class BleManager @Inject constructor(
                         continue
                     }
                 }
-                val target = synchronized(liveTargetLock) {
-                    liveTargetScheduler.poll(SystemClock.elapsedRealtime())
+                val scheduled = synchronized(liveTargetLock) {
+                    liveTargetScheduler.poll(SystemClock.elapsedRealtime())?.let {
+                        it to liveWriteGeneration.current()
+                    }
                 }
-                if (target != null) {
-                    dispatchLiveTarget(target)
+                if (scheduled != null) {
+                    dispatchLiveTarget(scheduled.first, scheduled.second)
                     continue
                 }
                 break
@@ -1406,7 +2002,10 @@ class BleManager @Inject constructor(
     }
 
     private fun offerLiveTarget(command: OssmCommand.Stream) {
-        if (!_streamingReady.value) return
+        if (!_streamingReady.value) {
+            log(LogLevel.WARNING, "LIVE", "Cible ignorée : streaming non prêt (file)")
+            return
+        }
         val rawPosition = command.positionPercent.coerceIn(0, 100)
         val actuatorPosition = mapLiveStreamPositionPercent(rawPosition, liveInvert)
         synchronized(liveTargetLock) {
@@ -1421,7 +2020,32 @@ class BleManager @Inject constructor(
         }
     }
 
-    private suspend fun dispatchLiveTarget(target: ScheduledLiveTarget) {
+    private suspend fun dispatchLiveTarget(
+        target: ScheduledLiveTarget,
+        liveGeneration: Long,
+        entryConvergence: Boolean = false,
+    ) {
+        val usbPayload = LiveSmoothProtocol.encode(
+            LiveSmoothPacket(
+                sequence = target.sequence,
+                deadlineMs = target.deadlineMs,
+                positionPermille = target.positionPercent * 10,
+                durationMs = target.durationMs,
+            )
+        )
+        if (usbSerialTransport.sendLiveTarget(usbPayload)) {
+            _lastCommand.value = "usb-live-v1:${target.positionPercent}:${target.durationMs} seq=${target.sequence}"
+            log(
+                LogLevel.INFO,
+                "LIVE",
+                "Cible livrée transport=USB pos=${target.positionPercent} durée=${target.durationMs} seq=${target.sequence}",
+            )
+            return
+        }
+        if (!canEnforcePhoneHostSpeedCeilingOnGatt(assumeStreamingReady = entryConvergence)) {
+            rejectUnsupportedPhoneHostLive()
+            return
+        }
         val smoothCharacteristic = liveSmoothCharacteristic
         val writable = smoothCharacteristic != null && smoothCharacteristic.properties and (
             BluetoothGattCharacteristic.PROPERTY_WRITE or
@@ -1432,13 +2056,26 @@ class BleManager @Inject constructor(
             capabilityPayload = liveSmoothCapabilityPayload,
             characteristicWritable = writable,
             connected = _connectionState.value is BleConnectionState.Connected,
-            streamingReady = _streamingReady.value,
+            // Entry convergence runs after the band is verified but before the public ready
+            // gate opens (touch targets stay refused until the actuator has reached Home).
+            streamingReady = _streamingReady.value || entryConvergence,
             binaryTransportVerified = writable,
-        ) ?: return
+        ) ?: run {
+            log(LogLevel.WARNING, "LIVE", "Cible non livrée seq=${target.sequence} : transport indisponible")
+            return
+        }
         when (write.transport) {
-            LiveTransportSelection.BLOCKED -> return
+            LiveTransportSelection.BLOCKED -> {
+                log(LogLevel.WARNING, "LIVE", "Cible non livrée seq=${target.sequence} : transport bloqué")
+                return
+            }
             LiveTransportSelection.BINARY_V1 -> {
-                if (!writeGattAndAwait(smoothCharacteristic ?: return, write.payload)) {
+                if (!writeGattAndAwait(
+                        smoothCharacteristic ?: return,
+                        write.payload,
+                        liveGeneration = liveGeneration,
+                    )
+                ) {
                     log(LogLevel.ERROR, "LIVE", "Cible binaire non livrée seq=${target.sequence}")
                     return
                 }
@@ -1451,7 +2088,7 @@ class BleManager @Inject constructor(
             }
             LiveTransportSelection.LEGACY_TEXT -> {
                 val characteristic = commandCharacteristic ?: return
-                if (!writeGattAndAwait(characteristic, write.payload)) {
+                if (!writeGattAndAwait(characteristic, write.payload, liveGeneration = liveGeneration)) {
                     log(LogLevel.ERROR, "LIVE", "Cible texte non livrée seq=${target.sequence}")
                     return
                 }
@@ -1468,6 +2105,10 @@ class BleManager @Inject constructor(
     private fun cancelLiveTargets() {
         while (liveTargetUpdates.tryReceive().isSuccess) Unit
         synchronized(liveTargetLock) {
+            // Invalidate both queued and not-yet-written Live GATT requests before the urgent STOP.
+            // Keep generation invalidation and scheduler.stop() under the same lock used when a
+            // target is polled, so cancellation cannot race a fresh generation into dispatch.
+            liveWriteGeneration.invalidate()
             liveSpeedArmed = false
             liveTargetScheduler.stop()
         }
@@ -1478,20 +2119,60 @@ class BleManager @Inject constructor(
     }
 
     @SuppressLint("MissingPermission")
-    private fun writeRaw(text: String, urgent: Boolean = false) {
+    private fun writeRaw(text: String, urgent: Boolean = false, liveGeneration: Long? = null) {
+        // A direct write supersedes a pending real-time value of the same parameter, and a
+        // speed-0 write (STOP, mode change) drops every pending slider value: nothing coalesced
+        // may be written after it.
+        if (text == "set:speed:0") {
+            liveParameterWrites.clear()
+        } else {
+            liveParameterOf(text)?.let(liveParameterWrites::remove)
+        }
+        if (urgent && text == "set:speed:0") {
+            usbSerialTransport.sendStop()
+        } else if (usbSerialTransport.sendCommand(text)) {
+            log(LogLevel.INFO, "USB", "Commande livrée par USB : $text")
+            return
+        }
         val char = commandCharacteristic ?: return
-        enqueueGattWrite(char, text.toByteArray(Charsets.UTF_8), urgent)
+        enqueueGattWrite(
+            char,
+            text.toByteArray(Charsets.UTF_8),
+            urgent = urgent,
+            liveGeneration = liveGeneration,
+        )
     }
 
     private fun writeStrokeEngineSensation(command: StrokeEngineCommand) {
         writeRaw(buildSensationCommand(command))
     }
 
-    /** Écriture mono-paramètre légère pour le drag temps réel des sliders. */
-    fun liveSet(param: String, percent: Int) {
-        val p = percent.coerceIn(0, 100)
-        writeRaw("set:$param:$p")
+    /**
+     * Écriture mono-paramètre légère pour le drag temps réel des sliders. Non urgente, elle
+     * passe par la boîte « dernière valeur » [liveParameterWrites] : jamais d'arriéré dans la
+     * file GATT (voir [LiveParameterCoalescer]). Urgente (plafond de vitesse abaissé), elle
+     * garde le chemin prioritaire historique.
+     */
+    fun liveSet(param: String, percent: Int, urgent: Boolean = false) {
+        val p = if (param == "speed") {
+            clampPhoneHostSpeedPercent(percent)
+        } else {
+            percent.coerceIn(0, 100)
+        }
+        if (urgent || (param == "speed" && p == 0)) {
+            writeRaw("set:$param:$p", urgent = urgent)
+        } else {
+            liveParameterWrites.offer(param, p)
+            liveParameterSignal.trySend(Unit)
+        }
         _lastCommand.value = "set:$param:$p"
+    }
+
+    /** Write one command and wait for its acknowledgement (no queue backlog). */
+    private suspend fun writeRawAndAwait(text: String): Boolean {
+        if (usbSerialTransport.sendCommand(text)) return true
+        val char = commandCharacteristic ?: return false
+        return writeGattAndAwait(char, text.toByteArray(Charsets.UTF_8), preferResponse = true)
     }
 
     fun setLiveAcceleration(percent: Int) {
@@ -1580,8 +2261,7 @@ class BleManager @Inject constructor(
                 hasConnectPermission = hasConnectPermission(),
                 bluetoothEnabled = bluetoothAdapter?.isEnabled == true,
                 hasKnownAddress = true,
-                connectionIdle = _connectionState.value is BleConnectionState.Disconnected ||
-                    _connectionState.value is BleConnectionState.Error,
+                connectionState = _connectionState.value,
             )
             if (action == KnownDeviceReconnectAction.CONNECT_KNOWN_DEVICE) {
                 log(LogLevel.INFO, "CONNECT", "Reconnexion au périphérique OSSM connu")
@@ -1625,6 +2305,12 @@ class BleManager @Inject constructor(
 
     private fun toPercent(value: Float): Int = (value * 100f).toInt().coerceIn(0, 100)
 
+    /**
+     * Entry point for non-BLE app components (e.g. the camera share screen) to write in the same
+     * Diagnostics journal. Callers are responsible for never passing a secret or a link.
+     */
+    fun appendExternalDiagnostic(level: LogLevel, tag: String, message: String) = log(level, tag, message)
+
     private fun log(level: LogLevel, tag: String, message: String) {
         // Miroir vers logcat (lisible via `adb logcat -s OSSM`) pour diagnostiquer à
         // distance, en plus de l'écran Diagnostics de l'app.
@@ -1649,9 +2335,10 @@ class BleManager @Inject constructor(
         private const val GATT_SETUP_WAIT_MS = 5_000L
         private const val GATT_SETUP_POLL_MS = 20L
         private const val GATT_WRITE_CALLBACK_TIMEOUT_MS = 1_000L
+        private const val GATT_READ_CALLBACK_TIMEOUT_MS = 1_000L
         private const val GATT_WRITE_NO_RESPONSE_GAP_MS = 20L
         private const val RECONNECT_AFTER_RELAUNCH_DELAY_MS = 750L
-        private const val RECONNECT_AFTER_DROP_DELAY_MS = 2_500L
+        private const val RECONNECT_AFTER_DROP_DELAY_MS = 500L
         private const val BLE_PREFERENCES = "ossm_ble_connection"
         private const val KNOWN_DEVICE_ADDRESS = "known_ossm_address"
         // Détection de perte de connexion silencieuse (ping RSSI périodique).
@@ -1681,3 +2368,28 @@ internal fun buildLiveAccelerationCommand(percent: Int): String =
 private fun normalizeLiveAcceleration(percent: Int): Int = percent.coerceIn(10, 100)
 
 private const val DEFAULT_LIVE_ACCELERATION_PERCENT = 33
+
+/**
+ * Live-entry convergence (2.3.17). Firmware max linear speed is 1500 rpm * 20 teeth * 2 mm
+ * = 1000 mm/s and the binary Live engine caps motion at `settings.speed` % of it, so
+ * `set:speed:3` bounds the entry return to ~30 mm/s (~15 %/s of a 200 mm stroke, gentler
+ * than the 20 %/s release return).
+ */
+internal const val LIVE_ENTRY_HOMING_SPEED_PERCENT = 3
+internal const val LIVE_ENTRY_HOMING_SPEED_MM_PER_S = 30f
+/** Live 0 maps to wire 98 (2 % of travel from Home); a few mm is already "at Home". */
+internal const val LIVE_ENTRY_HOME_TOLERANCE_MM = 6f
+/** Unknown distance (user inversion): assume the longest OSSM stroke. */
+internal const val LIVE_ENTRY_MAX_TRAVEL_MM = 250f
+private const val LIVE_ENTRY_MIN_DURATION_MS = 400L
+private const val LIVE_ENTRY_MAX_DURATION_MS = 10_000L
+private const val LIVE_ENTRY_SETUP_GAP_MS = 80L
+private const val LIVE_ENTRY_SETTLE_MS = 400L
+private const val LIVE_ENTRY_POLL_MS = 50L
+
+/** Duration of the slow Live-entry return for [distanceMm] at the bounded entry speed. */
+internal fun liveEntryConvergenceDurationMs(distanceMm: Float): Long {
+    val distance = if (distanceMm.isFinite()) abs(distanceMm) else LIVE_ENTRY_MAX_TRAVEL_MM
+    val ms = (distance / LIVE_ENTRY_HOMING_SPEED_MM_PER_S * 1_000f).toLong()
+    return ms.coerceIn(LIVE_ENTRY_MIN_DURATION_MS, LIVE_ENTRY_MAX_DURATION_MS)
+}

@@ -7,6 +7,8 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.view.WindowManager
+import android.view.KeyEvent
+import com.ossm.remote.voice.VolumeKeyStop
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -15,13 +17,25 @@ import androidx.activity.viewModels
 import androidx.compose.animation.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.foundation.background
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.ossm.remote.remote.RemoteSessionViewModel
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -31,11 +45,16 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import com.ossm.remote.data.repository.OverlayPreferencesRepository
 import com.ossm.remote.model.BleConnectionState
+import com.ossm.remote.model.isVoicePattern
+import com.ossm.remote.usb.FirmwareFlashViewModel
+import com.ossm.remote.usb.FirmwareFlashState
 import com.ossm.remote.overlay.OverlayService
 import com.ossm.remote.ui.navigation.BottomNavScreens
 import com.ossm.remote.ui.navigation.Screen
+import com.ossm.remote.ui.navigation.navigationLabel
 import com.ossm.remote.ui.navigation.shouldOpenControlAfterConnect
 import com.ossm.remote.ui.navigation.shouldReturnToScanAfterDisconnect
+import com.ossm.remote.ui.screens.VoiceControlActions
 import com.ossm.remote.ui.screens.*
 import com.ossm.remote.ui.theme.*
 import com.ossm.remote.updater.UpdaterStatus
@@ -58,10 +77,9 @@ class MainActivity : ComponentActivity() {
     private val controlVm: ControlViewModel by viewModels()
     private val diagnosticsVm: DiagnosticsViewModel by viewModels()
     private val profilesVm: ProfilesViewModel by viewModels()
-    private val funscriptVm: FunscriptViewModel by viewModels()
-    private val videoSyncVm: VideoSyncViewModel by viewModels()
     private val updaterVm: UpdaterViewModel by viewModels()
     private val overlaySettingsVm: OverlaySettingsViewModel by viewModels()
+    private val voiceAiVm: com.ossm.remote.viewmodel.VoiceAiViewModel by viewModels()
 
     /**
      * Relance l'overlay quand on quitte l'app (home / passage vers une autre app) s'il est
@@ -79,7 +97,29 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
+        // Voix: the microphone never stays open behind the screen.
+        voiceAiVm.setListening(false)
+        // 2.3.29 SAFETY: background / screen off cancels phone producers with STOP; nothing
+        // resumes by itself when the app comes back.
+        controlVm.onAppBackground()
         maybeAutoStartOverlay()
+    }
+
+    /** True while the Control page is the one shown (set by [OssmApp]). */
+    @Volatile
+    private var controlScreenVisible = false
+
+    /**
+     * 2.3.29 hardware STOP: volume up/down stop at once while the Control screen is in the
+     * foreground and a motion mode is active; the event (down and up) is consumed so the
+     * volume does not change. Otherwise the keys keep their normal behaviour.
+     */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (VolumeKeyStop.shouldConsume(event.keyCode, controlScreenVisible, controlVm.isMotionModeActive())) {
+            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) controlVm.hardwareStop()
+            return true
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     private val enableBtLauncher = registerForActivityResult(
@@ -91,32 +131,6 @@ class MainActivity : ComponentActivity() {
     ) { grants ->
         if (grants.values.all { it } && bleVm.isBluetoothEnabled()) {
             bleVm.startScan()
-        }
-    }
-
-    // Mode « à l'écoute » : demande la permission micro au moment où l'utilisateur
-    // l'active (jamais au démarrage), puis active le réglage si accordée.
-    private var pendingListeningEnable = false
-    private val audioPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted && pendingListeningEnable) controlVm.setListeningMode(true)
-        pendingListeningEnable = false
-    }
-
-    private fun toggleListeningMode(enable: Boolean) {
-        if (!enable) {
-            controlVm.setListeningMode(false)
-            return
-        }
-        val granted = androidx.core.content.ContextCompat.checkSelfPermission(
-            this, Manifest.permission.RECORD_AUDIO
-        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-        if (granted) {
-            controlVm.setListeningMode(true)
-        } else {
-            pendingListeningEnable = true
-            audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }
     }
 
@@ -136,15 +150,14 @@ class MainActivity : ComponentActivity() {
                     controlVm = controlVm,
                     diagnosticsVm = diagnosticsVm,
                     profilesVm = profilesVm,
-                    funscriptVm = funscriptVm,
-                    videoSyncVm = videoSyncVm,
                     updaterVm = updaterVm,
+                    voiceAiVm = voiceAiVm,
+                    onControlVisibleChange = { controlScreenVisible = it },
                     onEnableBluetooth = {
                         if (!bleVm.isBluetoothEnabled()) {
                             enableBtLauncher.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE))
                         }
                     },
-                    onListeningToggle = ::toggleListeningMode,
                     onQuit = {
                         controlVm.stop()
                         bleVm.disconnect()
@@ -216,18 +229,17 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@OptIn(ExperimentalAnimationApi::class)
+@OptIn(ExperimentalAnimationApi::class, ExperimentalLayoutApi::class)
 @Composable
 fun OssmApp(
     bleVm: BleViewModel,
     controlVm: ControlViewModel,
     diagnosticsVm: DiagnosticsViewModel,
     profilesVm: ProfilesViewModel,
-    funscriptVm: FunscriptViewModel,
-    videoSyncVm: VideoSyncViewModel,
     updaterVm: UpdaterViewModel,
+    voiceAiVm: com.ossm.remote.viewmodel.VoiceAiViewModel,
+    onControlVisibleChange: (Boolean) -> Unit = {},
     onEnableBluetooth: () -> Unit,
-    onListeningToggle: (Boolean) -> Unit,
     onQuit: () -> Unit
 ) {
     val pagerState = rememberPagerState(pageCount = { BottomNavScreens.size })
@@ -235,46 +247,158 @@ fun OssmApp(
     var previousConnectionState by remember { mutableStateOf<BleConnectionState?>(null) }
 
     val connectionState by bleVm.connectionState.collectAsState()
+    // While the firmware is being written the USB link is handed over to the flasher, which
+    // looks like a disconnection: stay on the current page instead of jumping back to Connexion.
+    val flashVm: FirmwareFlashViewModel = hiltViewModel()
+    val flashState by flashVm.state.collectAsState()
+    val flashHoldsNavigation = flashState !is FirmwareFlashState.Idle
     val controlUiState by controlVm.uiState.collectAsState()
-    val listeningLevel by controlVm.listeningLevel.collectAsState()
+    val remoteSession by controlVm.remoteSessionView.collectAsState()
+    val voiceAiState by voiceAiVm.state.collectAsState()
     val diagnosticsLogs by diagnosticsVm.logs.collectAsState()
     val lastCommand by diagnosticsVm.lastCommand.collectAsState()
     val presets by profilesVm.presets.collectAsState()
-    val funscriptState by funscriptVm.uiState.collectAsState()
-    val videoSyncState by videoSyncVm.uiState.collectAsState()
     val scannedDevices by bleVm.scannedDevices.collectAsState()
     val machineState by bleVm.machineState.collectAsState()
     val context = LocalContext.current
     val updaterState by updaterVm.uiState.collectAsState()
     val updaterUrl by updaterVm.manualUrl.collectAsState()
     var showQuitDialog by remember { mutableStateOf(false) }
+    val keyboardOpen = WindowInsets.isImeVisible
 
-    BackHandler(enabled = !showQuitDialog) {
-        showQuitDialog = true
+    // Remote session camera (owner side). The camera link stays in memory only: never in
+    // saved instance state, logs or navigation arguments.
+    val remoteSessionVm: RemoteSessionViewModel = hiltViewModel()
+    val remoteSessionState by remoteSessionVm.state.collectAsState()
+    val remoteCamera = remoteCameraSection(remoteSessionState)
+    var cameraShareUrl by remember { mutableStateOf<String?>(null) }
+    val fullScreenRoute: Screen? = if (cameraShareUrl != null) Screen.CameraShare else null
+    LaunchedEffect(remoteCamera, cameraShareUrl) {
+        // Session stopped/lost or link regenerated: close the share (destroys the WebView).
+        val opened = cameraShareUrl
+        if (opened != null && !cameraShareStillAllowed(opened, remoteCamera)) cameraShareUrl = null
     }
 
     val currentRoute = BottomNavScreens[pagerState.currentPage].route
     val scanPageIndex = BottomNavScreens.indexOfFirst { it.route == Screen.Scan.route }
     val controlPageIndex = BottomNavScreens.indexOfFirst { it.route == Screen.Control.route }
 
+    // Back walks the tabs visited, most recent first. Control is the home tab: back from it
+    // always offers to quit (never returns to Connexion), and reaching it resets the history.
+    val tabHistory = remember { mutableStateListOf<Int>() }
+    var lastPage by remember { mutableIntStateOf(pagerState.currentPage) }
+    var navigatingBack by remember { mutableStateOf(false) }
+    LaunchedEffect(pagerState.currentPage) {
+        val page = pagerState.currentPage
+        if (page != lastPage) {
+            when {
+                page == controlPageIndex -> tabHistory.clear()
+                navigatingBack -> Unit
+                else -> {
+                    tabHistory.remove(lastPage)
+                    tabHistory.add(lastPage)
+                }
+            }
+            tabHistory.remove(page)
+            lastPage = page
+        }
+        navigatingBack = false
+    }
+    BackHandler(enabled = !showQuitDialog && !keyboardOpen && fullScreenRoute == null) {
+        val previous = tabHistory.lastOrNull()
+        if (pagerState.currentPage == controlPageIndex || previous == null) {
+            showQuitDialog = true
+        } else {
+            tabHistory.removeAt(tabHistory.lastIndex)
+            navigatingBack = true
+            scope.launch { pagerState.scrollToPage(previous) }
+        }
+    }
+    LaunchedEffect(currentRoute, fullScreenRoute) {
+        onControlVisibleChange(currentRoute == Screen.Control.route && fullScreenRoute == null)
+    }
+
     LaunchedEffect(connectionState) {
         when {
+            flashHoldsNavigation -> Unit
             shouldOpenControlAfterConnect(previousConnectionState, connectionState, currentRoute) -> {
-                pagerState.animateScrollToPage(controlPageIndex)
+                pagerState.scrollToPage(controlPageIndex)
             }
             shouldReturnToScanAfterDisconnect(previousConnectionState, connectionState) &&
                 pagerState.currentPage != scanPageIndex -> {
-                pagerState.animateScrollToPage(scanPageIndex)
+                pagerState.scrollToPage(scanPageIndex)
             }
         }
         previousConnectionState = connectionState
     }
 
+    Box(modifier = Modifier.fillMaxSize()) {
     Scaffold(
+        // While a full-screen route covers the tabs, keep them out of TalkBack.
+        modifier = if (fullScreenRoute != null) Modifier.clearAndSetSemantics {} else Modifier,
         containerColor = OssmBackground,
         bottomBar = {
+            // The Live pad takes the whole screen: the tab bar is hidden there (the pattern
+            // button in the control card leads back to the other modes).
+            val liveBare = currentRoute == Screen.Control.route &&
+                controlUiState.rangeWizard == null &&
+                controlUiState.activePattern?.mode == com.ossm.remote.model.PatternControlMode.STREAMING &&
+                controlUiState.activePattern?.isVoicePattern() != true
+            if (!liveBare) {
+            val landscapeBar = LocalConfiguration.current.orientation ==
+                android.content.res.Configuration.ORIENTATION_LANDSCAPE
+            if (landscapeBar) {
+                // Landscape: one thin row (icon beside its label) so the control card keeps
+                // most of the screen height.
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(horizontal = 12.dp, vertical = 4.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(OssmSurface)
+                        .height(44.dp)
+                        .selectableGroup(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    BottomNavScreens.forEach { screen ->
+                        val selected = currentRoute == screen.route
+                        val tint = if (selected) OssmPrimary else OssmOnSurfaceMuted
+                        Row(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .padding(4.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (selected) OssmPrimary.copy(0.15f) else Color.Transparent)
+                                .selectable(
+                                    selected = selected,
+                                    role = Role.Tab,
+                                    onClick = {
+                                        scope.launch {
+                                            pagerState.scrollToPage(BottomNavScreens.indexOf(screen))
+                                        }
+                                    }
+                                ),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(screen.icon, null, tint = tint, modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = stringResource(screen.navigationLabel),
+                                color = tint,
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Clip,
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
+                }
+            } else {
             NavigationBar(
-                containerColor = OssmSurface.copy(alpha = 0.95f),
+                containerColor = OssmSurface,
                 modifier = Modifier
                     .padding(horizontal = 12.dp, vertical = 8.dp)
                     .clip(RoundedCornerShape(20.dp))
@@ -284,28 +408,30 @@ fun OssmApp(
                         selected = currentRoute == screen.route,
                         onClick = {
                             scope.launch {
-                                pagerState.animateScrollToPage(BottomNavScreens.indexOf(screen))
+                                pagerState.scrollToPage(BottomNavScreens.indexOf(screen))
                             }
                         },
-                        icon = { Icon(screen.icon, screen.label) },
+                        icon = { Icon(screen.icon, null) },
                         label = {
                             Text(
-                                text = screen.label,
+                                text = stringResource(screen.navigationLabel),
                                 maxLines = 1,
                                 softWrap = false,
                                 overflow = TextOverflow.Clip,
-                                fontSize = 11.sp
+                                fontSize = 12.sp
                             )
                         },
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = OssmPrimary,
                             selectedTextColor = OssmPrimary,
-                            unselectedIconColor = OssmOnSurface.copy(0.5f),
-                            unselectedTextColor = OssmOnSurface.copy(0.5f),
+                            unselectedIconColor = OssmOnSurfaceMuted,
+                            unselectedTextColor = OssmOnSurfaceMuted,
                             indicatorColor = OssmPrimary.copy(0.15f)
                         )
                     )
                 }
+            }
+            }
             }
         }
     ) { padding ->
@@ -326,7 +452,14 @@ fun OssmApp(
                     onConnect = { address ->
                         bleVm.connect(address)
                     },
-                    onStop = bleVm::stopScan
+                    onStop = bleVm::stopScan,
+                    remoteCamera = remoteCamera,
+                    onShareMyCamera = {
+                        (remoteCamera as? RemoteCameraSection.Available)?.let { cameraShareUrl = it.cameraUrl }
+                    },
+                    // Same actions as the Internet session card in Réglages.
+                    onStartRemoteSession = remoteSessionVm::start,
+                    onRegenerateRemoteLink = remoteSessionVm::regenerate
                 )
                 }
                 Screen.Control -> {
@@ -342,15 +475,13 @@ fun OssmApp(
                     onSensationLive = controlVm::setSensationLive,
                     onProgressiveMaxCommit = controlVm::setProgressiveMaxSpeed,
                     onChaosToggle = controlVm::setChaosAtMax,
-                    onStreamPosition = controlVm::setStreamPosition,
                     onStreamDrag = controlVm::setStreamPositionDrag,
-                    onStreamTouchEnd = controlVm::stopLiveTouch,
-                    onRangeWizardStart = controlVm::startRangeWizard,
+                    onStreamTouchEnd = controlVm::endLiveTouch,
+                    onStreamTouchCancel = controlVm::stopLiveTouch,
                     onRangeWizardCapture = controlVm::captureRangePoint,
                     onRangeWizardCancel = controlVm::cancelRangeWizard,
                     onPattern = controlVm::activatePattern,
                     onStop = { controlVm.stop() },
-                    onHome = { controlVm.home() },
                     onAutoToggleSelected = controlVm::toggleAutoSelected,
                     onAutoMaxSpeedChange = controlVm::setAutoMaxSpeed,
                     onAutoIntensityCapChange = controlVm::setAutoIntensityCap,
@@ -364,20 +495,48 @@ fun OssmApp(
                     onResume = controlVm::resume,
                     onSavePreset = profilesVm::savePreset,
                     onSpeedGuardEnabledChange = controlVm::setSpeedGuardEnabled,
+                    onPrecisionEnabledChange = controlVm::setPrecisionEnabled,
                     onDepthGuardEnabledChange = controlVm::setDepthGuardEnabled,
                     onDepthLimitsChange = controlVm::setDepthLimits,
                     onConfirmPendingChange = controlVm::confirmPendingManualChange,
                     onDismissPendingChange = controlVm::dismissPendingManualChange,
                     onPatternOrderSave = controlVm::savePatternOrder,
                     onRandomToggle = controlVm::setRandomMode,
+                    onSensationRandomRangeChange = controlVm::setRandomSensationRange,
                     onDepthRandomToggle = controlVm::setDepthRandom,
-                    listeningLevel = listeningLevel,
-                    onListeningToggle = onListeningToggle,
-                    onListeningCeilingCommit = controlVm::setListeningCeiling,
-                    onListeningTargetSpeedChange = controlVm::setListeningTargetSpeed,
-                    onListeningTargetDepthChange = controlVm::setListeningTargetDepth,
+                    onRandomPresetSave = controlVm::saveRandomPreset,
+                    onRandomPresetApply = controlVm::applyRandomPreset,
+                    onRandomPresetEdit = controlVm::editRandomPreset,
                     onLiveInvertToggle = controlVm::setLiveInvert,
-                    onLiveAccelerationChange = controlVm::setLiveAcceleration
+                    onLiveAccelerationChange = controlVm::setLiveAcceleration,
+                    onLiveRecordToggle = controlVm::toggleLiveRecording,
+                    remoteSession = remoteSession,
+                    onSpeedCommitWithEpoch = controlVm::requestSpeedChangeAtEpoch,
+                    onSpeedLiveWithEpoch = controlVm::setSpeedLiveAtEpoch,
+                    onSensationCommitWithEpoch = controlVm::requestSensationChangeAtEpoch,
+                    onSensationLiveWithEpoch = controlVm::setSensationLiveAtEpoch,
+                    naturalActions = NaturalControlActions(
+                        onStart = controlVm::startNatural,
+                        onStop = controlVm::stopNatural,
+                        onEnergyChange = controlVm::setNaturalEnergy,
+                        onVarietyChange = controlVm::setNaturalVariety,
+                        onMaxSpeedChange = controlVm::setNaturalMaxSpeed,
+                        onAiEnabledChange = controlVm::setNaturalAiEnabled,
+                        onAiAddressChange = controlVm::setNaturalAiAddress,
+                        onAiLoadModel = controlVm::loadNaturalAiModel,
+                        onAiReasoningRelayChange = controlVm::setNaturalAiReasoningRelay,
+                    ),
+                    voiceActions = VoiceControlActions(
+                        onStopNow = controlVm::voiceStopNow,
+                        onMaxSpeedChange = controlVm::setVoiceMaxSpeed,
+                        onDepthRangeChange = controlVm::setVoiceDepthRange,
+                        onShortWordStopChange = controlVm::setVoiceShortWordStop,
+                        onListenChange = voiceAiVm::setListening,
+                        hasMicrophonePermission = voiceAiVm::hasMicrophonePermission,
+                        onMicrophonePermissionResult = voiceAiVm::onMicrophonePermissionResult,
+                    ),
+                    voiceAi = voiceAiState,
+                    voiceModelRoot = remember(voiceAiVm) { voiceAiVm.modelRoot() }
                 )
                 }
                 Screen.Diagnostics -> {
@@ -388,6 +547,7 @@ fun OssmApp(
                     onClear = diagnosticsVm::clearLogs
                 )
                 }
+                Screen.CameraShare -> Unit
                 Screen.Profiles -> {
                 ProfilesScreen(
                     presets = presets,
@@ -395,7 +555,7 @@ fun OssmApp(
                     updaterUrl = updaterUrl,
                     onApply = { preset ->
                         controlVm.applyPreset(preset)
-                        scope.launch { pagerState.animateScrollToPage(controlPageIndex) }
+                        scope.launch { pagerState.scrollToPage(controlPageIndex) }
                     },
                     onDelete = profilesVm::deletePreset,
                     onUpdateUrlSave = updaterVm::saveManualUrl,
@@ -404,36 +564,19 @@ fun OssmApp(
                     onUpdateInstall = { apk -> installApk(context, apk) }
                 )
                 }
-                Screen.Funscript -> {
-                FunscriptScreen(
-                    uiState = funscriptState,
-                    connectionState = connectionState,
-                    onLoad = funscriptVm::loadFunscript,
-                    onPlay = funscriptVm::play,
-                    onPause = funscriptVm::pause,
-                    onStop = funscriptVm::stop,
-                    onDepthRangeChange = funscriptVm::setDepthRange,
-                    onSpeedChange = funscriptVm::setSpeedFactor
-                )
-                }
-                Screen.VideoSync -> {
-                VideoSyncScreen(
-                    uiState = videoSyncState,
-                    connectionState = connectionState,
-                    player = videoSyncVm.getOrCreatePlayer(),
-                    onVideoUri = videoSyncVm::setVideoUri,
-                    onVideoUrl = videoSyncVm::setVideoUrl,
-                    onFunscriptUri = videoSyncVm::loadFunscriptFromUri,
-                    onFunscriptUrl = videoSyncVm::loadFunscriptFromUrl,
-                    onPlayPause = videoSyncVm::togglePlayPause,
-                    onStop = videoSyncVm::stop,
-                    onLatencyChange = videoSyncVm::setLatencyOffset,
-                    onDepthRangeChange = videoSyncVm::setDepthRange,
-                    onGenerateFunscript = videoSyncVm::generateFunscriptFromVideo
-                )
-                }
             }
         }
+    }
+
+    if (fullScreenRoute == Screen.CameraShare) {
+        cameraShareUrl?.let { url ->
+            CameraShareScreen(
+                cameraUrl = url,
+                onStopSharing = { cameraShareUrl = null },
+                onDiagnostic = diagnosticsVm::recordCamera,
+            )
+        }
+    }
     }
 
     if (showQuitDialog) {

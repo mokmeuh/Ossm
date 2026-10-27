@@ -11,39 +11,37 @@ val OssmTypography = Typography(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.Bold,
         fontSize = 28.sp,
-        letterSpacing = 1.sp,
-        color = OssmOnSurface
+        lineHeight = 34.sp
     ),
     headlineMedium = TextStyle(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.SemiBold,
-        fontSize = 22.sp,
-        color = OssmOnSurface
+        fontSize = 24.sp,
+        lineHeight = 30.sp
     ),
     titleLarge = TextStyle(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.SemiBold,
         fontSize = 18.sp,
-        letterSpacing = 0.5.sp,
-        color = OssmOnSurface
+        lineHeight = 24.sp
     ),
     bodyLarge = TextStyle(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.Normal,
         fontSize = 16.sp,
-        color = OssmOnSurface
+        lineHeight = 24.sp
     ),
     bodyMedium = TextStyle(
-        fontFamily = FontFamily.Monospace,
+        fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.Normal,
-        fontSize = 13.sp,
-        color = OssmOnSurface
+        fontSize = 14.sp,
+        lineHeight = 20.sp
     ),
     labelSmall = TextStyle(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.Medium,
-        fontSize = 11.sp,
-        letterSpacing = 0.8.sp,
-        color = OssmPrimaryLight
+        fontSize = 12.sp,
+        lineHeight = 16.sp,
+        letterSpacing = 0.2.sp
     )
 )

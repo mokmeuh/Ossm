@@ -8,6 +8,7 @@
 #include "ossm/state/settings.h"
 #include "ossm/state/state.h"
 #include "services/communication/mqtt.h"
+#include "services/communication/ble_remote_control.h"
 #include "services/communication/queue.h"
 #include "services/encoder.h"
 #include "services/stepper.h"
@@ -126,6 +127,8 @@ String OSSM::getStateFingerprint() {
     output += String((int)settings.sensation) + ":";
     output += String((int)settings.depth) + ":";
     output += String(static_cast<int>(settings.pattern)) + ":";
+    output += String(calibration.isHomed ? 1 : 0) + ":";
+    output += String(bleRemoteControlLease.active() ? 1 : 0) + ":";
     output += sessionId;
     return output;
 }
@@ -177,5 +180,11 @@ String OSSM::getCurrentState() {
            ",\"buffer\":" + String((int)settings.buffer) +
            ",\"pattern\":" + String(static_cast<int>(settings.pattern)) +
            ",\"position\":" + String(positionMm, 2) +
-           ",\"sessionId\":\"" + sessionId + "\"}";
+           ",\"remoteControlSafe\":true"
+           ",\"watchdogMs\":" +
+           String(ble_remote_control::kWatchdogMs) +
+           ",\"homed\":" + String(calibration.isHomed ? "true" : "false") +
+           ",\"transport\":\"" +
+           String(bleRemoteControlLease.active() ? "ble-lease" : "ble-local") +
+           "\",\"sessionId\":\"" + sessionId + "\"}";
 }

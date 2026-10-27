@@ -1,50 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="warning_title">⚠ Avertissement</string>
-    <string name="warning_body">Cette application contrôle un appareil OSSM/OFFM via Bluetooth Low Energy.\n\nL\'API Bluetooth OSSM est expérimentale. Des comportements inattendus peuvent se produire.\n\nAssurez-vous que le bouton STOP physique est accessible à tout moment.\n\nUtilisez en toute sécurité et de manière responsable.</string>
-    <string name="warning_accept">J\'ai compris, continuer</string>
-    <string name="stop">STOP</string>
-    <string name="scan">Scanner</string>
-    <string name="connect">Connecter</string>
-    <string name="disconnect">Déconnecter</string>
-    <string name="control">Contrôle</string>
-    <string name="diagnostics">Diagnostics</string>
-    <string name="profiles">Profils</string>
-    <string name="funscript">Funscript</string>
+    <string name="nav_scan">Connexion</string>
+    <string name="nav_control">Contrôle</string>
+    <string name="nav_profiles">Réglages</string>
+    <string name="nav_diagnostics">Diagnostic</string>
+    <string name="diag_copy">Copier le journal</string>
 
-    <!-- Ecran Funscript -->
-    <string name="funscript_title">FUNSCRIPT</string>
-    <string name="funscript_file_label">Fichier Funscript</string>
-    <string name="funscript_no_file">Aucun fichier chargé</string>
-    <string name="funscript_open">Ouvrir</string>
-    <string name="funscript_actions_count">%1$d actions</string>
-    <string name="funscript_action">Action</string>
-    <string name="funscript_depth_range">Plage de profondeur</string>
-    <string name="funscript_depth_range_value">%1$d%% – %2$d%%</string>
-    <string name="funscript_speed">Vitesse de lecture</string>
-    <string name="funscript_speed_value">%1$s×</string>
-    <string name="funscript_play">Lecture</string>
-    <string name="funscript_pause">Pause</string>
-    <string name="funscript_not_connected">Connectez-vous à un OSSM pour lancer la lecture</string>
-    <string name="funscript_paused">⏸ En pause — appuyez sur ▶ pour reprendre</string>
-    <string name="funscript_preparing">Préparation (homing en cours)…</string>
-    <string name="funscript_streaming">▶ Streaming en cours…</string>
-
-    <!-- Ecran Video (sync funscript) -->
-    <string name="videosync_title">VIDEO SYNC</string>
-    <string name="videosync_video_source">Source vidéo</string>
-    <string name="videosync_no_video">Aucune vidéo chargée</string>
-    <string name="videosync_pick_video">Choisir une vidéo</string>
-    <string name="videosync_script_source">Funscript</string>
-    <string name="videosync_no_script">Aucun funscript chargé</string>
-    <string name="videosync_pick_script">Choisir un funscript</string>
-    <string name="videosync_url_hint">Coller une URL</string>
-    <string name="videosync_latency">Décalage de latence</string>
-    <string name="videosync_latency_hint">Positif = le mouvement part en avance sur la vidéo (compense la latence BLE).</string>
-    <string name="videosync_generate">Générer funscript (local)</string>
-    <string name="videosync_generate_hint">Analyse le mouvement de la vidéo sur l\'appareil pour créer un script. Expérimental et approximatif.</string>
-    <string name="videosync_analyzing">Analyse du mouvement… %1$d %%</string>
-    <string name="ctl_connect_prompt">Connectez-vous à un OSSM pour activer les commandes</string>
     <string name="ctl_patterns">PATTERNS  ▾</string>
     <string name="ctl_patterns_hint">Choisis un mode; cette fenetre se referme apres la selection.</string>
     <string name="ctl_patterns_collapse">Fermer</string>
@@ -56,27 +17,20 @@
     <string name="live_range_narrowed">Live précis · %1$d–%2$d</string>
     <string name="live_state_description">%1$s, position %2$d pour cent</string>
     <string name="ctl_live_preparing">Préparation du mode Live — la machine confirme la pleine course…</string>
-    <string name="ctl_live_knob_hint">→ Baisse le bouton de vitesse physique à 0 pour entrer dans le mode.</string>
     <string name="ctl_rec_idle">Enregistrer un mouvement</string>
     <string name="ctl_rec_armed">Pret</string>
     <string name="ctl_rec_recording">REC</string>
+    <string name="ctl_rec_recorded">Rejouer le mouvement</string>
     <string name="ctl_rec_playing">Arreter la boucle</string>
     <string name="ctl_depth">PROFONDEUR</string>
     <string name="ctl_speed">Vitesse</string>
-    <string name="ctl_speed_listening">VITESSE (micro)</string>
-    <string name="ctl_sensation_aller">Aller</string>
-    <string name="ctl_sensation_retour">Retour</string>
-    <string name="ctl_sensation_aller_ramp">Aller (vitesse de montée)</string>
-    <string name="ctl_sensation_retour_ramp">Retour (vitesse de retour)</string>
-    <string name="ctl_sensation_decrease">Diminuer la sensation</string>
-    <string name="ctl_sensation_increase">Augmenter la sensation</string>
     <string name="ctl_sensation">Sensation</string>
     <string name="precision_range_global">Plage 0–100</string>
     <string name="precision_range_level">Précision ±%1$d · %2$d–%3$d</string>
     <string name="precision_state_description">%1$s, valeur %2$d pour cent</string>
     <string name="ctl_control_settings">Réglages du contrôle</string>
     <string name="ctl_precision_option">Précision</string>
-    <string name="ctl_precision_option_hint">Rétrécit progressivement la plage après une immobilité du doigt. Ce choix est indépendant pour chaque pattern.</string>
+    <string name="ctl_precision_option_hint">Désactivé par défaut. Rétrécit progressivement la plage après une immobilité du doigt. Votre choix est sauvegardé séparément pour chaque motif.</string>
     <string name="ctl_reorder_title">Réorganiser les patterns</string>
     <string name="ctl_reorder_hint">Appui long puis glisse pour déplacer.</string>
     <string name="ctl_save">Enregistrer</string>
@@ -85,19 +39,18 @@
     <string name="ctl_stop_mix">Arreter</string>
 
     <!-- Mode aléatoire (Teasing & Pounding) -->
-    <string name="ctl_random_title">MODE ALÉATOIRE</string>
-    <string name="ctl_random_hint">Chaque case fait varier ce réglage au hasard, sans dépasser ta valeur réglée.</string>
     <string name="ctl_random_speed">Vitesse aléatoire</string>
+    <string name="ctl_random_sensation">Sensation aléatoire</string>
     <string name="ctl_random_depth">Profondeur aléatoire</string>
-    <string name="ctl_random_depth_min">Profondeur — retrait aléatoire</string>
-    <string name="ctl_random_depth_max">Profondeur — fond aléatoire</string>
-    <string name="ctl_listening_title">Mode à l\'écoute (micro)</string>
-    <string name="ctl_listening_hint">Le micro fait monter l\'intensité quand tu réagis. Traité sur l\'appareil, jamais enregistré.</string>
-    <string name="ctl_live_max_accel">Accélération max</string>
+    <string name="ctl_random_preset_title">Modifier %1$s %2$d</string>
+    <string name="ctl_random_preset_hint">Définis la plage exacte de ce preset. Un clic sauvegarde les valeurs affichées; un double-clic les applique.</string>
+    <string name="ctl_random_preset_min">Minimum (%)</string>
+    <string name="ctl_random_preset_max">Maximum (%)</string>
+    <string name="ctl_random_save_speed">Enregistrer aussi la vitesse actuelle (%1$d%%)</string>
     <string name="ctl_live_acceleration_value">Accélération Live : %1$d%%</string>
     <string name="ctl_live_acceleration_hint">Limite la rapidité avec laquelle le moteur atteint sa vitesse en Live. Une valeur basse adoucit les changements; une valeur haute les rend plus directs.</string>
     <string name="ctl_live_invert">Inverser le sens du Live</string>
-    <string name="ctl_live_invert_hint">Si le chariot part dans le mauvais sens ou cogne au repos, bascule ceci.</string>
+    <string name="ctl_live_invert_hint">Inverse la correspondance entre le curseur et le chariot. Le sens choisi est sauvegardé.</string>
     <string name="ctl_close_settings">Fermer les réglages</string>
     <string name="ctl_hold_for_info">Maintenir pour afficher l’explication</string>
     <string name="ctl_understood">Compris</string>
@@ -118,7 +71,6 @@
     <string name="scan_found_count">%1$d appareil(s) trouvé(s)</string>
     <string name="scan_connected">Connecté</string>
     <string name="scan_connecting">Connexion en cours…</string>
-    <string name="scan_empty_hint">Appuyez sur « Scanner » pour rechercher\ndes appareils OSSM à proximité</string>
 
     <!-- Ecran Profils -->
     <string name="prof_title">PROFILS</string>
@@ -142,10 +94,71 @@
     <string name="update_download">Télécharger</string>
     <string name="update_downloading">Téléchargement et vérification…</string>
     <string name="update_install">Installer la mise à jour</string>
+    <string name="update_local_ota_title">MISE À JOUR LOCALE OTA</string>
+    <string name="update_local_ota_receive">Prêt à recevoir</string>
+    <string name="update_local_ota_stop">Arrêter l’écoute</string>
+    <string name="update_local_ota_send">Partager ma version</string>
+    <string name="update_local_ota_hint">Le téléphone qui reçoit affiche un QR code : sur l’autre téléphone, « Scanner le QR ». Sans caméra : « Envoyer à une adresse ». Même Wi-Fi : « Partager ma version ». Les deux téléphones affichent le même nombre à 2 chiffres, à confirmer sur celui qui reçoit. Android demande toujours de confirmer l’installation.</string>
+    <string name="update_local_ota_addresses">Adresses de ce téléphone</string>
+    <string name="update_local_ota_no_address">Aucune adresse Wi-Fi ou Tailscale détectée.</string>
+    <string name="update_local_ota_kind_wifi">Wi-Fi</string>
+    <string name="update_local_ota_kind_tailscale">Tailscale</string>
+    <string name="update_local_ota_manual">Envoyer à une adresse</string>
+    <string name="update_local_ota_address_label">Adresse (IP ou IP:port)</string>
+    <string name="update_local_ota_manual_send">Se connecter et envoyer</string>
+    <string name="update_local_ota_unknown_version">version inconnue</string>
+    <string name="update_local_ota_cancel">Annuler</string>
+    <string name="ota_msg_receiver_ready">Prêt à recevoir. Sur l’autre téléphone : « Scanner le QR », « Envoyer à une adresse » ou « Partager ma version ».</string>
+    <string name="ota_msg_receiver_unavailable">Récepteur OTA indisponible.</string>
+    <string name="ota_msg_receiver_stopped">Récepteur OTA arrêté.</string>
+    <string name="ota_msg_publish_refused">Publication automatique refusée (%1$d). Le QR code et l’envoi par adresse restent possibles.</string>
+    <string name="ota_msg_searching">Recherche d’un téléphone prêt à recevoir…</string>
+    <string name="ota_msg_discovery_unavailable">Découverte automatique indisponible (%1$d). Utilisez « Envoyer à une adresse ».</string>
+    <string name="ota_msg_none_found">Aucun téléphone trouvé automatiquement en 15 s (réseaux différents ou mDNS bloqué). Utilisez « Scanner le QR » ou « Envoyer à une adresse ».</string>
+    <string name="ota_msg_peer_up_to_date">L’autre téléphone a déjà cette version (%1$s) ou plus récente.</string>
+    <string name="ota_msg_peer_already_current">L’autre téléphone est déjà à jour.</string>
+    <string name="ota_msg_wrong_package">Cet appareil n’utilise pas la même application OSSM.</string>
+    <string name="ota_msg_checking">Connexion à %1$s…</string>
+    <string name="ota_msg_sending">Envoi de la version %1$s…</string>
+    <string name="ota_msg_sent">Version envoyée. Confirmez l’installation sur l’autre téléphone.</string>
+    <string name="ota_msg_refused_http">Le récepteur a refusé la version (%1$d).</string>
+    <string name="ota_msg_unreachable">Téléphone injoignable à %1$s. Vérifiez l’adresse, le réseau (Wi-Fi ou Tailscale) et que la réception est active.</string>
+    <string name="ota_msg_invalid_address">Adresse invalide. Exemple : 10.0.0.232:47474</string>
+    <string name="ota_msg_peer_legacy">L’autre téléphone a une version trop ancienne pour l’envoi par adresse : mettez-le à jour une fois par ADB ou par le partage d’APK.</string>
+    <string name="ota_msg_cancelled">Envoi annulé.</string>
+    <string name="ota_msg_received">APK reçue. Confirmez maintenant la mise à jour Android.</string>
+    <string name="ota_msg_not_apk">Le fichier reçu n’est pas une APK valide.</string>
+    <string name="ota_msg_wrong_package_apk">Cette APK ne correspond pas à OSSM.</string>
+    <string name="ota_msg_up_to_date">Déjà à jour : la version reçue n’est pas plus récente que celle installée.</string>
+    <string name="ota_msg_wrong_signer">La signature de l’APK ne correspond pas à cette installation.</string>
+    <string name="update_local_ota_scan">Scanner le QR</string>
+    <string name="update_local_ota_scan_prompt">Visez le QR code affiché par le téléphone qui reçoit</string>
+    <string name="update_local_ota_qr_desc">QR code de jumelage pour la mise à jour. Adresses : %1$s</string>
+    <string name="update_local_ota_qr_hint">Scannez ce QR avec l’autre téléphone (« Scanner le QR »), ou tapez une des adresses.</string>
+    <string name="update_local_ota_pairing_title">Nombre de vérification</string>
+    <string name="update_local_ota_pairing_body">Envoi de %1$s vers %2$s (actuellement %3$s). Vérifiez que l’autre téléphone affiche le même nombre et touchez Oui dessus.</string>
+    <string name="update_local_ota_waiting">En attente de confirmation sur l’autre téléphone…</string>
+    <string name="update_local_ota_number_desc">Nombre de vérification : %1$s</string>
+    <string name="update_local_ota_incoming_title">Demande de mise à jour</string>
+    <string name="update_local_ota_incoming_body">%1$s veut envoyer la version %2$s. Le nombre %3$s est-il bien celui affiché sur l’autre téléphone ?</string>
+    <string name="update_local_ota_yes">Oui</string>
+    <string name="update_local_ota_no">Non</string>
+    <string name="ota_msg_invalid_qr">Ce QR code n’est pas un QR OSSM de mise à jour.</string>
+    <string name="ota_msg_key_mismatch">La clé de l’autre téléphone ne correspond pas au QR code : envoi bloqué (interception possible). Rescannez le QR.</string>
+    <string name="ota_msg_busy">L’autre téléphone traite déjà une demande. Réessayez dans une minute.</string>
+    <string name="ota_msg_waiting_confirmation">En attente de confirmation sur l’autre téléphone…</string>
+    <string name="ota_msg_declined">Refusé sur l’autre téléphone.</string>
+    <string name="ota_msg_confirm_timeout">Pas de réponse sur l’autre téléphone en 60 s. Envoi annulé.</string>
+    <string name="ota_msg_confirm_failed">Connexion interrompue pendant la confirmation.</string>
+    <string name="ota_msg_mac_rejected">Le récepteur a refusé le fichier (contrôle d’intégrité).</string>
+    <string name="ota_msg_session_rejected">Le récepteur a refusé l’envoi (demande expirée ou non confirmée).</string>
+    <string name="ota_msg_receiving">Confirmé. Réception de la mise à jour…</string>
+    <string name="ota_msg_incoming_declined">Demande refusée.</string>
+    <string name="ota_msg_incoming_timeout">Demande expirée (60 s sans réponse).</string>
+    <string name="ota_msg_incoming_cancelled">Demande annulée par l’autre téléphone.</string>
+    <string name="ota_msg_integrity_failed">Fichier refusé : contrôle d’intégrité incorrect.</string>
+    <string name="update_ota_title">MISE À JOUR OTA INTERNET</string>
     <string name="update_error">Impossible de vérifier ou télécharger la mise à jour.</string>
-    <string name="update_periodic_check">Vérification périodique (12 h)</string>
-    <string name="update_notification_channel">Mises à jour disponibles</string>
-    <string name="update_notification_title">Mise à jour disponible</string>
 
     <!-- Ecran Diagnostics -->
     <string name="diag_title">DIAGNOSTICS</string>
@@ -157,7 +170,6 @@
 
     <!-- Overlay flottant -->
     <string name="overlay_title">OVERLAY</string>
-    <string name="overlay_enable">Afficher l\'overlay</string>
     <string name="overlay_hint">Bulle flottante pour piloter la machine même en arrière-plan.</string>
     <string name="overlay_permission_hint">Autorisez l\'affichage par-dessus les autres applications dans les réglages système.</string>
     <string name="overlay_transparency">Transparence</string>
@@ -203,29 +215,110 @@
     <string name="stat_continue">Continuer</string>
     <string name="stat_delete_permanently">Supprimer définitivement</string>
 
-    <!-- Mode adaptatif -->
-    <string name="adapt_title">MODE ADAPTATIF</string>
-    <string name="adapt_locked">Verrouillé</string>
-    <string name="adapt_unlocked">Déverrouillé</string>
-    <string name="adapt_locked_hint">Le déblocage se fait en apprenant tes préférences.</string>
-    <string name="adapt_unlocked_hint">Le moteur utilise maintenant ton pattern préféré.</string>
-    <string name="adapt_progression">PROGRESSION</string>
-    <string name="adapt_confidence">CONFIANCE</string>
-    <string name="adapt_sessions">Sessions</string>
-    <string name="adapt_total_active">Temps actif</string>
-    <string name="adapt_distinct_days">Jours distincts</string>
-    <string name="adapt_manual_adjustments">Ajustements manuels</string>
-    <string name="adapt_top_pattern">Pattern préféré</string>
-    <string name="adapt_settings_title">RÉGLAGES ADAPTATIFS</string>
-    <string name="adapt_enabled">Activer le mode adaptatif</string>
-    <string name="adapt_enabled_hint">Le mode choisit lui-même le pattern selon tes préférences apprises.</string>
-    <string name="adapt_pace">RYTHME</string>
-    <string name="adapt_pace_calm">Calme</string>
-    <string name="adapt_pace_moderate">Modéré</string>
-    <string name="adapt_pace_dynamic">Dynamique</string>
-    <string name="adapt_diversity">Diversité</string>
-    <string name="adapt_diversity_hint">Plus c\'est élevé, plus le mode explore de patterns différents.</string>
-    <string name="adapt_start">Démarrer</string>
-    <string name="adapt_stop">Arrêter</string>
-    <string name="adapt_running_hint">Le mix adaptatif est en marche.</string>
+    <!-- USB -->
+    <string name="ctl_usb_active">USB-C actif · Bluetooth OSSM désactivé</string>
+
+    <!-- Session Internet -->
+    <string name="remote_share">Partager le lien</string>
+    <string name="remote_session_title">SESSION INTERNET PRIVÉE</string>
+    <string name="remote_session_hint">Le téléphone pilote l’OSSM en Bluetooth ; le site distant envoie seulement ses demandes par Internet. Le lien privé reste le même jusqu’à sa régénération. Le mouvement exige une machine connectée et calibrée, et un maximum de vitesse supérieur à 0 %.</string>
+    <string name="remote_session_link">Lien privé de session</string>
+    <string name="remote_session_start">Démarrer la session</string>
+    <string name="remote_stop_session">Arrêter la session</string>
+    <string name="remote_session_regenerate">Régénérer et révoquer le lien</string>
+    <string name="remote_session_regenerate_hint">Cette action invalide le lien actuel avant d’en créer un nouveau.</string>
+    <string name="remote_session_notification_channel">Session distante OSSM</string>
+    <string name="remote_session_notification_title">Session distante OSSM active</string>
+    <string name="remote_session_notification_text">Le site distant agit seulement dans vos maximums.</string>
+    <string name="live_slider_description">Position Live du chariot</string>
+    <string name="live_radial_legend">Zéro en bas · montez = plus profond</string>
+    <string name="live_radial_increase">Avancer de 10 pour cent puis retour lent</string>
+    <string name="live_radial_decrease">Reculer de 10 pour cent puis retour lent</string>
+    <string name="live_anchor_below">reste à %1$d</string>
+    <string name="control_slider_decrease">Diminuer %1$s</string>
+    <string name="control_slider_increase">Augmenter %1$s</string>
+    <string name="ctl_random_preset_active">Preset actif</string>
+    <string name="ctl_random_preset_inactive">Preset</string>
+    <!-- Voix (2.3.26, base) -->
+    <string name="voice_max_speed">Vitesse max (voix)</string>
+    <string name="voice_plan_title">SÉQUENCE PLANIFIÉE</string>
+    <string name="voice_plan_empty">Aucune séquence.</string>
+    <string name="voice_state_planned">Consigne comprise</string>
+    <string name="voice_state_rejected">Séquence refusée (hors bornes) — rien ne bouge</string>
+    <string name="voice_state_not_understood">Non compris — rien ne bouge</string>
+    <string name="voice_state_stopped">STOP</string>
+    <string name="voice_state_not_ready">Live pas prêt ou vitesse max à 0 — rien ne bouge</string>
+    <string name="voice_step_deep">Fond %1$d %% en %2$s s</string>
+    <string name="voice_step_home">Retour %1$d %% en %2$s s</string>
+    <string name="voice_step_position">Position %1$d %% en %2$s s</string>
+    <string name="voice_step_stay">Reste à %1$d %%</string>
+    <string name="voice_step_hold">maintien %1$s s</string>
+    <string name="voice_ai_idle">IA vocale : non chargée</string>
+    <string name="voice_ai_loading">Chargement de l\'IA vocale…</string>
+    <string name="voice_ai_ready">IA vocale : prête (sur le téléphone, %1$s)</string>
+    <string name="voice_ai_missing">IA vocale : modèle manquant</string>
+    <string name="voice_ai_unreadable">IA vocale : modèle illisible (droits du fichier)</string>
+    <string name="voice_ai_expected_path">Chemin attendu : %1$s</string>
+    <string name="voice_ai_error">IA vocale : erreur — %1$s</string>
+    <string name="voice_asr_whisper">Transcription : Whisper small (français)</string>
+    <string name="voice_asr_parakeet">Transcription : Parakeet (langue non forcée)</string>
+    <string name="voice_listen">Écouter</string>
+    <string name="voice_listen_pause">Pause micro</string>
+    <string name="voice_listening">Micro ouvert — parlez (rien n\'est enregistré)</string>
+    <string name="voice_mic_denied">Micro refusé : autorisez le micro pour OSSM dans les réglages Android.</string>
+    <string name="voice_last_transcript">Entendu : « %1$s »</string>
+    <string name="voice_latency">Latences : parole → texte %1$s ms · texte → étapes %2$s ms</string>
+    <!-- 2.3.28 -->
+    <string name="voice_info_cd">Informations sur le mode Voix</string>
+    <string name="voice_info_title">Mode Voix</string>
+    <string name="voice_info_body" formatted="false">IA vocale entièrement sur le téléphone (aucun réseau, rien n\'est enregistré). Dites une consigne (« va au fond lentement », « commence lentement », « plus vite », « garde ce rythme »). Dites « stop » pour tout arrêter. Rien ne bouge tant qu\'aucune consigne n\'est comprise. 0 % = minimum, 100 % = maximum de la plage Profondeur.</string>
+    <string name="voice_info_close">Fermer</string>
+    <string name="voice_motif_line">Va-et-vient : profondeur %1$d → %2$d %%, vitesse %3$d → %4$d %% en %5$d s, puis continu</string>
+    <string name="voice_motif_running">Rythme continu en cours (STOP ou nouvelle consigne pour changer)</string>
+    <string name="control_stop_bar_cd">STOP, arrêt immédiat</string>
+    <!-- 2.3.29 -->
+    <string name="voice_short_word_stop_on">STOP rapide par mot court : activé</string>
+    <string name="voice_short_word_stop_off">STOP rapide par mot court : désactivé</string>
+    <string name="voice_interpret_source">Interprétation : %1$s · %2$s ms</string>
+    <string name="voice_source_rules">règles</string>
+    <string name="voice_source_gemma">Gemma</string>
+    <string name="voice_transcript_ignored">Transcription ignorée : %1$s (aucun mouvement)</string>
+    <string name="voice_ignored_empty">texte vide</string>
+    <string name="voice_ignored_punctuation">ponctuation seule</string>
+    <string name="voice_ignored_hallucination">hallucination probable</string>
+    <string name="voice_ignored_repetition">mot répété en boucle</string>
+    <string name="voice_ignored_too_long">texte trop long</string>
+    <string name="voice_ignored_low_energy">voix trop faible</string>
+    <string name="ctl_rotation_lock">Bloquer la rotation de l\'écran</string>
+    <string name="ctl_rotation_unlock">Débloquer la rotation de l\'écran</string>
+    <!-- Machine firmware, written over USB -->
+    <string name="fw_title">FIRMWARE DE LA MACHINE</string>
+    <string name="fw_hint">Branche l\'OSSM au téléphone avec un câble USB (OTG), puis lance le flash. La machine sera arrêtée puis redémarrée.</string>
+    <string name="fw_flash_bundled">Flasher le firmware inclus</string>
+    <string name="fw_flash_file">Choisir un fichier .bin</string>
+    <string name="fw_confirm_title">Flasher le firmware ?</string>
+    <string name="fw_confirm_body">%1$s (%2$d Ko)\nLa machine sera arrêtée puis redémarrée. Ne débranche pas le câble pendant l\'opération.</string>
+    <string name="fw_confirm_ok">Flasher</string>
+    <string name="fw_cancel">Annuler</string>
+    <string name="fw_ok">OK</string>
+    <string name="fw_logs_title">Journal du flash</string>
+    <string name="fw_logs_copy">Copier le journal</string>
+    <string name="fw_state_preparing">Connexion à la machine…</string>
+    <string name="fw_state_erasing">Effacement de la mémoire de la machine… (jusqu\'à 30 s)</string>
+    <string name="fw_state_writing">Écriture : %1$d %%</string>
+    <string name="fw_state_complete">Firmware installé. La machine redémarre.</string>
+    <string name="fw_err_no_cable">Aucun OSSM détecté en USB. Vérifie le câble OTG.</string>
+    <string name="fw_err_permission">Accès USB refusé.</string>
+    <string name="fw_err_open">Impossible d\'ouvrir la liaison USB.</string>
+    <string name="fw_err_no_bootloader">La machine ne passe pas en mode flash. Maintiens le bouton BOOT, appuie sur EN/RESET, puis relance.</string>
+    <string name="fw_err_invalid">Fichier firmware invalide (image ESP32 attendue).</string>
+    <string name="fw_err_rejected">La machine a refusé l\'opération. Relance le flash.</string>
+    <string name="fw_err_write">Échec d\'écriture au bloc %1$d. Relance le flash.</string>
+    <string name="fw_err_generic">Échec du flash USB. Relance l\'opération.</string>
+    <string name="ctl_limit_upper_add">Ajouter une limite haute</string>
+    <string name="ctl_limit_upper_moving">Limite haute : déplacez la ligne, puis touchez pour la verrouiller</string>
+    <string name="ctl_limit_upper_locked">Limite haute verrouillée : touchez pour la retirer</string>
+    <string name="ctl_limit_lower_add">Ajouter une limite basse</string>
+    <string name="ctl_limit_lower_moving">Limite basse : déplacez la ligne, puis touchez pour la verrouiller</string>
+    <string name="ctl_limit_lower_locked">Limite basse verrouillée : touchez pour la retirer</string>
 </resources>

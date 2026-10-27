@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -30,11 +31,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.semantics.stateDescription
@@ -45,19 +46,22 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ossm.remote.R
 import com.ossm.remote.ui.theme.OssmAccent
-import com.ossm.remote.ui.theme.OssmGlass
+import com.ossm.remote.ui.theme.OssmSurfaceRaised
 import com.ossm.remote.ui.theme.OssmOnSurface
+import com.ossm.remote.ui.theme.OssmOnSurfaceMuted
+import com.ossm.remote.ui.theme.OssmOutline
 import com.ossm.remote.ui.theme.OssmPrimary
 import com.ossm.remote.ui.theme.OssmPrimaryLight
-import android.os.SystemClock
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import kotlin.math.roundToInt
 
 internal fun liveControlMinimumHeight(compact: Boolean): Dp = if (compact) 180.dp else 420.dp
 
 internal fun liveControlMinimumWidth(compact: Boolean): Dp = 280.dp
 
-internal fun liveSliderTrackThickness(compact: Boolean): Dp = if (compact) 52.dp else 72.dp
+internal fun liveSliderTrackThickness(compact: Boolean): Dp = if (compact) 20.dp else 28.dp
 
 internal fun liveSliderThumbRadius(compact: Boolean): Dp = if (compact) 28.dp else 36.dp
 
@@ -76,13 +80,31 @@ fun StreamPositionSlider(
     onTouchEnd: () -> Unit,
     modifier: Modifier = Modifier,
     compact: Boolean = false,
-    fillAvailable: Boolean = true
+    fillAvailable: Boolean = true,
+    onTouchCancel: () -> Unit = onTouchEnd,
+    gestureCancellationKey: Long = 0L,
 ) {
     var draft by remember { mutableFloatStateOf(positionPercent.toFloat()) }
+    var gestureActive by remember { mutableStateOf(false) }
     val precisionEnabled = LocalControlPrecisionEnabled.current
 
     LaunchedEffect(positionPercent) {
-        draft = positionPercent.toFloat()
+        // A stale Store/BLE snapshot must never overwrite the scalar owned by an active drag.
+        if (!gestureActive) draft = positionPercent.toFloat()
+    }
+
+    val latestGestureActive = rememberUpdatedState(gestureActive)
+    val latestTouchCancel = rememberUpdatedState(onTouchCancel)
+    DisposableEffect(Unit) {
+        onDispose {
+            if (latestGestureActive.value) latestTouchCancel.value()
+        }
+    }
+    LaunchedEffect(enabled) {
+        if (!enabled && latestGestureActive.value) latestTouchCancel.value()
+    }
+    LaunchedEffect(gestureCancellationKey) {
+        gestureActive = false
     }
 
     Column(
@@ -104,13 +126,13 @@ fun StreamPositionSlider(
                     listOf(
                         OssmPrimary.copy(alpha = if (enabled) 0.16f else 0.06f),
                         OssmAccent.copy(alpha = if (enabled) 0.10f else 0.04f),
-                        OssmGlass.copy(alpha = 0.36f)
+                        OssmSurfaceRaised
                     )
                 )
             )
             .border(
                 1.dp,
-                OssmPrimaryLight.copy(alpha = if (enabled) 0.5f else 0.15f),
+                if (enabled) OssmOutline else OssmOutline.copy(alpha = 0.4f),
                 RoundedCornerShape(20.dp)
             )
             .padding(horizontal = if (compact) 12.dp else 16.dp, vertical = if (compact) 8.dp else 14.dp),
@@ -142,9 +164,19 @@ fun StreamPositionSlider(
             activeColor = OssmAccent,
             onValueChange = {
                 draft = it.coerceIn(0f, 100f)
+                gestureActive = true
                 onPositionDrag(draft.roundToInt())
             },
-            onTouchEnd = onTouchEnd,
+            onTouchStart = { gestureActive = true },
+            onTouchEnd = {
+                gestureActive = false
+                onTouchEnd()
+            },
+            onTouchCancel = {
+                gestureActive = false
+                onTouchCancel()
+            },
+            gestureCancellationKey = gestureCancellationKey,
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth(),
@@ -155,7 +187,7 @@ fun StreamPositionSlider(
 
         Text(
             stringResource(liveEndpointLabels().bottom),
-            color = OssmOnSurface.copy(alpha = 0.72f),
+            color = OssmOnSurfaceMuted,
             fontSize = 12.sp,
             fontWeight = FontWeight.Bold
         )
@@ -168,21 +200,31 @@ private fun LivePositionTrack(
     enabled: Boolean,
     activeColor: androidx.compose.ui.graphics.Color,
     onValueChange: (Float) -> Unit,
+    onTouchStart: () -> Unit,
     onTouchEnd: () -> Unit,
+    onTouchCancel: () -> Unit,
+    gestureCancellationKey: Long,
     modifier: Modifier = Modifier,
     precisionEnabled: Boolean,
     trackThickness: Dp,
     thumbRadius: Dp
 ) {
-    val haptics = LocalHapticFeedback.current
+    val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
     val gestureState = remember(precisionEnabled) {
-        LiveSliderState(precisionEnabled = precisionEnabled)
+        LiveSliderState(
+            stationaryThresholdPx = LIVE_STATIONARY_THRESHOLD_PX,
+            precisionEnabled = precisionEnabled
+        )
     }
     val onChange = rememberUpdatedState(onValueChange)
+    val onStart = rememberUpdatedState(onTouchStart)
     val onEnd = rememberUpdatedState(onTouchEnd)
+    val onCancel = rememberUpdatedState(onTouchCancel)
     var draftPercent by remember { mutableFloatStateOf(valuePercent.coerceIn(0f, 100f)) }
     var dragging by remember { mutableStateOf(false) }
     var visibleRange by remember { mutableStateOf(0f..100f) }
+    val latestDraftPercent = rememberUpdatedState(draftPercent)
+    val latestVisibleRange = rememberUpdatedState(visibleRange)
 
     LaunchedEffect(valuePercent, dragging) {
         if (!dragging) draftPercent = valuePercent.coerceIn(0f, 100f)
@@ -192,10 +234,10 @@ private fun LivePositionTrack(
     }
     LaunchedEffect(dragging, precisionEnabled) {
         while (dragging && precisionEnabled) {
-            delay(25)
-            if (gestureState.advanceTime(SystemClock.uptimeMillis())) {
+            kotlinx.coroutines.delay(25)
+            if (gestureState.advanceTime(android.os.SystemClock.uptimeMillis())) {
                 visibleRange = gestureState.visibleRange
-                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
             }
         }
     }
@@ -214,8 +256,7 @@ private fun LivePositionTrack(
         rangeLabel,
         draftPercent.roundToInt()
     )
-    val span = visibleRange.endInclusive - visibleRange.start
-    val displayedFraction = ((draftPercent - visibleRange.start) / span).coerceIn(0f, 1f)
+    val sliderLabel = stringResource(R.string.live_slider_description)
 
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Canvas(
@@ -223,48 +264,58 @@ private fun LivePositionTrack(
                 .fillMaxWidth()
                 .weight(1f)
                 .semantics {
+                    contentDescription = sliderLabel
                     stateDescription = stateLabel
                     progressBarRangeInfo = ProgressBarRangeInfo(draftPercent, 0f..100f)
+                    if (!enabled) disabled()
                     if (enabled) {
                         setProgress { target ->
-                            val next = target.coerceIn(0f, 100f)
-                            draftPercent = next
-                            onChange.value(next)
+                            // Live has no STOP rail: an accessibility step is position then STOP,
+                            // exactly like a touch release.
+                            draftPercent = commitLiveAccessibilityPosition(
+                                target = target,
+                                onPosition = onChange.value,
+                                onTouchEnd = onEnd.value
+                            )
                             true
                         }
                     }
                 }
-                .pointerInput(enabled, precisionEnabled) {
+                .pointerInput(enabled, precisionEnabled, gestureCancellationKey) {
                     if (!enabled) return@pointerInput
+                    val pointerInputJob = currentCoroutineContext()[Job]
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
                         val trackInsetPx = thumbRadius.toPx() + 6.dp.toPx()
-                        val thumbY = liveThumbCenterY(
-                            valuePercent = displayedFraction * 100f,
-                            trackHeightPx = size.height.toFloat(),
+                        val geometry = liveTrackGeometry(
+                            valuePercent = latestDraftPercent.value,
+                            visibleRange = latestVisibleRange.value,
+                            canvasHeightPx = size.height.toFloat(),
                             trackInsetPx = trackInsetPx
                         )
                         if (!isLiveThumbHit(
                                 pointerY = down.position.y,
-                                thumbY = thumbY,
+                                thumbY = geometry.thumbY,
                                 hitRadiusPx = thumbRadius.toPx() + 12.dp.toPx()
                             )
                         ) return@awaitEachGesture
                         down.consume()
                         draftPercent = gestureState.onDown(
-                            valuePercent = draftPercent,
+                            valuePercent = latestDraftPercent.value,
                             pointerY = down.position.y,
-                            trackHeightPx = (size.height - 2f * trackInsetPx).coerceAtLeast(1f),
+                            trackHeightPx = geometry.height,
                             uptimeMillis = down.uptimeMillis
                         )
                         dragging = true
-                        visibleRange = gestureState.visibleRange
+                        onStart.value()
+                        var released = false
                         try {
                             while (true) {
                                 val event = awaitPointerEvent()
                                 val change = event.changes.firstOrNull { it.id == down.id } ?: break
                                 if (!change.pressed) {
                                     change.consume()
+                                    released = true
                                     break
                                 }
                                 gestureState.onMove(change.position.y, change.uptimeMillis)?.let { next ->
@@ -274,47 +325,50 @@ private fun LivePositionTrack(
                                 change.consume()
                             }
                         } finally {
-                            finishLiveTouchGesture(
-                                gestureState = gestureState,
-                                onTouchEnd = onEnd.value
-                            )
+                            gestureState.endTouch()
                             dragging = false
-                            visibleRange = gestureState.visibleRange
+                            if (released) {
+                                onEnd.value()
+                            } else if (pointerInputJob?.isActive == true) {
+                                onCancel.value()
+                            }
                         }
                     }
                 }
         ) {
             val trackInset = thumbRadius.toPx() + 6.dp.toPx()
-            val trackTop = trackInset
-            val trackBottom = (size.height - trackInset).coerceAtLeast(trackTop)
-            val trackHeight = (trackBottom - trackTop).coerceAtLeast(0f)
-            val thumbY = trackBottom - trackHeight * displayedFraction
+            val geometry = liveTrackGeometry(
+                valuePercent = draftPercent,
+                visibleRange = visibleRange,
+                canvasHeightPx = size.height,
+                trackInsetPx = trackInset
+            )
             val horizontalInset = 8.dp.toPx()
             val trackLeft = horizontalInset
             val trackWidth = (size.width - horizontalInset * 2f).coerceAtLeast(0f)
             val trackRadius = 18.dp.toPx()
             drawRoundRect(
                 color = activeColor.copy(alpha = if (enabled) 0.24f else 0.10f),
-                topLeft = androidx.compose.ui.geometry.Offset(trackLeft, trackTop),
-                size = androidx.compose.ui.geometry.Size(trackWidth, trackHeight),
+                topLeft = androidx.compose.ui.geometry.Offset(trackLeft, geometry.top),
+                size = androidx.compose.ui.geometry.Size(trackWidth, geometry.height),
                 cornerRadius = androidx.compose.ui.geometry.CornerRadius(trackRadius)
             )
             drawRoundRect(
                 color = activeColor.copy(alpha = if (enabled) 0.62f else 0.18f),
-                topLeft = androidx.compose.ui.geometry.Offset(trackLeft, thumbY),
-                size = androidx.compose.ui.geometry.Size(trackWidth, trackBottom - thumbY),
+                topLeft = androidx.compose.ui.geometry.Offset(trackLeft, geometry.thumbY),
+                size = androidx.compose.ui.geometry.Size(trackWidth, geometry.bottom - geometry.thumbY),
                 cornerRadius = androidx.compose.ui.geometry.CornerRadius(trackRadius)
             )
             val thumbHeight = trackThickness.toPx()
             drawRoundRect(
                 color = activeColor.copy(alpha = if (enabled) 1f else 0.35f),
-                topLeft = androidx.compose.ui.geometry.Offset(trackLeft, thumbY - thumbHeight / 2f),
+                topLeft = androidx.compose.ui.geometry.Offset(trackLeft, geometry.thumbY - thumbHeight / 2f),
                 size = androidx.compose.ui.geometry.Size(trackWidth, thumbHeight),
                 cornerRadius = androidx.compose.ui.geometry.CornerRadius(thumbHeight / 2f)
             )
             drawRoundRect(
                 color = OssmOnSurface.copy(alpha = if (enabled) 0.7f else 0.2f),
-                topLeft = androidx.compose.ui.geometry.Offset(trackLeft, thumbY - thumbHeight / 2f),
+                topLeft = androidx.compose.ui.geometry.Offset(trackLeft, geometry.thumbY - thumbHeight / 2f),
                 size = androidx.compose.ui.geometry.Size(trackWidth, thumbHeight),
                 cornerRadius = androidx.compose.ui.geometry.CornerRadius(thumbHeight / 2f),
                 style = Stroke(width = 2.dp.toPx())
@@ -323,7 +377,7 @@ private fun LivePositionTrack(
         Text(
             text = rangeLabel,
             color = if (visibleRange == 0f..100f) {
-                OssmOnSurface.copy(alpha = 0.55f)
+                OssmOnSurfaceMuted
             } else {
                 OssmAccent
             },
@@ -332,6 +386,24 @@ private fun LivePositionTrack(
             maxLines = 1
         )
     }
+}
+
+/**
+ * Accessibility (TalkBack) position step for Live: send the target, then always STOP,
+ * even if the position callback throws. Returns the clamped target.
+ */
+internal fun commitLiveAccessibilityPosition(
+    target: Float,
+    onPosition: (Float) -> Unit,
+    onTouchEnd: () -> Unit
+): Float {
+    val next = target.coerceIn(0f, 100f)
+    try {
+        onPosition(next)
+    } finally {
+        onTouchEnd()
+    }
+    return next
 }
 
 internal fun finishLiveTouchGesture(

@@ -1,0 +1,21 @@
+{
+  "name": "ossm-remote-cloud",
+  "version": "2.0.13",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json && wrangler deploy --dry-run",
+    "dev": "wrangler dev",
+    "test": "vitest run tests/broker-core.test.ts tests/worker-private-session.test.js tests/static-client.test.js tests/static-client-behavior.test.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260904.1",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4",
+    "wrangler": "^4.38.0"
+  },
+  "dependencies": {
+    "zod": "^4.1.8"
+  }
+}

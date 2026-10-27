@@ -47,7 +47,7 @@ class DiagnosticsViewModelTest {
     }
 
     @Test
-    fun `diagnostics keeps every collected log`() = runTest {
+    fun `diagnostics keeps the newest bounded window of collected logs`() = runTest {
         val viewModel = DiagnosticsViewModel(repository, bleManager)
         advanceUntilIdle()
 
@@ -62,7 +62,20 @@ class DiagnosticsViewModelTest {
         }
         advanceUntilIdle()
 
-        assertEquals(600, viewModel.logs.value.size)
+        // 2.3.17: bounded journal (was unbounded and copied on the main thread per line).
+        assertEquals(DIAGNOSTICS_LOG_LIMIT, viewModel.logs.value.size)
         assertEquals("entry-599", viewModel.logs.value.last().message)
+        assertEquals("entry-${600 - DIAGNOSTICS_LOG_LIMIT}", viewModel.logs.value.first().message)
+    }
+
+    @Test
+    fun `journal stays bounded so the main thread never copies an unbounded list`() {
+        var logs = emptyList<DiagnosticsLog>()
+        repeat(DIAGNOSTICS_LOG_LIMIT * 3) { index ->
+            logs = appendBoundedDiagnosticsLog(logs, DiagnosticsLog(level = LogLevel.INFO, tag = "LIVE", message = "m$index"))
+        }
+        assertEquals(DIAGNOSTICS_LOG_LIMIT, logs.size)
+        assertEquals("m${DIAGNOSTICS_LOG_LIMIT * 3 - 1}", logs.last().message)
+        assertEquals("m${DIAGNOSTICS_LOG_LIMIT * 2}", logs.first().message)
     }
 }

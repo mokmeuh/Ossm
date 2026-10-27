@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Random preset rail (Control) -->
+    <string name="ui2_preset_saved_speed_short">Spd %1$d%%</string>
+    <string name="ui2_preset_cd_saved">%1$d%% to %2$d%%, saved speed %3$d%%</string>
+    <string name="ui2_random_short">Random</string>
+
+    <!-- Status banner (Control) -->
+    <string name="ui2_status_disconnected_title">OSSM not connected</string>
+    <string name="ui2_status_disconnected_hint">Connect to enable the controls</string>
+    <string name="ui2_status_calibrating">Calibrating (%1$s) — wait until it finishes</string>
+
+    <!-- Connection screen -->
+    <string name="ui2_scan_searching_title">Looking for the OSSM…</string>
+    <string name="ui2_scan_searching_body">The phone is listening for nearby Bluetooth devices. If exactly one OSSM is found, it connects automatically.</string>
+    <string name="ui2_scan_tips_title">Nothing shows up?</string>
+    <string name="ui2_scan_tip_power">Turn the machine on and wait for it to finish booting.</string>
+    <string name="ui2_scan_tip_close">Move the phone closer to the OSSM (within 2 m).</string>
+    <string name="ui2_scan_tip_bluetooth">Make sure Bluetooth is turned on on the phone.</string>
+    <string name="ui2_scan_none_title">No device found</string>
+    <string name="ui2_scan_none_body">Tap the button above to search again.</string>
+
+    <!-- Remote session (Control) -->
+    <string name="ui2_remote_banner_limits">Remote session: maximums %1$d%% / %2$d–%3$d%%</string>
+    <string name="ui2_remote_blocked_zero">Maximum at 0%: the site cannot move anything, raise the slider</string>
+    <string name="ui2_remote_live_prefix">Sent by the site: %1$s</string>
+    <string name="ui2_remote_live_waiting">The site has not sent anything yet</string>
+    <string name="ui2_remote_live_speed">speed %1$d%%</string>
+    <string name="ui2_remote_live_depth">depth %1$d–%2$d%%</string>
+    <string name="ui2_remote_live_pattern">pattern %1$s</string>
+    <string name="ui2_remote_live_position">Live %1$d%%</string>
+    <string name="ui2_remote_banner_sensation_range">Sensation %1$s (%2$s–%3$s)</string>
+    <string name="ui2_remote_live_sensation">sensation %1$s</string>
+
+    <!-- Internet session (Settings) -->
+    <string name="ui2_remote_copy">Copy</string>
+    <string name="ui2_remote_copied">Link copied to the clipboard.</string>
+
+    <!-- Remote session camera (Connection) -->
+    <string name="ui2_camera_section_title">Camera for the remote session</string>
+    <string name="ui2_camera_section_body">Show a view to the person in control. The camera link never grants control of the machine.</string>
+    <string name="ui2_camera_share_mine">Share my camera</string>
+    <string name="ui2_camera_invite">Invite another device as a camera</string>
+    <string name="ui2_camera_invite_chooser">OSSM camera link</string>
+    <string name="ui2_camera_copy">Copy camera link</string>
+    <string name="ui2_camera_copied">Camera link copied to the clipboard.</string>
+    <string name="ui2_camera_screen_title">Sharing my camera</string>
+    <string name="ui2_camera_screen_hint">Your preview appears below; only the person controlling the session sees it. Stop sharing to release the camera and microphone.</string>
+    <string name="ui2_camera_stop">Stop sharing</string>
+    <string name="ui2_camera_invalid_link">Camera link is not valid for this server. Regenerate the session link.</string>
+    <string name="ui2_camera_permission_title">Allow camera and microphone</string>
+    <string name="ui2_camera_permission_body">Sharing needs the camera and microphone. Nothing is sent before you allow it.</string>
+    <string name="ui2_camera_permission_refused">Camera or microphone denied: sharing stays off. Allow them here or in the app settings.</string>
+    <string name="ui2_camera_permission_grant">Allow camera and microphone</string>
+    <string name="ui2_camera_permission_settings">Open app settings</string>
+
+
+    <!-- 2.3.16: bipolar sensation (0 = neutral) -->
+    <string name="ctl_sensation_intensity_max">Sensation: max intensity allowed to the site</string>
+    <string name="ctl_sensation_neutral">0 = neutral</string>
+    <string name="ctl_sensation_legend_out_in">← fast withdrawal · fast thrust →</string>
+
+    <!-- 2.3.16: camera section always visible + diagnostics -->
+    <string name="ui2_camera_no_session">Start a remote session to share the camera.</string>
+    <string name="ui2_camera_start_session">Start the session</string>
+    <string name="ui2_camera_session_starting">Remote session is starting…</string>
+    <string name="ui2_camera_regenerate_needed">Regenerate the link to get the camera link.</string>
+    <string name="ui2_camera_regenerate">Regenerate the link</string>
+    <string name="ui2_camera_diag_title">Camera diagnostics</string>
+    <string name="ui2_camera_renderer_gone">The sharing view engine stopped: camera and microphone released. Stop and restart sharing.</string>
+    <string name="ctl_wizard_step1">Step 1/2 — Move the machine to the desired DEPTH with the slider, then press “Set depth”.</string>
+    <string name="ctl_wizard_step2">Step 2/2 — Now place the RETRACT point, then press “Set retract”.</string>
+    <string name="ctl_wizard_preparing">Preparing… Machine: %1$s</string>
+    <string name="ctl_knob_to_zero">→ Turn the physical speed knob down to 0.</string>
+    <string name="ctl_wizard_depth_set">Depth set: %1$d %%</string>
+    <string name="ctl_select_pattern_to_start">Select a pattern to start.</string>
+    <string name="ctl_launch_only_hint">Pattern started — nothing to adjust.</string>
+    <string name="ctl_machine_state">Machine: %1$s</string>
+    <string name="ctl_knob_to_zero_mode">→ Turn the physical speed knob down to 0 to enter the mode.</string>
+    <string name="ctl_chaos_title">Random mode at max</string>
+    <string name="ctl_chaos_hint">At the ceiling, varied and unpredictable strokes</string>
+    <string name="ctl_auto_intro">Pick the modes to mix, set your limits, then start the random mix.</string>
+    <string name="ctl_auto_modes_header">MODES TO MIX</string>
+    <string name="ctl_auto_speed_header">MAX SPEED</string>
+    <string name="ctl_auto_speed_ceiling">Mix ceiling</string>
+    <string name="ctl_auto_intensity_cap">Max intensity</string>
+    <string name="ctl_auto_randomness">Randomness</string>
+    <string name="ctl_auto_intensity_value">Intensity %1$d%%</string>
+    <string name="ctl_auto_running_hint">The mix ramps up gradually without exceeding your limits.</string>
+    <string name="ctl_auto_initial_intensity">Starting intensity</string>
+    <string name="ctl_auto_dialog_title">Check your limits</string>
+    <string name="ctl_auto_dialog_count">You are about to start Auto Random with %1$d selected mode(s).</string>
+    <string name="ctl_auto_dialog_limits">Max speed: %1$d%%\nDepth: %2$d%% - %3$d%%</string>
+    <string name="ctl_auto_dialog_warning">Make sure these are limits you never want to exceed before starting.</string>
+    <string name="ctl_preset_default_name">My Profile</string>
+    <string name="ctl_preset_fallback_name">Profile</string>
+    <string name="ctl_preset_save_title">Save profile</string>
+    <string name="ctl_preset_name_label">Profile name</string>
+    <string name="ctl_preset_save">Save</string>
+    <string name="ctl_abrupt_title">Abrupt change detected</string>
+    <string name="ctl_abrupt_body">Are you sure you want to change %1$s this much at once? The change exceeds %2$d %%. This protection prevents a sudden movement if the phone or the slider gets caught.</string>
+    <string name="ctl_abrupt_skip_session">Don\'t remind me for this session</string>
+    <string name="ctl_abrupt_never">Never ask me again</string>
+    <string name="ctl_abrupt_confirm">Yes, I\'m sure</string>
+    <string name="ctl_wizard_set_depth">Set depth</string>
+    <string name="ctl_wizard_set_retract">Set retract</string>
+    <string name="ctl_resume">Resume</string>
+    <string name="ctl_pause">Pause</string>
+    <string name="ctl_abrupt_speed">the speed</string>
+    <string name="ctl_abrupt_depth">the depth</string>
+</resources>

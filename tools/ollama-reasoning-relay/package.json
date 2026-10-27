@@ -1,0 +1,12 @@
+{
+  "name": "ollama-reasoning-relay",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Relais local OSSM : journalise le raisonnement de Qwen3 (Ollama) pour l'app OSSM Remote.",
+  "main": "relay.js",
+  "scripts": {
+    "start": "node relay.js",
+    "test": "node --test"
+  },
+  "engines": { "node": ">=18" }
+}

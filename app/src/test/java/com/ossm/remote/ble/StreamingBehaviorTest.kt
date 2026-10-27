@@ -7,12 +7,20 @@ import org.junit.Test
 class StreamingBehaviorTest {
 
     @Test
-    fun `live pad at 100 percent drives deep end (stream 2), 0 percent drives home (stream 98)`() {
-        // Calibration appareil : pad 100 % (doigt en haut) -> FOND (stream bas) ;
-        // pad 0 % -> HOME (stream haut). Mapping inverse par defaut.
+    fun `live pad restores inverse wire mapping and invert opts into direct mapping`() {
         assertEquals(98, mapLiveStreamPositionPercent(0, liveInvert = false))
         assertEquals(50, mapLiveStreamPositionPercent(50, liveInvert = false))
         assertEquals(2, mapLiveStreamPositionPercent(100, liveInvert = false))
+        assertEquals(2, mapLiveStreamPositionPercent(0, liveInvert = true))
+        assertEquals(98, mapLiveStreamPositionPercent(100, liveInvert = true))
+    }
+
+    @Test
+    fun `first one percent movement from Home remains at shallow wire endpoint`() {
+        assertEquals(98, mapLiveStreamPositionPercent(1, liveInvert = false))
+        assertEquals(97, mapLiveStreamPositionPercent(3, liveInvert = false))
+        assertEquals(98, mapLiveStreamPositionPercent(-20, liveInvert = false))
+        assertEquals(2, mapLiveStreamPositionPercent(120, liveInvert = false))
     }
 
     @Test

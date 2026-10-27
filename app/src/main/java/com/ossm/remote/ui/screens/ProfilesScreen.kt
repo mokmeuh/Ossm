@@ -1,5 +1,14 @@
 package com.ossm.remote.ui.screens
 
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.LaunchedEffect
+import com.ossm.remote.usb.FirmwareFlashState
+import com.ossm.remote.usb.FirmwareFlashViewModel
+
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.selection.toggleable
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -9,10 +18,13 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BookmarkBorder
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -37,10 +49,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -48,12 +63,14 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.ossm.remote.R
 import com.ossm.remote.model.Preset
 import com.ossm.remote.overlay.OverlayService
+import com.ossm.remote.remote.RemoteSessionViewModel
 import com.ossm.remote.ui.components.GlassCard
 import com.ossm.remote.ui.theme.OssmAccent
 import com.ossm.remote.ui.theme.OssmBackground
 import com.ossm.remote.ui.theme.OssmConnected
 import com.ossm.remote.ui.theme.OssmError
 import com.ossm.remote.ui.theme.OssmOnSurface
+import com.ossm.remote.ui.theme.OssmOnSurfaceMuted
 import com.ossm.remote.ui.theme.OssmPrimary
 import com.ossm.remote.ui.theme.OssmPrimaryLight
 import com.ossm.remote.ui.theme.OssmSecondary
@@ -61,7 +78,6 @@ import com.ossm.remote.ui.theme.OssmSurface
 import com.ossm.remote.ui.theme.OssmWarning
 import com.ossm.remote.updater.UpdateManifest
 import com.ossm.remote.updater.UpdaterStatus
-import com.ossm.remote.updater.UpdaterViewModel
 import com.ossm.remote.viewmodel.OverlaySettingsViewModel
 import java.io.File
 import kotlin.math.roundToInt
@@ -81,9 +97,22 @@ fun ProfilesScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(OssmBackground, OssmSecondary)))
+            .background(OssmBackground)
     ) {
+        // Keep the whole firmware card (and its log) on screen while a flash is running.
+        val flashVm: FirmwareFlashViewModel = hiltViewModel()
+        val flashState by flashVm.state.collectAsState()
+        val flashPhase = when (flashState) {
+            FirmwareFlashState.Idle -> 0
+            FirmwareFlashState.Preparing, FirmwareFlashState.Erasing, is FirmwareFlashState.Writing -> 1
+            else -> 2
+        }
+        val listState = rememberLazyListState()
+        LaunchedEffect(flashPhase) {
+            if (flashPhase != 0) listState.scrollToItem((listState.layoutInfo.totalItemsCount - 2).coerceAtLeast(0))
+        }
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(20.dp),
@@ -92,10 +121,9 @@ fun ProfilesScreen(
             item(key = "title") {
                 Text(
                     stringResource(R.string.prof_title),
-                    style = MaterialTheme.typography.titleLarge,
-                    color = OssmPrimary,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 2.sp
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = OssmOnSurface,
+                    fontWeight = FontWeight.Bold
                 )
             }
 
@@ -104,7 +132,7 @@ fun ProfilesScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .fillParentMaxSize(0.6f),
+                            .padding(vertical = 24.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Column(
@@ -114,7 +142,7 @@ fun ProfilesScreen(
                             Icon(Icons.Default.BookmarkBorder, null, tint = OssmPrimaryLight, modifier = Modifier.size(48.dp))
                             Text(
                                 stringResource(R.string.prof_empty),
-                                color = OssmOnSurface.copy(alpha = 0.4f),
+                                color = OssmOnSurfaceMuted,
                                 fontSize = 14.sp,
                                 textAlign = TextAlign.Center
                             )
@@ -130,6 +158,7 @@ fun ProfilesScreen(
                     )
                 }
             }
+            item(key = "remote-session") { RemoteSessionCard() }
             item(key = "overlay") { OverlayCard() }
             item(key = "updater") {
                 UpdaterCard(
@@ -141,8 +170,96 @@ fun ProfilesScreen(
                     onInstall = onUpdateInstall
                 )
             }
+            item(key = "firmware") { FirmwareFlashCard() }
             item(key = "statistics") { StatisticsSection() }
         }
+    }
+}
+
+@Composable
+private fun RemoteSessionCard() {
+    val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
+    val viewModel: RemoteSessionViewModel = hiltViewModel()
+    val state by viewModel.state.collectAsState()
+
+    GlassCard(modifier = Modifier.fillMaxWidth(), padding = 16.dp) {
+        Text(stringResource(R.string.remote_session_title), color = OssmOnSurface, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+        Text(
+            stringResource(R.string.remote_session_hint),
+            color = OssmOnSurfaceMuted,
+            fontSize = 12.sp,
+            lineHeight = 17.sp,
+        )
+        Text(state.message, color = if (state.connected) OssmConnected else OssmWarning, fontSize = 12.sp, lineHeight = 17.sp)
+        Text(state.mediaStatus, color = OssmOnSurfaceMuted, fontSize = 12.sp, lineHeight = 17.sp)
+        state.shareUrl?.let { shareUrl ->
+            // Le lien ne va dans le presse-papiers que sur action explicite (bouton Copier).
+            var copied by remember(shareUrl) { mutableStateOf(false) }
+            OutlinedTextField(
+                value = shareUrl,
+                onValueChange = {},
+                readOnly = true,
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text(stringResource(R.string.remote_session_link)) },
+                singleLine = true,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Button(
+                    onClick = {
+                        clipboardManager.setText(AnnotatedString(shareUrl))
+                        copied = true
+                    },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = OssmPrimary),
+                ) {
+                    Icon(Icons.Default.ContentCopy, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.ui2_remote_copy))
+                }
+                Button(
+                    onClick = {
+                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, shareUrl)
+                        }
+                        context.startActivity(Intent.createChooser(shareIntent, context.getString(R.string.remote_share)))
+                    },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = OssmPrimary),
+                ) {
+                    Icon(Icons.Default.Share, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.remote_share))
+                }
+            }
+            if (copied) {
+                Text(
+                    stringResource(R.string.ui2_remote_copied),
+                    color = OssmConnected,
+                    fontSize = 12.sp,
+                    lineHeight = 17.sp,
+                )
+            }
+        }
+        Button(
+            onClick = { if (state.active) viewModel.stop() else viewModel.start() },
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = OssmPrimary),
+        ) {
+            Text(stringResource(if (state.active) R.string.remote_stop_session else R.string.remote_session_start))
+        }
+        Button(
+            onClick = viewModel::regenerate,
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = OssmWarning),
+        ) {
+            Text(stringResource(R.string.remote_session_regenerate))
+        }
+        Text(stringResource(R.string.remote_session_regenerate_hint), color = OssmOnSurfaceMuted, fontSize = 12.sp, lineHeight = 17.sp)
     }
 }
 
@@ -156,10 +273,7 @@ private fun UpdaterCard(
     onInstall: (File) -> Unit
 ) {
     var manualUrl by remember(url) { mutableStateOf(url) }
-    // hiltViewModel() : meme instance UpdaterViewModel que celle de MainActivity.
-    val updaterVm: UpdaterViewModel = hiltViewModel()
-    val periodicCheckEnabled by updaterVm.periodicCheckEnabled.collectAsState()
-    GlassCard(modifier = Modifier.fillMaxWidth(), padding = 14.dp) {
+    GlassCard(modifier = Modifier.fillMaxWidth(), padding = 16.dp) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.SystemUpdate, null, tint = OssmPrimaryLight)
             Spacer(Modifier.width(8.dp))
@@ -174,6 +288,13 @@ private fun UpdaterCard(
                 Text(stringResource(R.string.update_check_now), color = OssmPrimaryLight)
             }
         }
+        LocalOtaSection()
+        Text(
+            stringResource(R.string.update_ota_title),
+            color = OssmOnSurface,
+            fontWeight = FontWeight.Bold,
+            fontSize = 12.sp,
+        )
         OutlinedTextField(
             value = manualUrl,
             onValueChange = { manualUrl = it },
@@ -185,24 +306,9 @@ private fun UpdaterCard(
         TextButton(onClick = { onUrlSave(manualUrl) }, modifier = Modifier.align(Alignment.End)) {
             Text(stringResource(R.string.update_url_save), color = OssmPrimaryLight)
         }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                stringResource(R.string.update_periodic_check),
-                color = OssmOnSurface,
-                fontSize = 13.sp,
-                modifier = Modifier.weight(1f)
-            )
-            Switch(
-                checked = periodicCheckEnabled,
-                onCheckedChange = updaterVm::setPeriodicCheckEnabled
-            )
-        }
         when (state) {
             UpdaterStatus.Idle -> Unit
-            UpdaterStatus.Checking -> Text(stringResource(R.string.update_checking), color = OssmOnSurface.copy(alpha = 0.7f), fontSize = 12.sp)
+            UpdaterStatus.Checking -> Text(stringResource(R.string.update_checking), color = OssmOnSurfaceMuted, fontSize = 12.sp)
             UpdaterStatus.UpToDate -> Text(stringResource(R.string.update_current), color = OssmConnected, fontSize = 12.sp)
             is UpdaterStatus.Available -> {
                 Text(
@@ -214,7 +320,7 @@ private fun UpdaterCard(
                     Text(stringResource(R.string.update_download))
                 }
             }
-            UpdaterStatus.Downloading -> Text(stringResource(R.string.update_downloading), color = OssmOnSurface.copy(alpha = 0.7f), fontSize = 12.sp)
+            UpdaterStatus.Downloading -> Text(stringResource(R.string.update_downloading), color = OssmOnSurfaceMuted, fontSize = 12.sp)
             is UpdaterStatus.ReadyToInstall -> Button(onClick = { onInstall(state.apk) }) {
                 Text(stringResource(R.string.update_install))
             }
@@ -227,7 +333,7 @@ private fun UpdaterCard(
 private fun PresetCard(preset: Preset, onApply: () -> Unit, onDelete: () -> Unit) {
     var confirmDelete by remember { mutableStateOf(false) }
 
-    GlassCard(modifier = Modifier.fillMaxWidth(), padding = 14.dp) {
+    GlassCard(modifier = Modifier.fillMaxWidth(), padding = 16.dp) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
@@ -260,7 +366,7 @@ private fun PresetCard(preset: Preset, onApply: () -> Unit, onDelete: () -> Unit
             onDismissRequest = { confirmDelete = false },
             containerColor = OssmSurface,
             title = { Text(stringResource(R.string.prof_delete_title), color = OssmOnSurface) },
-            text = { Text(stringResource(R.string.prof_delete_msg, preset.name), color = OssmOnSurface.copy(alpha = 0.7f)) },
+            text = { Text(stringResource(R.string.prof_delete_msg, preset.name), color = OssmOnSurfaceMuted) },
             confirmButton = {
                 Button(
                     onClick = { onDelete(); confirmDelete = false },
@@ -284,11 +390,11 @@ private fun StatChip(label: String, value: String, color: Color) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        Text(label, color = OssmPrimaryLight, fontSize = 10.sp)
+        Text(label, color = OssmPrimaryLight, fontSize = 12.sp)
         Text(
             value,
             color = color,
-            fontSize = 11.sp,
+            fontSize = 12.sp,
             fontWeight = FontWeight.Bold
         )
     }
@@ -303,8 +409,18 @@ private fun OverlayCard() {
     val transparency by overlayVm.transparencyPercent.collectAsState()
     val canDrawOverlays = Settings.canDrawOverlays(context)
 
-    GlassCard(modifier = Modifier.fillMaxWidth(), padding = 14.dp) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+    GlassCard(modifier = Modifier.fillMaxWidth(), padding = 16.dp) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .toggleable(
+                    value = overlayEnabled,
+                    role = Role.Switch,
+                    onValueChange = { enabled -> onOverlayToggle(context, overlayVm, enabled) }
+                )
+        ) {
             Icon(
                 painterResource(R.drawable.ic_launcher_foreground),
                 null,
@@ -321,7 +437,7 @@ private fun OverlayCard() {
             )
             Switch(
                 checked = overlayEnabled,
-                onCheckedChange = { enabled -> onOverlayToggle(context, overlayVm, enabled) },
+                onCheckedChange = null,
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = OssmAccent,
                     checkedTrackColor = OssmAccent.copy(alpha = 0.4f)
@@ -330,15 +446,15 @@ private fun OverlayCard() {
         }
         Text(
             stringResource(R.string.overlay_hint),
-            color = OssmOnSurface.copy(alpha = 0.6f),
-            fontSize = 11.sp
+            color = OssmOnSurfaceMuted,
+            fontSize = 12.sp
         )
         if (!canDrawOverlays) {
             Spacer(Modifier.height(6.dp))
             Text(
                 stringResource(R.string.overlay_permission_hint),
                 color = OssmWarning,
-                fontSize = 11.sp
+                fontSize = 12.sp
             )
         }
         Spacer(Modifier.height(10.dp))

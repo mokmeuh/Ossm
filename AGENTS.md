@@ -1,44 +1,81 @@
-# Notes inter-agents
+# OSSM PROJECT KNOWLEDGE BASE
 
-## Perimetre
-- Depot hybride: `app/` est le client Android Kotlin/Compose; `firmware/` est une copie PlatformIO/ESP32; `tools/update-server/` sert les APK de debug.
-- Pour le firmware, lire d'abord `firmware/AGENTS.md`, puis `firmware/Software/CLAUDE.md`. Ne pas recopier leur politique de release ici.
-- Les instructions de `app/` sont dans `app/AGENTS.md`.
-- Les caches, dependances et worktrees a exclure de toute analyse: `.gradle/`, `.kotlin/`, `app/build/`, `firmware/Software/.pio/`, `firmware/Software/.cache/`, `.opencode/node_modules/`, `.claude/worktrees/`, `.omo/`, `.codex/`, `.codegraph/` et `compile_commands.json`.
+**Generated:** 2026-09-06
+**Commit:** 5dd682a0
+**Branch:** codex/ossm-rust-firmware-plan
 
-## Journal court
-- 2026-06-22: reprise Codex depuis un clone sans fichiers de handoff.
-- 2026-06-22: lecture de `README.md`, `git status`, logs locaux, fichiers BLE/UI/tests.
-- 2026-06-22: l'utilisateur a confirme que `strokeEngine` est seulement un pattern parmi d'autres.
-- 2026-06-22: l'utilisateur a fourni deux threads Codex OSSM historiques comme source utile.
-- 2026-06-22: ces threads ont confirme le protocole BLE texte existant et ont evite l'invention de `set:depthMin` / `set:depthMax`.
-- 2026-06-22: implementation de la garde anti-saut, refonte des presets, migration du controle vers `pattern actif`.
+## OVERVIEW
 
-## Regles de continuité
-- Explorer d'abord la verite locale avant de demander.
-- Si un ancien thread OSSM confirme un detail de protocole, preferer cette preuve au comportement UI provisoire du clone.
-- Quand la verite firmware est incomplete, choisir une degradation honnete plutot qu'un faux comportement.
-- Pour ce clone, ne pas casser volontairement la capacite de `installDebug` sur le Samsung deja detecte.
+Hybrid OSSM repository: Android Kotlin/Compose client, ESP32 PlatformIO firmware, Cloudflare Worker/Durable Object remote broker, and local PowerShell/Node tooling. The checkout is intentionally dirty; preserve unrelated user changes.
 
-## Verification de fin d'etat
-- `testDebugUnitTest` passe
-- `installDebug` passe
-- device confirme:
-  - `SM-S938W - 16`
+## STRUCTURE
 
-## Commandes Android
-- `./gradlew testDebugUnitTest` puis `./gradlew installDebug`; ne pas lancer deux builds Gradle en parallele.
-- Le package debug est `com.ossm.remote.debug`. Pour diagnostiquer le BLE: `adb logcat -s OSSM`.
-- Le worktree est volontairement sale: ne jamais faire `reset`, `checkout`, `clean`, `stash`, rebase ou commit automatique; conserver les changements et fins de ligne existants.
+```text
+app/                    Android client and unit tests
+firmware/               ESP32 firmware; read firmware/AGENTS.md first
+remote-cloud/           Cloudflare Worker broker and browser client
+tools/                  Local APK/update/remote-control helpers
+docs/                   Operational notes
+```
 
-## Verites BLE
-- Protocole texte existant: `go:menu|strokeEngine|streaming|simplePenetration`, `set:speed|stroke|depth|sensation|pattern`, `stream:pos:time`.
-- Ne jamais inventer `set:depthMin` ou `set:depthMax`: une plage utilisateur devient `stroke = depthMax - depthMin`, `depth = depthMax`.
-- `streaming_logic.h` et `documentation.txt` sont les references firmware pour le sens du stream. Le client conserve l'inversion testee (`100 - raw`, borne 2..98) et la compensation de latence desactivee pour le Live. Ne pas changer sans nouveau test appareil filme.
-- Les commandes de stream identiques consecutives sont filtrees pour eviter le piege firmware `distance / abs(distance)`.
+## WHERE TO LOOK
 
-## Routage de travail
-- Taches legeres: `opencode-go/zen` ou famille DeepSeek.
-- Raisonnement difficile: `gpt-sol` ou `gpt-luna`.
-- Gros chantiers de code: `gpt-terra`.
-- Cette preference documente le routage; elle ne modifie pas `opencode.json` ni les configurations utilisateur.
+| Task | Location | Notes |
+|---|---|---|
+| Android UI, BLE, sessions | `app/src/main/java/com/ossm/remote/` | `app/AGENTS.md` is authoritative for client conventions and safety. |
+| Android tests/build | `app/src/test/`, root Gradle files | Run one Gradle build at a time. |
+| Firmware behavior/protocol | `firmware/Software/src/` | Read `firmware/AGENTS.md` and `firmware/Software/CLAUDE.md`; preserve hardware gates. |
+| Remote web sessions | `remote-cloud/src/`, `remote-cloud/static/` | Child guide documents Worker protocol and local validation. |
+| Android remote relay | `tools/remote-control/` | Loopback relay, ADB forwarding, optional temporary tunnel. |
+| APK update serving | `tools/update-server/` | Existing child guide covers secure binding and manifest rules. |
+
+## CODE MAP
+
+| Surface | Entry point | Contract |
+|---|---|---|
+| Android | `app/src/main/java/com/ossm/remote/MainActivity.kt` | Compose navigation and app shell |
+| Android BLE | `app/src/main/java/com/ossm/remote/ble/BleManager.kt` | Existing text protocol and serialized writes |
+| Android state | `app/src/main/java/com/ossm/remote/session/ControlSessionStore.kt` | Shared state used by app and overlay |
+| Firmware | `firmware/Software/src/main.cpp` | PlatformIO/Arduino startup and tasks |
+| Firmware commands | `firmware/Software/src/command/commands.hpp` | BLE command parsing |
+| Cloud broker | `remote-cloud/src/worker.ts` | Worker routes and Durable Object binding |
+| Cloud protocol | `remote-cloud/src/protocol.ts` | Zod-validated client/server messages |
+
+## CONVENTIONS
+
+- Scope is separated by subsystem; do not move protocol or safety logic into UI-only helpers.
+- `remote-cloud` contains both TypeScript sources and checked-in JavaScript counterparts; follow the existing package scripts and do not casually regenerate unrelated files.
+- Root instructions are additive: child `AGENTS.md` files override only their own domain and must not duplicate parent rules.
+
+## ANTI-PATTERNS (THIS PROJECT)
+
+- Never reset, clean, stash, rebase, or auto-commit this dirty checkout.
+- Never modify or delete originals under capture/evidence areas; extract copies only when requested.
+- Never invent BLE commands such as `set:depthMin` or `set:depthMax`.
+- Never bypass firmware homing, speed-knob, keepout, disconnect-ramp, or update verification gates.
+- Never commit credentials, tokens, WiFi passwords, local build products, or generated secrets.
+- FunScript, Video Sync, Adaptive, listening mode, USB firmware flashing and the local Remote web server were removed in 2.3.13; do not reintroduce them unless the user asks.
+
+## COMMANDS
+
+```powershell
+./gradlew testDebugUnitTest
+./gradlew installDebug
+./gradlew assembleNamedDebugApk
+Set-Location .\remote-cloud; pnpm typecheck; pnpm test; pnpm build
+Set-Location .\firmware\Software; pio test -e test
+```
+
+## NOTES
+
+- The protected Android validation target is `SM-S938W - 16`; select an ADB serial explicitly when more than one target is present.
+- `installDebug` must remain usable on the detected Samsung device. Do not install or flash hardware as part of documentation-only work.
+- Codegraph was attempted during generation but failed with an internal `unresolved_refs` SQLite error; LSP reported no active clients. Directory decisions therefore rely on local files and existing subsystem guides.
+
+## CONTEXT AND TEAM WORKFLOW
+
+- For project work, inspect the current checkout, child guides, `.omo/plans/`, `.omo/evidence/`, and relevant prior Codex sessions before splitting the problem.
+- Use at most **five delegated agents at once**. `/root` remains the leader and owns synthesis, integration, and final QA.
+- Split by concrete subsystem or evidence lens; each agent receives only its scoped guide and task, with no full-history fork. Store read-only findings in the active team `artifacts/` directory.
+- Treat old plans and session notes as leads, not truth: classify every claim as implemented, host-validated, device-validated, planned, partial, or stale against the current checkout.
+- Keep one final validation pass proportional to the changed surface, then archive the team state; never leave an abandoned active roster.

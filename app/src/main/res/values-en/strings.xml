@@ -1,50 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="warning_title">⚠ Warning</string>
-    <string name="warning_body">This application controls an OSSM/OFFM device over Bluetooth Low Energy.\n\nThe OSSM Bluetooth API is experimental. Unexpected behaviour may occur.\n\nMake sure the physical STOP button is reachable at all times.\n\nUse safely and responsibly.</string>
-    <string name="warning_accept">I understand, continue</string>
-    <string name="stop">STOP</string>
-    <string name="scan">Scan</string>
-    <string name="connect">Connect</string>
-    <string name="disconnect">Disconnect</string>
-    <string name="control">Control</string>
-    <string name="diagnostics">Diagnostics</string>
-    <string name="profiles">Profiles</string>
-    <string name="funscript">Funscript</string>
+    <string name="nav_scan">Connect</string>
+    <string name="nav_control">Control</string>
+    <string name="nav_profiles">Settings</string>
+    <string name="nav_diagnostics">Diagnostics</string>
+    <string name="diag_copy">Copy logs</string>
 
-    <!-- Funscript screen -->
-    <string name="funscript_title">FUNSCRIPT</string>
-    <string name="funscript_file_label">Funscript file</string>
-    <string name="funscript_no_file">No file loaded</string>
-    <string name="funscript_open">Open</string>
-    <string name="funscript_actions_count">%1$d actions</string>
-    <string name="funscript_action">Action</string>
-    <string name="funscript_depth_range">Depth range</string>
-    <string name="funscript_depth_range_value">%1$d%% – %2$d%%</string>
-    <string name="funscript_speed">Playback speed</string>
-    <string name="funscript_speed_value">%1$s×</string>
-    <string name="funscript_play">Play</string>
-    <string name="funscript_pause">Pause</string>
-    <string name="funscript_not_connected">Connect to an OSSM to start playback</string>
-    <string name="funscript_paused">⏸ Paused — press ▶ to resume</string>
-    <string name="funscript_preparing">Preparing (homing in progress)…</string>
-    <string name="funscript_streaming">▶ Streaming…</string>
-
-    <!-- Video screen (funscript sync) -->
-    <string name="videosync_title">VIDEO SYNC</string>
-    <string name="videosync_video_source">Video source</string>
-    <string name="videosync_no_video">No video loaded</string>
-    <string name="videosync_pick_video">Pick a video</string>
-    <string name="videosync_script_source">Funscript</string>
-    <string name="videosync_no_script">No funscript loaded</string>
-    <string name="videosync_pick_script">Pick a funscript</string>
-    <string name="videosync_url_hint">Paste a URL</string>
-    <string name="videosync_latency">Latency offset</string>
-    <string name="videosync_latency_hint">Positive = motion runs ahead of the video (compensates BLE latency).</string>
-    <string name="videosync_generate">Generate funscript (local)</string>
-    <string name="videosync_generate_hint">Analyzes the video motion on-device to create a script. Experimental and approximate.</string>
-    <string name="videosync_analyzing">Analyzing motion… %1$d %%</string>
-    <string name="ctl_connect_prompt">Connect to an OSSM to enable the controls</string>
     <string name="ctl_patterns">PATTERNS  ▾</string>
     <string name="ctl_patterns_hint">Pick a mode; this window closes after selection.</string>
     <string name="ctl_patterns_collapse">Close</string>
@@ -56,27 +17,20 @@
     <string name="live_range_narrowed">Precise Live · %1$d–%2$d</string>
     <string name="live_state_description">%1$s, position %2$d percent</string>
     <string name="ctl_live_preparing">Preparing Live mode — the machine is confirming full range…</string>
-    <string name="ctl_live_knob_hint">→ Turn the physical speed knob down to 0 to enter the mode.</string>
     <string name="ctl_rec_idle">Record a movement</string>
     <string name="ctl_rec_armed">Ready</string>
     <string name="ctl_rec_recording">REC</string>
+    <string name="ctl_rec_recorded">Replay movement</string>
     <string name="ctl_rec_playing">Stop the loop</string>
     <string name="ctl_depth">DEPTH</string>
     <string name="ctl_speed">Speed</string>
-    <string name="ctl_speed_listening">SPEED (mic)</string>
-    <string name="ctl_sensation_aller">Forward</string>
-    <string name="ctl_sensation_retour">Return</string>
-    <string name="ctl_sensation_aller_ramp">Forward (ramp-up rate)</string>
-    <string name="ctl_sensation_retour_ramp">Return (return speed)</string>
-    <string name="ctl_sensation_decrease">Decrease sensation</string>
-    <string name="ctl_sensation_increase">Increase sensation</string>
     <string name="ctl_sensation">Sensation</string>
     <string name="precision_range_global">Range 0–100</string>
     <string name="precision_range_level">Precision ±%1$d · %2$d–%3$d</string>
     <string name="precision_state_description">%1$s, value %2$d percent</string>
     <string name="ctl_control_settings">Control settings</string>
     <string name="ctl_precision_option">Precision</string>
-    <string name="ctl_precision_option_hint">Gradually narrows the range after the finger stays still. This setting is independent for each pattern.</string>
+    <string name="ctl_precision_option_hint">Off by default. Gradually narrows the range after the finger stays still. Your choice is saved separately for each pattern.</string>
     <string name="ctl_reorder_title">Reorder patterns</string>
     <string name="ctl_reorder_hint">Long-press then drag to move.</string>
     <string name="ctl_save">Save</string>
@@ -85,19 +39,18 @@
     <string name="ctl_stop_mix">Stop</string>
 
     <!-- Random mode (Teasing & Pounding) -->
-    <string name="ctl_random_title">RANDOM MODE</string>
-    <string name="ctl_random_hint">Each box randomises that setting without exceeding your set value.</string>
     <string name="ctl_random_speed">Random speed</string>
+    <string name="ctl_random_sensation">Random sensation</string>
     <string name="ctl_random_depth">Random depth</string>
-    <string name="ctl_random_depth_min">Depth — random retract</string>
-    <string name="ctl_random_depth_max">Depth — random bottom</string>
-    <string name="ctl_listening_title">Listening mode (mic)</string>
-    <string name="ctl_listening_hint">The mic raises intensity when you react. Processed on-device, never recorded.</string>
-    <string name="ctl_live_max_accel">Max acceleration</string>
+    <string name="ctl_random_preset_title">Edit %1$s %2$d</string>
+    <string name="ctl_random_preset_hint">Define the exact range for this preset. A single tap saves the displayed values; a double tap applies them.</string>
+    <string name="ctl_random_preset_min">Minimum (%)</string>
+    <string name="ctl_random_preset_max">Maximum (%)</string>
+    <string name="ctl_random_save_speed">Also save current speed (%1$d%%)</string>
     <string name="ctl_live_acceleration_value">Live acceleration: %1$d%%</string>
     <string name="ctl_live_acceleration_hint">Limits how quickly the motor reaches its speed in Live. A lower value softens changes; a higher value makes them more direct.</string>
     <string name="ctl_live_invert">Invert Live direction</string>
-    <string name="ctl_live_invert_hint">If the carriage moves the wrong way or slams at rest, toggle this.</string>
+    <string name="ctl_live_invert_hint">Reverses the mapping between the slider and the carriage. Your chosen direction is saved.</string>
     <string name="ctl_close_settings">Close settings</string>
     <string name="ctl_hold_for_info">Hold to show explanation</string>
     <string name="ctl_understood">Got it</string>
@@ -118,7 +71,6 @@
     <string name="scan_found_count">%1$d device(s) found</string>
     <string name="scan_connected">Connected</string>
     <string name="scan_connecting">Connecting…</string>
-    <string name="scan_empty_hint">Tap “Scan” to look for\nnearby OSSM devices</string>
 
     <!-- Profiles screen -->
     <string name="prof_title">PROFILES</string>
@@ -142,10 +94,71 @@
     <string name="update_download">Download</string>
     <string name="update_downloading">Downloading and verifying…</string>
     <string name="update_install">Install update</string>
+    <string name="update_local_ota_title">LOCAL OTA UPDATE</string>
+    <string name="update_local_ota_receive">Ready to receive</string>
+    <string name="update_local_ota_stop">Stop listening</string>
+    <string name="update_local_ota_send">Share my version</string>
+    <string name="update_local_ota_hint">The receiving phone shows a QR code: on the other phone, “Scan the QR”. Without a camera: “Send to an address”. Same Wi-Fi: “Share my version”. Both phones show the same 2-digit number, to confirm on the receiving one. Android always asks you to confirm the installation.</string>
+    <string name="update_local_ota_addresses">This phone’s addresses</string>
+    <string name="update_local_ota_no_address">No Wi-Fi or Tailscale address detected.</string>
+    <string name="update_local_ota_kind_wifi">Wi-Fi</string>
+    <string name="update_local_ota_kind_tailscale">Tailscale</string>
+    <string name="update_local_ota_manual">Send to an address</string>
+    <string name="update_local_ota_address_label">Address (IP or IP:port)</string>
+    <string name="update_local_ota_manual_send">Connect and send</string>
+    <string name="update_local_ota_unknown_version">unknown version</string>
+    <string name="update_local_ota_cancel">Cancel</string>
+    <string name="ota_msg_receiver_ready">Ready to receive. On the other phone: “Scan the QR”, “Send to an address” or “Share my version”.</string>
+    <string name="ota_msg_receiver_unavailable">OTA receiver unavailable.</string>
+    <string name="ota_msg_receiver_stopped">OTA receiver stopped.</string>
+    <string name="ota_msg_publish_refused">Automatic publishing refused (%1$d). The QR code and sending by address still work.</string>
+    <string name="ota_msg_searching">Looking for a phone ready to receive…</string>
+    <string name="ota_msg_discovery_unavailable">Automatic discovery unavailable (%1$d). Use “Send to an address”.</string>
+    <string name="ota_msg_none_found">No phone found automatically within 15 s (different networks or mDNS blocked). Use “Scan the QR” or “Send to an address”.</string>
+    <string name="ota_msg_peer_up_to_date">The other phone already has this version (%1$s) or newer.</string>
+    <string name="ota_msg_peer_already_current">The other phone is already up to date.</string>
+    <string name="ota_msg_wrong_package">This device does not run the same OSSM app.</string>
+    <string name="ota_msg_checking">Connecting to %1$s…</string>
+    <string name="ota_msg_sending">Sending version %1$s…</string>
+    <string name="ota_msg_sent">Version sent. Confirm the installation on the other phone.</string>
+    <string name="ota_msg_refused_http">The receiver refused the version (%1$d).</string>
+    <string name="ota_msg_unreachable">Phone unreachable at %1$s. Check the address, the network (Wi-Fi or Tailscale) and that receiving is on.</string>
+    <string name="ota_msg_invalid_address">Invalid address. Example: 10.0.0.232:47474</string>
+    <string name="ota_msg_peer_legacy">The other phone’s version is too old for sending by address: update it once with ADB or by sharing the APK.</string>
+    <string name="ota_msg_cancelled">Sending cancelled.</string>
+    <string name="ota_msg_received">APK received. Now confirm the Android update.</string>
+    <string name="ota_msg_not_apk">The received file is not a valid APK.</string>
+    <string name="ota_msg_wrong_package_apk">This APK does not match OSSM.</string>
+    <string name="ota_msg_up_to_date">Already up to date: the received version is not newer than the installed one.</string>
+    <string name="ota_msg_wrong_signer">The APK signature does not match this installation.</string>
+    <string name="update_local_ota_scan">Scan the QR</string>
+    <string name="update_local_ota_scan_prompt">Point at the QR code shown by the receiving phone</string>
+    <string name="update_local_ota_qr_desc">Pairing QR code for the update. Addresses: %1$s</string>
+    <string name="update_local_ota_qr_hint">Scan this QR with the other phone (“Scan the QR”), or type one of the addresses.</string>
+    <string name="update_local_ota_pairing_title">Verification number</string>
+    <string name="update_local_ota_pairing_body">Sending %1$s to %2$s (currently %3$s). Check that the other phone shows the same number and tap Yes there.</string>
+    <string name="update_local_ota_waiting">Waiting for confirmation on the other phone…</string>
+    <string name="update_local_ota_number_desc">Verification number: %1$s</string>
+    <string name="update_local_ota_incoming_title">Update request</string>
+    <string name="update_local_ota_incoming_body">%1$s wants to send version %2$s. Is %3$s the number shown on the other phone?</string>
+    <string name="update_local_ota_yes">Yes</string>
+    <string name="update_local_ota_no">No</string>
+    <string name="ota_msg_invalid_qr">This QR code is not an OSSM update QR.</string>
+    <string name="ota_msg_key_mismatch">The other phone’s key does not match the QR code: sending blocked (possible interception). Scan the QR again.</string>
+    <string name="ota_msg_busy">The other phone is already handling a request. Try again in a minute.</string>
+    <string name="ota_msg_waiting_confirmation">Waiting for confirmation on the other phone…</string>
+    <string name="ota_msg_declined">Declined on the other phone.</string>
+    <string name="ota_msg_confirm_timeout">No answer on the other phone within 60 s. Sending cancelled.</string>
+    <string name="ota_msg_confirm_failed">Connection lost during confirmation.</string>
+    <string name="ota_msg_mac_rejected">The receiver refused the file (integrity check).</string>
+    <string name="ota_msg_session_rejected">The receiver refused the upload (request expired or not confirmed).</string>
+    <string name="ota_msg_receiving">Confirmed. Receiving the update…</string>
+    <string name="ota_msg_incoming_declined">Request declined.</string>
+    <string name="ota_msg_incoming_timeout">Request expired (no answer within 60 s).</string>
+    <string name="ota_msg_incoming_cancelled">Request cancelled by the other phone.</string>
+    <string name="ota_msg_integrity_failed">File refused: integrity check failed.</string>
+    <string name="update_ota_title">INTERNET OTA UPDATE</string>
     <string name="update_error">Unable to check or download the update.</string>
-    <string name="update_periodic_check">Periodic check (12 h)</string>
-    <string name="update_notification_channel">Available updates</string>
-    <string name="update_notification_title">Update available</string>
 
     <!-- Diagnostics screen -->
     <string name="diag_title">DIAGNOSTICS</string>
@@ -157,7 +170,6 @@
 
     <!-- Floating overlay -->
     <string name="overlay_title">OVERLAY</string>
-    <string name="overlay_enable">Show overlay</string>
     <string name="overlay_hint">Floating bubble to control the machine even in the background.</string>
     <string name="overlay_permission_hint">Allow drawing over other apps in the system settings.</string>
     <string name="overlay_transparency">Transparency</string>
@@ -202,29 +214,111 @@
     <string name="stat_continue">Continue</string>
     <string name="stat_delete_permanently">Delete permanently</string>
 
-    <!-- Adaptive mode -->
-    <string name="adapt_title">ADAPTIVE MODE</string>
-    <string name="adapt_locked">Locked</string>
-    <string name="adapt_unlocked">Unlocked</string>
-    <string name="adapt_locked_hint">Unlock it by teaching it your preferences.</string>
-    <string name="adapt_unlocked_hint">The engine now uses your preferred pattern.</string>
-    <string name="adapt_progression">PROGRESSION</string>
-    <string name="adapt_confidence">CONFIDENCE</string>
-    <string name="adapt_sessions">Sessions</string>
-    <string name="adapt_total_active">Active time</string>
-    <string name="adapt_distinct_days">Distinct days</string>
-    <string name="adapt_manual_adjustments">Manual adjustments</string>
-    <string name="adapt_top_pattern">Favorite pattern</string>
-    <string name="adapt_settings_title">ADAPTIVE SETTINGS</string>
-    <string name="adapt_enabled">Enable adaptive mode</string>
-    <string name="adapt_enabled_hint">The mode picks the pattern itself based on your learned preferences.</string>
-    <string name="adapt_pace">PACE</string>
-    <string name="adapt_pace_calm">Calm</string>
-    <string name="adapt_pace_moderate">Moderate</string>
-    <string name="adapt_pace_dynamic">Dynamic</string>
-    <string name="adapt_diversity">Diversity</string>
-    <string name="adapt_diversity_hint">Higher explores more different patterns.</string>
-    <string name="adapt_start">Start</string>
-    <string name="adapt_stop">Stop</string>
-    <string name="adapt_running_hint">The adaptive mix is running.</string>
+    <!-- USB -->
+    <string name="ctl_usb_active">USB-C active · OSSM Bluetooth disabled</string>
+
+    <!-- Internet session -->
+    <string name="remote_share">Share link</string>
+    <string name="remote_session_title">PRIVATE INTERNET SESSION</string>
+    <string name="remote_session_hint">The phone drives the OSSM over Bluetooth; the remote site only sends its requests over the Internet. The private link stays the same until you regenerate it. Motion needs a connected, homed machine and a speed maximum above 0%.</string>
+    <string name="remote_session_link">Private session link</string>
+    <string name="remote_session_start">Start session</string>
+    <string name="remote_stop_session">Stop session</string>
+    <string name="remote_session_regenerate">Regenerate and revoke link</string>
+    <string name="remote_session_regenerate_hint">This invalidates the current link before creating a new one.</string>
+    <string name="remote_session_notification_channel">OSSM remote session</string>
+    <string name="remote_session_notification_title">OSSM remote session active</string>
+    <string name="remote_session_notification_text">The remote site only acts within your maximums.</string>
+    <string name="live_slider_description">Live carriage position</string>
+    <string name="live_radial_legend">Zero at the bottom · move up = deeper</string>
+    <string name="live_radial_increase">Advance 10 percent then slow return</string>
+    <string name="live_radial_decrease">Retract 10 percent then slow return</string>
+    <string name="live_anchor_below">stays at %1$d</string>
+    <string name="control_slider_decrease">Decrease %1$s</string>
+    <string name="control_slider_increase">Increase %1$s</string>
+    <string name="ctl_random_preset_active">Active preset</string>
+    <string name="ctl_random_preset_inactive">Preset</string>
+    <string name="stat_reset_final_msg">Are you absolutely sure? All data will be permanently deleted and cannot be recovered.</string>
+    <!-- Voice (2.3.26, base) -->
+    <string name="voice_max_speed">Max speed (voice)</string>
+    <string name="voice_plan_title">PLANNED SEQUENCE</string>
+    <string name="voice_plan_empty">No sequence.</string>
+    <string name="voice_state_planned">Instruction understood</string>
+    <string name="voice_state_rejected">Sequence refused (out of bounds) — nothing moves</string>
+    <string name="voice_state_not_understood">Not understood — nothing moves</string>
+    <string name="voice_state_stopped">STOP</string>
+    <string name="voice_state_not_ready">Live not ready or max speed at 0 — nothing moves</string>
+    <string name="voice_step_deep">Deep %1$d %% in %2$s s</string>
+    <string name="voice_step_home">Back %1$d %% in %2$s s</string>
+    <string name="voice_step_position">Position %1$d %% in %2$s s</string>
+    <string name="voice_step_stay">Stay at %1$d %%</string>
+    <string name="voice_step_hold">hold %1$s s</string>
+    <string name="voice_ai_idle">Voice AI: not loaded</string>
+    <string name="voice_ai_loading">Loading the voice AI…</string>
+    <string name="voice_ai_ready">Voice AI: ready (on the phone, %1$s)</string>
+    <string name="voice_ai_missing">Voice AI: model missing</string>
+    <string name="voice_ai_unreadable">Voice AI: model unreadable (file permissions)</string>
+    <string name="voice_ai_expected_path">Expected path: %1$s</string>
+    <string name="voice_ai_error">Voice AI: error — %1$s</string>
+    <string name="voice_asr_whisper">Transcription: Whisper small (French)</string>
+    <string name="voice_asr_parakeet">Transcription: Parakeet (language not forced)</string>
+    <string name="voice_listen">Listen</string>
+    <string name="voice_listen_pause">Pause microphone</string>
+    <string name="voice_listening">Microphone open — speak (nothing is recorded)</string>
+    <string name="voice_mic_denied">Microphone denied: allow the microphone for OSSM in Android settings.</string>
+    <string name="voice_last_transcript">Heard: “%1$s”</string>
+    <string name="voice_latency">Latency: speech → text %1$s ms · text → steps %2$s ms</string>
+    <!-- 2.3.28 -->
+    <string name="voice_info_cd">Information about Voice mode</string>
+    <string name="voice_info_title">Voice mode</string>
+    <string name="voice_info_body" formatted="false">Voice AI entirely on the phone (no network, nothing is recorded). Say an instruction (“go deep slowly”, “start slowly”, “faster”, “keep this rhythm”). Say “stop” to stop everything. Nothing moves until an instruction is understood. 0 % = minimum, 100 % = maximum of the Depth range.</string>
+    <string name="voice_info_close">Close</string>
+    <string name="voice_motif_line">Back-and-forth: depth %1$d → %2$d %%, speed %3$d → %4$d %% over %5$d s, then continuous</string>
+    <string name="voice_motif_running">Continuous rhythm running (STOP or a new instruction to change it)</string>
+    <string name="control_stop_bar_cd">STOP, immediate stop</string>
+    <!-- 2.3.29 -->
+    <string name="voice_short_word_stop_on">Quick STOP on a short word: on</string>
+    <string name="voice_short_word_stop_off">Quick STOP on a short word: off</string>
+    <string name="voice_interpret_source">Interpretation: %1$s · %2$s ms</string>
+    <string name="voice_source_rules">rules</string>
+    <string name="voice_source_gemma">Gemma</string>
+    <string name="voice_transcript_ignored">Transcript ignored: %1$s (no movement)</string>
+    <string name="voice_ignored_empty">empty text</string>
+    <string name="voice_ignored_punctuation">punctuation only</string>
+    <string name="voice_ignored_hallucination">likely hallucination</string>
+    <string name="voice_ignored_repetition">word repeated in a loop</string>
+    <string name="voice_ignored_too_long">text too long</string>
+    <string name="voice_ignored_low_energy">voice too faint</string>
+    <string name="ctl_rotation_lock">Lock screen rotation</string>
+    <string name="ctl_rotation_unlock">Unlock screen rotation</string>
+    <!-- Machine firmware, written over USB -->
+    <string name="fw_title">MACHINE FIRMWARE</string>
+    <string name="fw_hint">Connect the OSSM to this phone with a USB (OTG) cable, then start the flash. The machine will be stopped and restarted.</string>
+    <string name="fw_flash_bundled">Flash bundled firmware</string>
+    <string name="fw_flash_file">Choose a .bin file</string>
+    <string name="fw_confirm_title">Flash the firmware?</string>
+    <string name="fw_confirm_body">%1$s (%2$d KB)\nThe machine will be stopped and restarted. Do not unplug the cable during the operation.</string>
+    <string name="fw_confirm_ok">Flash</string>
+    <string name="fw_cancel">Cancel</string>
+    <string name="fw_ok">OK</string>
+    <string name="fw_logs_title">Flash log</string>
+    <string name="fw_logs_copy">Copy log</string>
+    <string name="fw_state_preparing">Connecting to the machine…</string>
+    <string name="fw_state_erasing">Erasing the machine memory… (up to 30 s)</string>
+    <string name="fw_state_writing">Writing: %1$d %%</string>
+    <string name="fw_state_complete">Firmware installed. The machine is restarting.</string>
+    <string name="fw_err_no_cable">No OSSM detected over USB. Check the OTG cable.</string>
+    <string name="fw_err_permission">USB access denied.</string>
+    <string name="fw_err_open">Could not open the USB link.</string>
+    <string name="fw_err_no_bootloader">The machine does not enter flash mode. Hold the BOOT button, press EN/RESET, then try again.</string>
+    <string name="fw_err_invalid">Invalid firmware file (ESP32 image expected).</string>
+    <string name="fw_err_rejected">The machine refused the operation. Try the flash again.</string>
+    <string name="fw_err_write">Write failed at block %1$d. Try the flash again.</string>
+    <string name="fw_err_generic">USB flash failed. Try again.</string>
+    <string name="ctl_limit_upper_add">Add an upper limit</string>
+    <string name="ctl_limit_upper_moving">Upper limit: move the line, then tap to lock it</string>
+    <string name="ctl_limit_upper_locked">Upper limit locked: tap to remove it</string>
+    <string name="ctl_limit_lower_add">Add a lower limit</string>
+    <string name="ctl_limit_lower_moving">Lower limit: move the line, then tap to lock it</string>
+    <string name="ctl_limit_lower_locked">Lower limit locked: tap to remove it</string>
 </resources>

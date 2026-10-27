@@ -8,11 +8,16 @@
 #include "NimBLECharacteristic.h"
 #include "NimBLEService.h"
 #include "NimBLEUUID.h"
+#include "command/commands.hpp"
+#include "services/communication/ble_remote_control.h"
 #include "queue.h"
 #include "services/led.h"
+#include "services/communication/usb_serial.h"
 
-static const std::regex commandRegex(
-    R"(go:(simplePenetration|strokeEngine|streaming|menu)|set:(speed|stroke|depth|sensation|acceleration|buffer|pattern):\d+|set:wifi:[^|]+\|.+|stream:\d+:\d+)");
+bool handleBleRemoteControlCommand(const std::string& command,
+                                   NimBLEConnInfo& connInfo,
+                                   NimBLECharacteristic* characteristic);
+bool bleRemoteControlCommandAllowed(uint16_t connectionHandle, uint32_t nowMs);
 
 /** Handler class for characteristic actions */
 class CharacteristicCallbacks : public NimBLECharacteristicCallbacks {
@@ -24,9 +29,23 @@ class CharacteristicCallbacks : public NimBLECharacteristicCallbacks {
                  NimBLEConnInfo& connInfo) override {
         std::string cmd = pCharacteristic->getValue();
 
-        if (!std::regex_match(cmd, commandRegex)) {
+        if (!isValidControlCommand(cmd)) {
             ESP_LOGD("NIMBLE_COMMAND", "Invalid command: %s", cmd.c_str());
             pCharacteristic->setValue("fail:" + String(cmd.c_str()));
+            return;
+        }
+        if (cmd.rfind("remote:", 0) == 0) {
+            handleBleRemoteControlCommand(cmd, connInfo, pCharacteristic);
+            return;
+        }
+        if (usbSerialClaimed() && cmd != "go:menu" && cmd != "set:speed:0") {
+            pCharacteristic->setValue("fail:usb-active");
+            return;
+        }
+        if (!bleRemoteControlCommandAllowed(connInfo.getConnHandle(), millis()) &&
+            bleRemoteControlLease.active() && cmd != "go:menu" &&
+            cmd != "set:speed:0") {
+            pCharacteristic->setValue("fail:remote-lease-active");
             return;
         }
         messageQueue.push(String(cmd.c_str()));

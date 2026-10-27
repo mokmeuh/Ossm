@@ -3,7 +3,7 @@ REM [install] Installe l'APK debug deja compile + lance l'app.
 REM Choix de l'appareil : USB filaire d'abord, sinon Wi-Fi, sinon wifi_connect (adb_target.ps1).
 setlocal
 cd /d "%~dp0"
-set "APK=app\build\outputs\apk\debug\app-debug.apk"
+set "APK=C:\Users\mikki\Documents\Ossm\.omo\teams\team-f8ae9021\functional-build\app\build\outputs\named-apk\OSSM-Remote-v2.3.10-debug.apk"
 set "PKG=com.ossm.remote.debug"
 
 if not exist "%APK%" (

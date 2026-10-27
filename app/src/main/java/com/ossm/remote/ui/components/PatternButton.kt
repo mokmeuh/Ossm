@@ -31,7 +31,8 @@ fun PatternButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    onLongClick: (() -> Unit)? = null
+    onLongClick: (() -> Unit)? = null,
+    fontSize: androidx.compose.ui.unit.TextUnit = 13.sp
 ) {
     val bgColor by animateColorAsState(
         targetValue = if (isActive) color else color.copy(alpha = 0.12f),
@@ -66,7 +67,7 @@ fun PatternButton(
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
                 text = label,
-                fontSize = 13.sp,
+                fontSize = fontSize,
                 fontWeight = FontWeight.Bold,
                 color = if (enabled) textColor else textColor.copy(alpha = 0.4f),
                 maxLines = 1,

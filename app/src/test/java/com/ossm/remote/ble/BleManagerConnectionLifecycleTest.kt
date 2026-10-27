@@ -7,11 +7,16 @@ import android.bluetooth.BluetoothGattCallback
 import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
+import android.bluetooth.le.BluetoothLeScanner
+import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanFilter
+import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.content.pm.PackageManager
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.ossm.remote.model.BleConnectionState
+import com.ossm.remote.usb.UsbSerialTransport
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkStatic
@@ -23,15 +28,25 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Before
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34], application = android.app.Application::class)
 class BleManagerConnectionLifecycleTest {
     private val context = mockk<Context>()
     private val bluetoothManager = mockk<BluetoothManager>()
     private val bluetoothAdapter = mockk<BluetoothAdapter>()
+    private val bleScanner = mockk<BluetoothLeScanner>(relaxed = true)
     private val device = mockk<BluetoothDevice>()
     private val firstGatt = mockk<BluetoothGatt>(relaxed = true)
     private val secondGatt = mockk<BluetoothGatt>(relaxed = true)
     private val callback = slot<BluetoothGattCallback>()
+    private val scanCallback = slot<ScanCallback>()
+    private val startedScanCallbacks = mutableListOf<ScanCallback>()
 
     private lateinit var manager: BleManager
 
@@ -48,8 +63,16 @@ class BleManagerConnectionLifecycleTest {
         every { context.getSystemService(Context.BLUETOOTH_SERVICE) } returns bluetoothManager
         every { context.checkPermission(any(), any(), any()) } returns PackageManager.PERMISSION_GRANTED
         every { bluetoothManager.adapter } returns bluetoothAdapter
-        every { bluetoothAdapter.bluetoothLeScanner } returns null
+        every { bluetoothAdapter.bluetoothLeScanner } returns bleScanner
+        every { bluetoothAdapter.isEnabled } returns true
         every { bluetoothAdapter.getRemoteDevice(ADDRESS) } returns device
+        every {
+            bleScanner.startScan(
+                any<List<ScanFilter>>(),
+                any<ScanSettings>(),
+                capture(startedScanCallbacks),
+            )
+        } returns Unit
         every { device.name } returns "OSSM"
         every { device.address } returns ADDRESS
         every { firstGatt.device } returns device
@@ -63,7 +86,10 @@ class BleManagerConnectionLifecycleTest {
             )
         } returnsMany listOf(firstGatt, secondGatt)
 
-        manager = BleManager(context)
+        val usbTransport = mockk<UsbSerialTransport>(relaxed = true)
+        every { usbTransport.ready } returns MutableStateFlow(false)
+        every { usbTransport.frames } returns MutableSharedFlow()
+        manager = BleManager(context, usbTransport)
     }
 
     @After
@@ -106,7 +132,7 @@ class BleManagerConnectionLifecycleTest {
                 hasConnectPermission = false,
                 bluetoothEnabled = true,
                 hasKnownAddress = true,
-                connectionIdle = true,
+                connectionState = BleConnectionState.Disconnected,
             ),
         )
         assertEquals(
@@ -115,7 +141,7 @@ class BleManagerConnectionLifecycleTest {
                 hasConnectPermission = true,
                 bluetoothEnabled = false,
                 hasKnownAddress = true,
-                connectionIdle = true,
+                connectionState = BleConnectionState.Disconnected,
             ),
         )
         assertEquals(
@@ -124,9 +150,50 @@ class BleManagerConnectionLifecycleTest {
                 hasConnectPermission = true,
                 bluetoothEnabled = true,
                 hasKnownAddress = true,
-                connectionIdle = true,
+                connectionState = BleConnectionState.EmergencyStop,
             ),
         )
+    }
+
+    @Test
+    fun `timed out earlier scan cannot stop a newer scan`() {
+        assertEquals(false, isCurrentScanGeneration(expected = 4L, active = 5L))
+        assertEquals(true, isCurrentScanGeneration(expected = 5L, active = 5L))
+    }
+
+    @Test
+    fun `delayed failure from canceled scan cannot replace connecting or stop newer scan`() {
+        manager.startScan()
+        verify(timeout = SCAN_START_TIMEOUT_MS, exactly = 1) {
+            bleScanner.startScan(
+                any<List<ScanFilter>>(),
+                any<ScanSettings>(),
+                any<ScanCallback>(),
+            )
+        }
+        val canceledCallback = startedScanCallbacks.single()
+
+        manager.connect(ADDRESS)
+        canceledCallback.onScanFailed(ScanCallback.SCAN_FAILED_INTERNAL_ERROR)
+
+        assertEquals(BleConnectionState.Connecting("OSSM"), manager.connectionState.value)
+        verify(exactly = 2) { bleScanner.stopScan(canceledCallback) }
+
+        manager.startScan()
+        verify(timeout = SCAN_START_TIMEOUT_MS, exactly = 2) {
+            bleScanner.startScan(
+                any<List<ScanFilter>>(),
+                any<ScanSettings>(),
+                any<ScanCallback>(),
+            )
+        }
+        val newerCallback = startedScanCallbacks.last()
+
+        canceledCallback.onScanFailed(ScanCallback.SCAN_FAILED_INTERNAL_ERROR)
+
+        assertEquals(BleConnectionState.Scanning, manager.connectionState.value)
+        verify(exactly = 2) { bleScanner.stopScan(canceledCallback) }
+        verify(exactly = 1) { bleScanner.stopScan(newerCallback) }
     }
 
     @Test
@@ -158,6 +225,37 @@ class BleManagerConnectionLifecycleTest {
     }
 
     @Test
+    fun `failed scan stops scanner resources and allows a fresh scan`() {
+        manager.startScan()
+
+        verify(timeout = SCAN_START_TIMEOUT_MS) {
+            bleScanner.startScan(
+                any<List<ScanFilter>>(),
+                any<ScanSettings>(),
+                capture(scanCallback),
+            )
+        }
+
+        scanCallback.captured.onScanFailed(ScanCallback.SCAN_FAILED_INTERNAL_ERROR)
+
+        assertEquals(
+            BleConnectionState.Error("Scan échoué (${ScanCallback.SCAN_FAILED_INTERNAL_ERROR})"),
+            manager.connectionState.value,
+        )
+        verify(exactly = 2) { bleScanner.stopScan(scanCallback.captured) }
+
+        manager.startScan()
+
+        verify(timeout = SCAN_START_TIMEOUT_MS, exactly = 2) {
+            bleScanner.startScan(
+                any<List<ScanFilter>>(),
+                any<ScanSettings>(),
+                any<ScanCallback>(),
+            )
+        }
+    }
+
+    @Test
     fun `setup commands prefer acknowledged writes while live targets stay low latency`() {
         val bothWriteModes = BluetoothGattCharacteristic.PROPERTY_WRITE or
             BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE
@@ -174,5 +272,6 @@ class BleManagerConnectionLifecycleTest {
 
     private companion object {
         const val ADDRESS = "AA:BB:CC:DD:EE:FF"
+        const val SCAN_START_TIMEOUT_MS = 1_000L
     }
 }

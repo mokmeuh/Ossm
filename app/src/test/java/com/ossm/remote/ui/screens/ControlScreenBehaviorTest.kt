@@ -1,6 +1,7 @@
 package com.ossm.remote.ui.screens
 
 import com.ossm.remote.R
+import com.ossm.remote.model.KnownFallbackPatterns
 import com.ossm.remote.model.KnownStrokeEnginePatterns
 import com.ossm.remote.model.KnownStreamingPattern
 import com.ossm.remote.ui.components.liveControlMinimumHeight
@@ -30,10 +31,10 @@ class ControlScreenBehaviorTest {
     }
 
     @Test
-    fun `Live hides stop pause and save controls`() {
+    fun `Live keeps STOP visible but hides pause and save controls`() {
         val visibility = controlActionVisibility(KnownStreamingPattern)
 
-        assertFalse(visibility.showStop)
+        assertTrue(visibility.showStop)
         assertFalse(visibility.showPause)
         assertFalse(visibility.showSave)
     }
@@ -59,6 +60,15 @@ class ControlScreenBehaviorTest {
     }
 
     @Test
+    fun `record button is available only for Live`() {
+        val simpleStroke = KnownStrokeEnginePatterns.first { it.key == "simpleStroke" }
+
+        assertTrue(shouldShowLiveRecordButton(KnownStreamingPattern))
+        assertFalse(shouldShowLiveRecordButton(simpleStroke))
+        assertFalse(shouldShowLiveRecordButton(null))
+    }
+
+    @Test
     fun `hold explanation hides once movement exceeds touch slop`() {
         assertTrue(shouldKeepHoldInfoVisible(distancePx = 7.9f, touchSlopPx = 8f))
         assertTrue(shouldKeepHoldInfoVisible(distancePx = 8f, touchSlopPx = 8f))
@@ -66,11 +76,10 @@ class ControlScreenBehaviorTest {
     }
 
     @Test
-    fun `precision defaults off for Live and on for stroke engine patterns`() {
-        val simpleStroke = KnownStrokeEnginePatterns.first { it.key == "simpleStroke" }
-
-        assertFalse(isPrecisionEnabled(KnownStreamingPattern, emptyMap()))
-        assertTrue(isPrecisionEnabled(simpleStroke, emptyMap()))
+    fun `precision defaults off for every available fallback mode`() {
+        KnownFallbackPatterns.forEach { pattern ->
+            assertFalse(pattern.key, isPrecisionEnabled(pattern, emptyMap()))
+        }
     }
 
     @Test
@@ -80,11 +89,16 @@ class ControlScreenBehaviorTest {
 
         overrides[KnownStreamingPattern.key] = true
         assertTrue(isPrecisionEnabled(KnownStreamingPattern, overrides))
-        assertTrue(isPrecisionEnabled(simpleStroke, overrides))
+        assertFalse(isPrecisionEnabled(simpleStroke, overrides))
 
         overrides[simpleStroke.key] = false
         assertTrue(isPrecisionEnabled(KnownStreamingPattern, overrides))
         assertFalse(isPrecisionEnabled(simpleStroke, overrides))
+
+        overrides[simpleStroke.key] = true
+        overrides[KnownStreamingPattern.key] = false
+        assertTrue(isPrecisionEnabled(simpleStroke, overrides))
+        assertFalse(isPrecisionEnabled(KnownStreamingPattern, overrides))
     }
 
     @Test
@@ -93,8 +107,8 @@ class ControlScreenBehaviorTest {
         assertTrue(liveControlMinimumHeight(compact = true).value >= 180f)
         assertTrue(liveControlMinimumWidth(compact = false).value >= 280f)
         assertTrue(liveControlMinimumWidth(compact = true).value >= 280f)
-        assertTrue(liveSliderTrackThickness(compact = false).value >= 18f)
-        assertTrue(liveSliderTrackThickness(compact = true).value >= 16f)
+        assertEquals(28f, liveSliderTrackThickness(compact = false).value, 0.001f)
+        assertEquals(20f, liveSliderTrackThickness(compact = true).value, 0.001f)
         assertTrue(liveSliderThumbRadius(compact = false).value >= 28f)
         assertTrue(liveSliderThumbRadius(compact = true).value >= 22f)
     }

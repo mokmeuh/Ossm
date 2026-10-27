@@ -6,6 +6,16 @@
 
 #include "Arduino.h"
 
+inline const std::regex& controlCommandRegex() {
+    static const std::regex pattern(
+        R"(go:(simplePenetration|strokeEngine|streaming|menu)|set:(speed|stroke|depth|sensation|acceleration|buffer|pattern):\d+|set:wifi:[^|]+\|.+|stream:\d+:\d+|remote:(claim|heartbeat|release))");
+    return pattern;
+}
+
+inline bool isValidControlCommand(const std::string& command) {
+    return std::regex_match(command, controlCommandRegex());
+}
+
 // These are BLE commands that we will process and send to the state machine.
 // The state machine will execute these commands if appropiate
 

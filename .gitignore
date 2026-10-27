@@ -39,3 +39,25 @@ ksp-*.log
 build_install_status.txt
 install_result.txt
 wifi_adb_ip.txt
+
+# Remote Cloud (Worker) : dépendances, état local et journaux
+remote-cloud/node_modules/
+remote-cloud/.wrangler/
+remote-cloud/.local-preview.*
+remote-cloud/.debug-journal*.md
+node_modules/
+
+# Travail d'agents et journaux locaux
+.omo/
+.codex/
+.codex-remote-attachments/
+.debug-journal*.md
+
+# Réglages Claude Code personnels
+.claude/settings.local.json
+
+# Modèles IA locaux (lourds, jamais versionnés)
+models/
+
+# AAR natifs locaux (sherpa-onnx, lourds, non versionnés)
+app/libs/*.aar

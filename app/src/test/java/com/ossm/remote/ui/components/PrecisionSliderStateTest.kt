@@ -29,6 +29,17 @@ class PrecisionSliderStateTest {
     }
 
     @Test
+    fun `small movements update continuously without an eight pixel staircase`() {
+        val state = PrecisionSliderState(movementThresholdPx = 8f)
+        state.onDown(valuePercent = 50f, pointerX = 100f, trackWidthPx = 200f, uptimeMillis = 0)
+
+        assertTrue(state.onMove(pointerX = 101f, uptimeMillis = 10))
+        assertEquals(50.5f, state.valuePercent, 0.001f)
+        assertTrue(state.onMove(pointerX = 102f, uptimeMillis = 20))
+        assertEquals(51f, state.valuePercent, 0.001f)
+    }
+
+    @Test
     fun `each stationary interval advances through plus or minus thirty twenty ten and five`() {
         val state = PrecisionSliderState()
         state.onDown(valuePercent = 50f, pointerX = 100f, trackWidthPx = 200f, uptimeMillis = 0)
@@ -71,7 +82,10 @@ class PrecisionSliderStateTest {
         val state = PrecisionSliderState(movementThresholdPx = 8f)
         state.onDown(valuePercent = 50f, pointerX = 100f, trackWidthPx = 200f, uptimeMillis = 0)
 
-        state.onMove(pointerX = 104f, uptimeMillis = 1400)
+        assertTrue(state.onMove(pointerX = 104f, uptimeMillis = 1400))
+        assertEquals(52f, state.valuePercent, 0.001f)
+        // Four pixels are enough to update the scalar, but not enough to restart the
+        // stationary precision clock.
         assertTrue(state.advanceTime(1500))
         assertEquals(PrecisionLevel.Fine30, state.level)
 
@@ -80,6 +94,19 @@ class PrecisionSliderStateTest {
         assertEquals(PrecisionLevel.Fine30, state.level)
         assertTrue(state.advanceTime(3500))
         assertEquals(PrecisionLevel.Fine20, state.level)
+    }
+
+    @Test
+    fun `a new gesture adopts an externally supplied value after cancellation`() {
+        val state = PrecisionSliderState()
+        state.onDown(valuePercent = 25f, pointerX = 100f, trackWidthPx = 200f, uptimeMillis = 0)
+        state.cancel()
+
+        state.onDown(valuePercent = 75f, pointerX = 100f, trackWidthPx = 200f, uptimeMillis = 100)
+
+        assertEquals(75f, state.valuePercent, 0.001f)
+        assertTrue(state.onMove(pointerX = 101f, uptimeMillis = 110))
+        assertEquals(75.5f, state.valuePercent, 0.001f)
     }
 
     @Test

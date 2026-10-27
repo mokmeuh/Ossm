@@ -1,2 +1,0 @@
-To https://github.com/mokmeuh/Ossm.git
-   7e9ddaa..353aa1a  main -> main

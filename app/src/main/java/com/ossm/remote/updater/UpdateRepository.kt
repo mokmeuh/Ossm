@@ -3,7 +3,6 @@ package com.ossm.remote.updater
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -38,14 +37,6 @@ class UpdateRepository @Inject constructor(
 
     suspend fun saveManualUrl(url: String) {
         dataStore.edit { prefs -> prefs[MANUAL_URL] = normalizeManifestUrl(url).orEmpty() }
-    }
-
-    val periodicCheckEnabled: Flow<Boolean> = dataStore.data.map { prefs ->
-        prefs[PERIODIC_CHECK_ENABLED] ?: false
-    }
-
-    suspend fun setPeriodicCheckEnabled(enabled: Boolean) {
-        dataStore.edit { prefs -> prefs[PERIODIC_CHECK_ENABLED] = enabled }
     }
 
     suspend fun shouldCheckOnStartup(nowMillis: Long = System.currentTimeMillis()): Boolean =
@@ -128,6 +119,5 @@ class UpdateRepository @Inject constructor(
         const val CHECK_INTERVAL_MILLIS = 12 * 60 * 60 * 1_000L
         val MANUAL_URL = stringPreferencesKey("manual_manifest_url")
         val LAST_CHECK_MILLIS = longPreferencesKey("last_update_check_millis")
-        val PERIODIC_CHECK_ENABLED = booleanPreferencesKey("periodic_check_enabled")
     }
 }

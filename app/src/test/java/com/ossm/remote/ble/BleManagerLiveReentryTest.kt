@@ -12,6 +12,7 @@ import com.ossm.remote.model.BleConnectionState
 import com.ossm.remote.model.LiveTargetProducer
 import com.ossm.remote.model.MachineState
 import com.ossm.remote.model.OssmCommand
+import com.ossm.remote.usb.UsbSerialTransport
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkStatic
@@ -19,6 +20,7 @@ import io.mockk.unmockkStatic
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -54,7 +56,10 @@ class BleManagerLiveReentryTest {
         every { bluetoothManager.adapter } returns bluetoothAdapter
         every { bluetoothAdapter.bluetoothLeScanner } returns null
 
-        manager = BleManager(context)
+        val usbTransport = mockk<UsbSerialTransport>(relaxed = true)
+        every { usbTransport.ready } returns MutableStateFlow(false)
+        every { usbTransport.frames } returns MutableSharedFlow()
+        manager = BleManager(context, usbTransport)
         streamingReadyFlow().value = true
         manager.resumeStreamingTargets()
     }
@@ -128,6 +133,72 @@ class BleManagerLiveReentryTest {
     }
 
     @Test
+    fun `Live entry away from home converges slowly before opening the ready gate`() {
+        val writes = Collections.synchronizedList(mutableListOf<WireWrite>())
+        installConnectedGattHarness(writes)
+        streamingReadyFlow().value = false
+        machineStateFlow().value = MachineState(
+            state = "menu",
+            speed = 0,
+            stroke = 100,
+            depth = 100,
+            positionMm = -20f,
+        )
+
+        manager.sendCommand(OssmCommand.EnterStreaming)
+        Thread.sleep(100)
+        machineStateFlow().value = MachineState(
+            state = "streaming.idle",
+            speed = 0,
+            stroke = 100,
+            depth = 100,
+            positionMm = -20f,
+        )
+
+        // Live 0 = wire 98 (inverse mapping): one Home target, after a low speed cap.
+        awaitWrite(writes) { it.livePacket?.positionPermille == 980 }
+        assertFalse(
+            "Touch must stay refused while the carriage converges to Home",
+            manager.streamingReady.value,
+        )
+        val snapshot = writes.toList()
+        val homeIndex = snapshot.indexOfFirst { it.livePacket?.positionPermille == 980 }
+        val capIndex = snapshot.indexOfFirst { it.text == "set:speed:$LIVE_ENTRY_HOMING_SPEED_PERCENT" }
+        assertTrue("Speed cap must precede the Home target: $snapshot", capIndex in 0 until homeIndex)
+        assertTrue(
+            "Home target duration must be proportional to the 20 mm distance",
+            snapshot[homeIndex].livePacket!!.durationMs >= liveEntryConvergenceDurationMs(20f).toInt(),
+        )
+
+        awaitStreamingReady(timeoutMs = 4_000)
+        val afterHome = writes.toList().drop(homeIndex + 1)
+        assertTrue("Convergence ends idle at speed 0: $afterHome", afterHome.any { it.text == "set:speed:0" })
+        assertFalse("No touch target is invented during entry", afterHome.any { it.isLiveTarget })
+    }
+
+    @Test
+    fun `Live entry already at home opens the ready gate without moving`() {
+        val writes = Collections.synchronizedList(mutableListOf<WireWrite>())
+        installConnectedGattHarness(writes)
+        streamingReadyFlow().value = false
+        machineStateFlow().value = MachineState(state = "menu", speed = 0, stroke = 100, depth = 100, positionMm = -3f)
+
+        manager.sendCommand(OssmCommand.EnterStreaming)
+        Thread.sleep(100)
+        machineStateFlow().value = MachineState(
+            state = "streaming.idle",
+            speed = 0,
+            stroke = 100,
+            depth = 100,
+            positionMm = -3f,
+        )
+        awaitStreamingReady()
+
+        assertFalse("No Live target at entry when already home: $writes", writes.toList().any { it.isLiveTarget })
+        assertFalse(writes.toList().any { it.text == "set:speed:$LIVE_ENTRY_HOMING_SPEED_PERCENT" })
+    }
+
+    @Test
     fun `touch move hold dispatches binary smooth targets before release stop`() {
         val writes = Collections.synchronizedList(mutableListOf<WireWrite>())
         installConnectedGattHarness(writes)
@@ -135,7 +206,12 @@ class BleManagerLiveReentryTest {
         manager.sendCommand(touchStream(positionPercent = 20, receivedAtMs = 0))
         awaitWrite(writes) { it.livePacket?.positionPermille == 800 }
 
+        // sendCommand deliberately debounces ordinary commands for 50 ms; wait
+        // past that boundary before asserting the next touch reaches GATT.
+        Thread.sleep(BleConstants.DEBOUNCE_MIN_MS + 10L)
         nowMs.set(80)
+        // Keep the sample timeline monotonic with the mocked clock. The 50-point
+        // move is a direct endpoint under the scheduler's interpolation threshold.
         manager.sendCommand(touchStream(positionPercent = 70, receivedAtMs = 80))
         awaitWrite(writes) { it.livePacket?.positionPermille == 300 }
 
@@ -208,8 +284,8 @@ class BleManagerLiveReentryTest {
         fail("Expected latest Live target $expected to dispatch, but scheduler position was $actual")
     }
 
-    private fun awaitStreamingReady() {
-        val deadlineNanos = System.nanoTime() + 2_000_000_000L
+    private fun awaitStreamingReady(timeoutMs: Long = 2_000L) {
+        val deadlineNanos = System.nanoTime() + timeoutMs * 1_000_000L
         while (System.nanoTime() < deadlineNanos) {
             if (manager.streamingReady.value) return
             Thread.sleep(10)

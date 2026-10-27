@@ -29,7 +29,13 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.semantics
@@ -47,7 +53,10 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
-internal val LocalControlPrecisionEnabled = staticCompositionLocalOf { true }
+internal val LocalControlPrecisionEnabled = staticCompositionLocalOf { false }
+
+/** Half-width (percent of the scale) of the invisible detent that pulls the thumb in. */
+internal const val SNAP_RADIUS_PERCENT = 4f
 
 @Composable
 fun ControlSlider(
@@ -62,7 +71,18 @@ fun ControlSlider(
     displayValue: String = "${(value * 100).toInt()}%",
     currentMarker: Float? = null,
     markerColor: Color = OssmError,
-    displayValueColor: Color? = null
+    displayValueColor: Color? = null,
+    headerAccessory: (@Composable RowScope.() -> Unit)? = null,
+    /**
+     * Monotonic host-owned cancellation key for a held scalar gesture. The default keeps
+     * existing callers source-compatible; Live callers should advance it when STOP/loss/mode
+     * exit invalidates the gesture's pending release.
+     */
+    gestureCancellationKey: Long = 0L,
+    /** Optional invisible detent (in [valueRange] units) the thumb is pulled onto when close. */
+    snapValue: Float? = null,
+    /** Signed slider (sensation): fill from the center, colored by sign, fixed center tick. */
+    bipolar: BipolarStyle? = null
 ) {
     val step = (valueRange.endInclusive - valueRange.start) / 100f
     val rangeSize = valueRange.endInclusive - valueRange.start
@@ -74,71 +94,57 @@ fun ControlSlider(
     fun fromPercent(percent: Float): Float =
         valueRange.start + percent.coerceIn(0f, 100f) / 100f * rangeSize
 
-    Column(
-        modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(2.dp)
+    SliderFrame(
+        label = label,
+        displayValue = displayValue,
+        enabled = enabled,
+        modifier = modifier,
+        displayValueColor = displayValueColor,
+        headerAccessory = headerAccessory
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = label.uppercase(),
-                color = OssmPrimaryLight,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.sp
-            )
-            Text(
-                text = displayValue,
-                color = displayValueColor ?: if (enabled) OssmOnSurface else OssmOnSurface.copy(0.4f),
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-        }
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            RampButton(
-                symbol = "−",
-                sign = -1,
-                enabled = enabled,
-                activeColor = activeColor,
-                value = value,
-                step = step,
-                valueRange = valueRange,
-                onValueChange = onValueChange,
-                onValueCommit = onValueCommit
-            )
+        RampButton(
+            symbol = "−",
+            sign = -1,
+            description = stringResource(R.string.control_slider_decrease, label),
+            enabled = enabled,
+            activeColor = activeColor,
+            value = value,
+            step = step,
+            valueRange = valueRange,
+            onValueChange = onValueChange,
+            onValueCommit = onValueCommit
+        )
 
-            PrecisionScalarSlider(
-                valuePercent = toPercent(value),
-                enabled = enabled,
-                precisionEnabled = LocalControlPrecisionEnabled.current,
-                activeColor = activeColor,
-                currentMarkerPercent = currentMarker?.let(::toPercent),
-                onValueChange = { onValueChange(fromPercent(it)) },
-                onValueCommit = { onValueCommit(fromPercent(it)) },
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
-                markerColor = markerColor
-            )
+        PrecisionScalarSlider(
+            valuePercent = toPercent(value),
+            enabled = enabled,
+            precisionEnabled = LocalControlPrecisionEnabled.current,
+            activeColor = activeColor,
+            currentMarkerPercent = currentMarker?.let(::toPercent),
+            label = label,
+            onValueChange = { onValueChange(fromPercent(it)) },
+            onValueCommit = { onValueCommit(fromPercent(it)) },
+            gestureCancellationKey = gestureCancellationKey,
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+            markerColor = markerColor,
+            snapPercent = snapValue?.let(::toPercent),
+            bipolar = bipolar
+        )
 
-            RampButton(
-                symbol = "+",
-                sign = 1,
-                enabled = enabled,
-                activeColor = activeColor,
-                value = value,
-                step = step,
-                valueRange = valueRange,
-                onValueChange = onValueChange,
-                onValueCommit = onValueCommit
-            )
-        }
+        RampButton(
+            symbol = "+",
+            sign = 1,
+            description = stringResource(R.string.control_slider_increase, label),
+            enabled = enabled,
+            activeColor = activeColor,
+            value = value,
+            step = step,
+            valueRange = valueRange,
+            onValueChange = onValueChange,
+            onValueCommit = onValueCommit
+        )
     }
 }
 
@@ -152,12 +158,29 @@ fun PrecisionScalarSlider(
     onValueCommit: (Float) -> Unit,
     modifier: Modifier = Modifier,
     currentMarkerPercent: Float? = null,
-    markerColor: Color = OssmError
+    markerColor: Color = OssmError,
+    label: String? = null,
+    /** Monotonic key that cancels the current pointer gesture without affecting the next one. */
+    gestureCancellationKey: Long = 0L,
+    /** Invisible detent in percent (0..100); a drag ending near it lands exactly on it. */
+    snapPercent: Float? = null,
+    snapRadiusPercent: Float = SNAP_RADIUS_PERCENT,
+    bipolar: BipolarStyle? = null
 ) {
     val haptics = LocalHapticFeedback.current
+    val metrics = LocalControlSliderMetrics.current
+    var snapped by remember { mutableStateOf(false) }
+    fun applySnap(raw: Float): Float {
+        val target = snapPercent ?: return raw
+        val inside = kotlin.math.abs(raw - target) <= snapRadiusPercent
+        if (inside && !snapped) haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        snapped = inside
+        return if (inside) target else raw
+    }
     val gestureState = remember { PrecisionSliderState() }
     val onChange = rememberUpdatedState(onValueChange)
     val onCommit = rememberUpdatedState(onValueCommit)
+    val latestValuePercent = rememberUpdatedState(valuePercent)
     var draftPercent by remember { mutableFloatStateOf(valuePercent.coerceIn(0f, 100f)) }
     var dragging by remember { mutableStateOf(false) }
     var level by remember { mutableStateOf(PrecisionLevel.Global) }
@@ -178,6 +201,15 @@ fun PrecisionScalarSlider(
             draftPercent = valuePercent.coerceIn(0f, 100f)
             syncVisualState()
         }
+    }
+    LaunchedEffect(gestureCancellationKey) {
+        // Re-keying pointerInput below cancels the old awaitPointerEvent loop. Keep this
+        // explicit state reset as well so a STOP/loss/mode-exit epoch cannot leave the scalar
+        // visually owned by the cancelled gesture or allow its release to commit.
+        gestureState.cancel()
+        dragging = false
+        draftPercent = latestValuePercent.value.coerceIn(0f, 100f)
+        syncVisualState()
     }
     LaunchedEffect(dragging, precisionEnabled) {
         while (dragging && precisionEnabled) {
@@ -215,10 +247,12 @@ fun PrecisionScalarSlider(
         Canvas(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(56.dp)
+                .height(metrics.sliderHeight)
                 .semantics {
+                    label?.let { contentDescription = it }
                     stateDescription = stateLabel
                     progressBarRangeInfo = ProgressBarRangeInfo(draftPercent, 0f..100f)
+                    if (!enabled) disabled()
                     if (enabled) {
                         setProgress { target ->
                             val next = target.coerceIn(0f, 100f)
@@ -229,15 +263,28 @@ fun PrecisionScalarSlider(
                         }
                     }
                 }
-                .pointerInput(enabled) {
+                .pointerInput(enabled, gestureCancellationKey, metrics) {
                     if (!enabled) return@pointerInput
+                    val insetPx = metrics.trackInset.toPx()
+                    val grabPx = metrics.grabRadius.toPx()
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
                         down.consume()
+                        // Grab zone: near the bar, the bar is taken where it is (relative
+                        // drag). Farther away, the bar first jumps under the finger.
+                        val usable = (size.width - 2f * insetPx).coerceAtLeast(1f)
+                        val thumbX = insetPx + usable * (draftPercent / 100f).coerceIn(0f, 1f)
+                        if (kotlin.math.abs(down.position.x - thumbX) > grabPx) {
+                            val jumped = applySnap(
+                                ((down.position.x - insetPx) / usable * 100f).coerceIn(0f, 100f)
+                            )
+                            draftPercent = jumped
+                            onChange.value(jumped)
+                        }
                         gestureState.onDown(
                             valuePercent = draftPercent,
                             pointerX = down.position.x,
-                            trackWidthPx = size.width.toFloat(),
+                            trackWidthPx = usable,
                             uptimeMillis = down.uptimeMillis
                         )
                         dragging = true
@@ -250,14 +297,15 @@ fun PrecisionScalarSlider(
                                 if (change.changedToUpIgnoreConsumed()) {
                                     released = true
                                     change.consume()
-                                    gestureState.release()?.let(onCommit.value)
+                                    gestureState.release()?.let { onCommit.value(applySnap(it)) }
+                                    snapped = false
                                     dragging = false
                                     syncVisualState()
                                     break
                                 }
                                 if (!change.pressed) break
                                 if (gestureState.onMove(change.position.x, change.uptimeMillis)) {
-                                    draftPercent = gestureState.valuePercent
+                                    draftPercent = applySnap(gestureState.valuePercent)
                                     onChange.value(draftPercent)
                                     syncVisualState()
                                 }
@@ -267,7 +315,11 @@ fun PrecisionScalarSlider(
                             if (!released) {
                                 gestureState.cancel()
                                 dragging = false
-                                draftPercent = valuePercent.coerceIn(0f, 100f)
+                                // Ordinary recomposition does not restart this coroutine, so
+                                // read the latest parent value on cancellation instead of the
+                                // value captured when this gesture started. Epoch changes do
+                                // restart it, preventing a stale release from committing.
+                                draftPercent = latestValuePercent.value.coerceIn(0f, 100f)
                                 syncVisualState()
                             }
                         }
@@ -275,46 +327,70 @@ fun PrecisionScalarSlider(
                 }
         ) {
             val centerY = size.height / 2f
-            val trackStart = 10.dp.toPx()
+            val trackStart = metrics.trackInset.toPx()
             val trackEnd = size.width - trackStart
             val trackWidth = (trackEnd - trackStart).coerceAtLeast(0f)
-            val trackHeight = 6.dp.toPx()
+            val trackHeight = metrics.trackHeight.toPx()
             val radius = trackHeight / 2f
             drawRoundRect(
-                color = activeColor.copy(alpha = if (enabled) 0.24f else 0.10f),
+                color = activeColor.copy(alpha = if (enabled) 0.28f else 0.16f),
                 topLeft = androidx.compose.ui.geometry.Offset(trackStart, centerY - radius),
                 size = androidx.compose.ui.geometry.Size(trackWidth, trackHeight),
                 cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius)
             )
+            // Bipolar: the fill starts at the center and takes the color of the sign.
+            val centerFraction = bipolar?.let {
+                ((it.centerPercent - visibleRange.start) / rangeSpan).coerceIn(0f, 1f)
+            }
+            val valueColor = when {
+                bipolar == null -> activeColor
+                draftPercent > bipolar.centerPercent + 0.01f -> bipolar.positiveColor
+                draftPercent < bipolar.centerPercent - 0.01f -> bipolar.negativeColor
+                else -> activeColor
+            }
+            val fillFrom = minOf(centerFraction ?: 0f, displayedFraction)
+            val fillTo = maxOf(centerFraction ?: 0f, displayedFraction)
             drawRoundRect(
-                color = activeColor.copy(alpha = if (enabled) 1f else 0.28f),
-                topLeft = androidx.compose.ui.geometry.Offset(trackStart, centerY - radius),
-                size = androidx.compose.ui.geometry.Size(trackWidth * displayedFraction, trackHeight),
+                color = valueColor.copy(alpha = if (enabled) 1f else 0.40f),
+                topLeft = androidx.compose.ui.geometry.Offset(trackStart + trackWidth * fillFrom, centerY - radius),
+                size = androidx.compose.ui.geometry.Size(trackWidth * (fillTo - fillFrom), trackHeight),
                 cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius)
             )
+            // Fixed thin blue tick on the center (the magnetic zero), always visible.
+            if (bipolar != null && bipolar.centerPercent in visibleRange) {
+                val tickX = trackStart + trackWidth * (centerFraction ?: 0f)
+                val tickHalf = metrics.thumbHeight.toPx() * 0.28f
+                drawLine(
+                    color = bipolar.centerTickColor.copy(alpha = if (enabled) 1f else 0.4f),
+                    start = androidx.compose.ui.geometry.Offset(tickX, centerY - tickHalf),
+                    end = androidx.compose.ui.geometry.Offset(tickX, centerY + tickHalf),
+                    strokeWidth = 2.dp.toPx()
+                )
+            }
             markerFraction?.let { fraction ->
                 val markerX = trackStart + trackWidth * fraction
                 drawLine(
                     color = markerColor.copy(alpha = if (enabled) 0.95f else 0.4f),
-                    start = androidx.compose.ui.geometry.Offset(markerX, centerY - 17.dp.toPx()),
-                    end = androidx.compose.ui.geometry.Offset(markerX, centerY + 17.dp.toPx()),
+                    start = androidx.compose.ui.geometry.Offset(markerX, centerY - metrics.thumbHeight.toPx() * 0.4f),
+                    end = androidx.compose.ui.geometry.Offset(markerX, centerY + metrics.thumbHeight.toPx() * 0.4f),
                     strokeWidth = 3.dp.toPx()
                 )
             }
+            // Vertical bar thumb, same look as the depth range thumbs. Its half-width stays
+            // inside the track inset, so it never overlaps the -/+ buttons at 0 % or 100 %.
             val thumbX = trackStart + trackWidth * displayedFraction
-            drawCircle(
-                color = activeColor.copy(alpha = if (enabled) 1f else 0.35f),
-                radius = 9.dp.toPx(),
-                center = androidx.compose.ui.geometry.Offset(thumbX, centerY)
-            )
-            drawCircle(
-                color = OssmOnSurface.copy(alpha = if (enabled) 0.7f else 0.2f),
-                radius = 11.dp.toPx(),
-                center = androidx.compose.ui.geometry.Offset(thumbX, centerY),
-                style = Stroke(width = 1.dp.toPx())
+            val thumbWidth = metrics.thumbWidth.toPx()
+            val thumbHeight = metrics.thumbHeight.toPx()
+            drawRoundRect(
+                color = valueColor.copy(alpha = if (enabled) 1f else 0.35f),
+                topLeft = androidx.compose.ui.geometry.Offset(thumbX - thumbWidth / 2f, centerY - thumbHeight / 2f),
+                size = androidx.compose.ui.geometry.Size(thumbWidth, thumbHeight),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(thumbWidth / 2f)
             )
         }
-        Text(
+        // The global "0-100" range is only informative when precision narrowing is on; with it
+        // off the label is permanent noise, so hide it (state stays in the semantics above).
+        if (precisionEnabled || level != PrecisionLevel.Global) Text(
             text = rangeLabel,
             color = when (level) {
                 PrecisionLevel.Global -> OssmOnSurface.copy(alpha = 0.55f)
@@ -337,6 +413,7 @@ fun PrecisionScalarSlider(
 private fun RampButton(
     symbol: String,
     sign: Int,
+    description: String,
     enabled: Boolean,
     activeColor: Color,
     value: Float,
@@ -358,12 +435,30 @@ private fun RampButton(
 
     Box(
         modifier = Modifier
-            .size(56.dp)
+            .size(LocalControlSliderMetrics.current.buttonSize)
             .clip(CircleShape)
             .background(
-                if (enabled) activeColor.copy(alpha = 0.18f)
-                else activeColor.copy(alpha = 0.06f)
+                if (enabled) activeColor.copy(alpha = 0.22f)
+                else activeColor.copy(alpha = 0.10f)
             )
+            // TalkBack: the glyph is not a usable name, and the touch gesture below is not an
+            // accessibility action. Expose a named button that applies one step and commits it.
+            .clearAndSetSemantics {
+                contentDescription = description
+                role = Role.Button
+                if (!enabled) {
+                    disabled()
+                } else {
+                    onClick {
+                        val range = rangeState.value
+                        val stepped = (valueState.value + sign * stepState.value)
+                            .coerceIn(range.start, range.endInclusive)
+                        onChange.value(stepped)
+                        onCommit.value(stepped)
+                        true
+                    }
+                }
+            }
             // IMPORTANT : ne PAS indexer sur `value` — sinon chaque incrément de la rampe
             // redémarre le détecteur de geste et annule tryAwaitRelease() → le relâchement
             // n'est jamais vu et la rampe file toute seule jusqu'à 100 %. `value` est lu au
@@ -408,8 +503,8 @@ private fun RampButton(
     ) {
         Text(
             symbol,
-            color = if (enabled) activeColor else activeColor.copy(alpha = 0.3f),
-            fontSize = 26.sp,
+            color = if (enabled) activeColor else activeColor.copy(alpha = 0.5f),
+            fontSize = LocalControlSliderMetrics.current.symbolSize,
             fontWeight = FontWeight.Bold,
             lineHeight = 18.sp
         )

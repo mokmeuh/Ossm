@@ -1,10 +1,6 @@
 package com.ossm.remote.viewmodel
 
 import app.cash.turbine.test
-import com.ossm.remote.adaptive.AdaptiveEngine
-import com.ossm.remote.audio.AudioLevelMonitor
-import com.ossm.remote.audio.CadenceDetector
-import com.ossm.remote.audio.CadenceReading
 import com.ossm.remote.ble.BleManager
 import com.ossm.remote.data.repository.ControlSafetySettings
 import com.ossm.remote.data.repository.ControlSafetySettingsRepository
@@ -14,16 +10,18 @@ import com.ossm.remote.session.ControlSessionStore
 import com.ossm.remote.data.repository.UserHabitsRepository
 import com.ossm.remote.model.BleConnectionState
 import com.ossm.remote.model.KnownFallbackPatterns
-import com.ossm.remote.model.KnownAdaptivePattern
 import com.ossm.remote.model.MachineState
 import com.ossm.remote.model.KnownStrokeEnginePattern
+import com.ossm.remote.model.KnownStreamingPattern
 import com.ossm.remote.model.LiveTargetProducer
 import com.ossm.remote.model.OssmCommand
 import com.ossm.remote.model.OssmPattern
 import com.ossm.remote.model.PatternControlMode
 import com.ossm.remote.model.Preset
+import com.ossm.remote.viewmodel.RandomPresetTarget
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -54,24 +52,18 @@ class ControlViewModelTest {
     private lateinit var bleManager: BleManager
     private lateinit var safetySettingsRepository: ControlSafetySettingsRepository
     private lateinit var userHabitsRepository: UserHabitsRepository
-    private lateinit var audioLevelMonitor: AudioLevelMonitor
-    private lateinit var cadenceDetector: CadenceDetector
-    private lateinit var adaptiveEngine: AdaptiveEngine
     private lateinit var controlSessionStore: ControlSessionStore
     private lateinit var viewModel: ControlViewModel
     private lateinit var patternsFlow: MutableStateFlow<List<OssmPattern>>
     private lateinit var settingsFlow: MutableStateFlow<ControlSafetySettings>
     private lateinit var machineStateFlow: MutableStateFlow<MachineState>
     private lateinit var connectionStateFlow: MutableStateFlow<BleConnectionState>
+    private lateinit var postSetupReadyFlow: MutableStateFlow<Boolean>
     private lateinit var streamingReadyFlow: MutableStateFlow<Boolean>
     private lateinit var depthLimitMinFlow: MutableStateFlow<Float>
     private lateinit var depthLimitMaxFlow: MutableStateFlow<Float>
-    private lateinit var listeningModeFlow: MutableStateFlow<Boolean>
-    private lateinit var listeningCeilingFlow: MutableStateFlow<Float>
-    private lateinit var listeningTargetSpeedFlow: MutableStateFlow<Boolean>
-    private lateinit var listeningTargetDepthFlow: MutableStateFlow<Boolean>
     private lateinit var liveAccelerationFlow: MutableStateFlow<Int>
-    private lateinit var audioLevelFlow: MutableStateFlow<Float>
+    private lateinit var precisionOverridesFlow: MutableStateFlow<Map<String, Boolean>>
 
     @Before
     fun setUp() {
@@ -89,57 +81,54 @@ class ControlViewModelTest {
         userHabitsRepository = mockk(relaxed = true)
         machineStateFlow = MutableStateFlow(MachineState())
         connectionStateFlow = MutableStateFlow(BleConnectionState.Disconnected)
+        postSetupReadyFlow = MutableStateFlow(true)
         streamingReadyFlow = MutableStateFlow(false)
         depthLimitMinFlow = MutableStateFlow(0f)
         depthLimitMaxFlow = MutableStateFlow(1f)
-        listeningModeFlow = MutableStateFlow(false)
-        listeningCeilingFlow = MutableStateFlow(1f)
-        // Défaut du dépôt après correction : aucune cible audio active par défaut.
-        listeningTargetSpeedFlow = MutableStateFlow(false)
-        listeningTargetDepthFlow = MutableStateFlow(false)
         liveAccelerationFlow = MutableStateFlow(33)
-        audioLevelFlow = MutableStateFlow(0f)
+        precisionOverridesFlow = MutableStateFlow(emptyMap())
 
         every { bleManager.availablePatterns } returns patternsFlow
         every { bleManager.machineState } returns machineStateFlow
+        every { bleManager.postSetupReady } returns postSetupReadyFlow
         every { bleManager.streamingReady } returns streamingReadyFlow
         every { bleManager.connectionState } returns connectionStateFlow
         every { safetySettingsRepository.settings } returns settingsFlow
         coEvery { safetySettingsRepository.setSpeedGuardEnabled(any()) } returns Unit
         coEvery { safetySettingsRepository.setDepthGuardEnabled(any()) } returns Unit
         coEvery { safetySettingsRepository.setDepthLimits(any(), any()) } returns Unit
-        coEvery { safetySettingsRepository.setListeningModeEnabled(any()) } returns Unit
-        coEvery { safetySettingsRepository.setListeningCeiling(any()) } returns Unit
-        coEvery { safetySettingsRepository.setListeningTargetSpeedEnabled(any()) } returns Unit
-        coEvery { safetySettingsRepository.setListeningTargetDepthEnabled(any()) } returns Unit
         every { userHabitsRepository.sessionDefaults } returns flowOf(SessionDefaults(null, null, null))
         every { safetySettingsRepository.depthLimitMin } returns depthLimitMinFlow
         every { safetySettingsRepository.depthLimitMax } returns depthLimitMaxFlow
-        every { safetySettingsRepository.listeningModeEnabled } returns listeningModeFlow
-        every { safetySettingsRepository.listeningCeiling } returns listeningCeilingFlow
-        every { safetySettingsRepository.listeningTargetSpeedEnabled } returns listeningTargetSpeedFlow
-        every { safetySettingsRepository.listeningTargetDepthEnabled } returns listeningTargetDepthFlow
         every { safetySettingsRepository.liveInvertEnabled } returns MutableStateFlow(false)
         every { safetySettingsRepository.liveAccelerationPercent } returns liveAccelerationFlow
+        every { safetySettingsRepository.precisionOverrides } returns precisionOverridesFlow
+        coEvery { safetySettingsRepository.setPrecisionEnabled(any(), any()) } returns Unit
         coEvery { safetySettingsRepository.setLiveInvertEnabled(any()) } returns Unit
         coEvery { safetySettingsRepository.setLiveAccelerationPercent(any()) } returns Unit
-        audioLevelMonitor = mockk(relaxed = true)
-        every { audioLevelMonitor.level } returns audioLevelFlow
-        cadenceDetector = mockk(relaxed = true)
-        every { cadenceDetector.consume(any(), any()) } returns
-            CadenceReading(peakDetected = false, peaksPerMinute = 0f, speedFraction = 0f)
-        adaptiveEngine = mockk(relaxed = true)
 
         controlSessionStore = ControlSessionStore(
             bleManager,
             safetySettingsRepository,
-            userHabitsRepository,
-            audioLevelMonitor,
-            cadenceDetector,
-            adaptiveEngine
+            userHabitsRepository
         )
-        viewModel = ControlViewModel(controlSessionStore, audioLevelMonitor)
+        viewModel = ControlViewModel(controlSessionStore)
         testDispatcher.scheduler.advanceUntilIdle()
+    }
+
+    @Test
+    fun `precision setter delegates without optimistic state before persisted snapshot`() = runTest {
+        viewModel.setPrecisionEnabled("simpleStroke", false)
+        advanceUntilIdle()
+        coVerify(exactly = 1) { safetySettingsRepository.setPrecisionEnabled("simpleStroke", false) }
+        assertEquals(emptyMap<String, Boolean>(), viewModel.uiState.value.precisionOverrides)
+        precisionOverridesFlow.value = mapOf("simpleStroke" to false, "streaming" to true)
+        advanceUntilIdle()
+        assertEquals(
+            mapOf("simpleStroke" to false, "streaming" to true),
+            viewModel.uiState.value.precisionOverrides
+        )
+        assertEquals(0f, viewModel.uiState.value.speed)
     }
 
     @After
@@ -148,7 +137,7 @@ class ControlViewModelTest {
     }
 
     @Test
-    fun `initial state exposes full depth limits and no listening target enabled by default`() = runTest {
+    fun `initial state exposes full depth limits and guards by default`() = runTest {
         viewModel.uiState.test {
             val state = awaitItem()
             assertEquals(KnownStrokeEnginePattern.key, state.activePatternKey)
@@ -156,9 +145,6 @@ class ControlViewModelTest {
             assertEquals(1f, state.depthMax)
             assertEquals(0f, state.depthLimitMin)
             assertEquals(1f, state.depthLimitMax)
-            assertFalse(state.listeningTargetSpeed)
-            assertFalse(state.listeningTargetDepth)
-            assertEquals(1f, state.listeningCeiling)
             assertEquals(10, state.speedGuard.thresholdPercent)
             assertEquals(5, state.depthGuard.thresholdPercent)
             assertEquals(33, state.liveAccelerationPercent)
@@ -181,55 +167,136 @@ class ControlViewModelTest {
     }
 
     @Test
-    fun `listening target speed defaults to off from repository flow and initial state`() = runTest {
-        // Miroir du défaut DataStore (`?: false`) : la cible vitesse est absente
-        // tant que l'utilisateur ne la coche pas.
-        assertFalse(viewModel.uiState.value.listeningTargetSpeed)
-        assertFalse(viewModel.uiState.value.listeningTargetDepth)
+    fun `Live recording release returns slowly and replay needs an explicit action`() = runTest {
+        patternsFlow.value = KnownFallbackPatterns
+        connectionStateFlow.value = BleConnectionState.Connected("OSSM", "AA:BB:CC:DD:EE:FF")
+        viewModel.activatePattern(KnownStreamingPattern.key)
+        streamingReadyFlow.value = true
+        advanceUntilIdle()
+
+        viewModel.toggleLiveRecording()
+        assertEquals(LiveRecordingState.ARMED, viewModel.uiState.value.liveRecordingState)
+
+        viewModel.setStreamPositionDrag(45)
+        advanceTimeBy(25)
+        viewModel.setStreamPositionDrag(49)
+        assertEquals(LiveRecordingState.RECORDING, viewModel.uiState.value.liveRecordingState)
+
+        // Normal release keeps the recording but follows the same slow return contract as
+        // every other Live radial release; it must not auto-start replay.
+        viewModel.endLiveTouch()
+        runCurrent()
+
+        assertEquals(LiveRecordingState.RECORDED, viewModel.uiState.value.liveRecordingState)
+        clearMocks(bleManager)
+
+        // Replay is an explicit second action on the existing record control.
+        viewModel.toggleLiveRecording()
+        runCurrent()
+        assertEquals(LiveRecordingState.PLAYING, viewModel.uiState.value.liveRecordingState)
+        advanceTimeBy(25)
+        runCurrent()
+        verify { bleManager.sendCommand(match<OssmCommand.Stream> { it.positionPercent == 45 }) }
+        verify { bleManager.sendCommand(match<OssmCommand.Stream> { it.positionPercent == 49 }) }
+
+        viewModel.toggleLiveRecording()
+        assertEquals(LiveRecordingState.IDLE, viewModel.uiState.value.liveRecordingState)
+        verify(atLeast = 1) { bleManager.sendCommand(OssmCommand.Stop) }
     }
 
     @Test
-    fun `fresh view model exposes the pure control state default of no listening targets`() = runTest {
-        // Un store fraîchement construit (collecteurs init pas encore exécutés) expose
-        // le défaut brut de ControlUiState, avant la surcharge du flow dépôt.
-        val freshStore = ControlSessionStore(
-            bleManager,
-            safetySettingsRepository,
-            userHabitsRepository,
-            audioLevelMonitor,
-            cadenceDetector,
-            adaptiveEngine
-        )
-        val fresh = ControlViewModel(freshStore, audioLevelMonitor)
-        assertFalse(fresh.uiState.value.listeningTargetSpeed)
-        assertFalse(fresh.uiState.value.listeningTargetDepth)
+    fun `explicit STOP cancels recording without starting replay`() = runTest {
+        patternsFlow.value = KnownFallbackPatterns
+        connectionStateFlow.value = BleConnectionState.Connected("OSSM", "AA:BB:CC:DD:EE:FF")
+        viewModel.activatePattern(KnownStreamingPattern.key)
+        streamingReadyFlow.value = true
+        advanceUntilIdle()
+
+        viewModel.toggleLiveRecording()
+        viewModel.setStreamPositionDrag(45)
+        advanceTimeBy(25)
+        viewModel.setStreamPositionDrag(49)
+        assertEquals(LiveRecordingState.RECORDING, viewModel.uiState.value.liveRecordingState)
+
+        viewModel.stopLiveTouch()
+        runCurrent()
+        advanceTimeBy(250)
+        runCurrent()
+
+        assertEquals(LiveRecordingState.IDLE, viewModel.uiState.value.liveRecordingState)
+        assertFalse(viewModel.uiState.value.isRunning)
+        verify(atLeast = 1) { bleManager.sendCommand(OssmCommand.Stop) }
     }
 
     @Test
-    fun `connection waits through preflight then enters stroke engine once when safe`() = runTest {
+    fun `scalar callback captured before STOP cannot rearm speed or sensation`() = runTest {
+        patternsFlow.value = KnownFallbackPatterns
+        connectionStateFlow.value = BleConnectionState.Connected("OSSM", "AA:BB:CC:DD:EE:FF")
+        viewModel.activatePattern(KnownStrokeEnginePattern.key)
+        advanceUntilIdle()
+
+        val capturedEpoch = viewModel.uiState.value.liveGestureEpoch
+        val baselineSensation = viewModel.uiState.value.sensation
+        viewModel.stop()
+        viewModel.setSpeedLiveAtEpoch(0.8f, capturedEpoch)
+        viewModel.setSensationLiveAtEpoch(0.9f, capturedEpoch)
+
+        assertEquals(0f, viewModel.uiState.value.speed)
+        assertEquals(baselineSensation, viewModel.uiState.value.sensation, 0.0001f)
+        verify(exactly = 0) { bleManager.liveSet(any(), any(), any()) }
+    }
+
+    @Test
+    fun `connection waits through post setup and preflight then enters stroke engine once when safe`() = runTest {
+        postSetupReadyFlow.value = false
         connectionStateFlow.value = BleConnectionState.Connected("OSSM", "00:11:22:33:44:55")
         runCurrent()
 
         machineStateFlow.value = MachineState(state = "preflight")
         runCurrent()
 
-        verify(exactly = 0) { bleManager.activatePatternVerified(any(), any(), any()) }
+        verify(exactly = 0) { bleManager.activatePatternVerified(any(), any(), any(), any()) }
 
         machineStateFlow.value = MachineState(state = "idle")
+        runCurrent()
+
+        verify(exactly = 0) { bleManager.activatePatternVerified(any(), any(), any(), any()) }
+
+        postSetupReadyFlow.value = true
         runCurrent()
 
         verify(exactly = 1) {
             bleManager.activatePatternVerified(
                 patternId = any(),
                 patternName = KnownStrokeEnginePattern.name,
-                command = match { it.speed == 0f }
+                command = match { it.speed == 0f },
+                onFinished = any()
             )
         }
 
         machineStateFlow.value = MachineState(state = "menu")
         runCurrent()
 
-        verify(exactly = 1) { bleManager.activatePatternVerified(any(), any(), any()) }
+        verify(exactly = 1) { bleManager.activatePatternVerified(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `manual mode activation is held until post setup readiness`() = runTest {
+        val livePattern = OssmPattern("live", "Live", PatternControlMode.STREAMING)
+        patternsFlow.value = listOf(livePattern)
+        postSetupReadyFlow.value = false
+        connectionStateFlow.value = BleConnectionState.Connected("OSSM", "00:11:22:33:44:55")
+        runCurrent()
+
+        viewModel.activatePattern(livePattern.key)
+        runCurrent()
+
+        verify(exactly = 0) { bleManager.enterStreaming(any()) }
+
+        postSetupReadyFlow.value = true
+        runCurrent()
+
+        verify(exactly = 1) { bleManager.enterStreaming(any()) }
     }
 
     @Test
@@ -244,7 +311,8 @@ class ControlViewModelTest {
             bleManager.activatePatternVerified(
                 patternId = any(),
                 patternName = KnownStrokeEnginePattern.name,
-                command = match { it.speed == 0f }
+                command = match { it.speed == 0f },
+                onFinished = any()
             )
         }
     }
@@ -295,6 +363,46 @@ class ControlViewModelTest {
         viewModel.setDepthRandom(false)
         advanceUntilIdle()
         assertFalse(viewModel.uiState.value.anyRandomActive)
+    }
+
+    @Test
+    fun `random presets edit save and apply depth with optional speed`() = runTest {
+        settingsFlow.value = settingsFlow.value.copy(
+            speed = SliderGuardSettings(enabled = false, thresholdPercent = 10),
+            depth = SliderGuardSettings(enabled = false, thresholdPercent = 5),
+        )
+        advanceUntilIdle()
+        viewModel.setSpeedLive(0.42f)
+        viewModel.editRandomPreset(RandomPresetTarget.DEPTH, 1, 20, 60, saveSpeedToo = true)
+        advanceUntilIdle()
+
+        val edited = viewModel.uiState.value.randomDepthPresets[1]
+        assertEquals(20, edited.minPercent)
+        assertEquals(60, edited.maxPercent)
+        assertEquals(42, edited.savedSpeedPercent)
+
+        viewModel.applyRandomPreset(RandomPresetTarget.DEPTH, 1)
+        advanceUntilIdle()
+
+        assertEquals(0.2f, viewModel.uiState.value.depthMin)
+        assertEquals(0.6f, viewModel.uiState.value.depthMax)
+        assertEquals(0.42f, viewModel.uiState.value.speed)
+    }
+
+    @Test
+    fun `single preset save keeps its range and captures current speed`() = runTest {
+        settingsFlow.value = settingsFlow.value.copy(
+            speed = SliderGuardSettings(enabled = false, thresholdPercent = 10),
+        )
+        advanceUntilIdle()
+        viewModel.setSpeedLive(0.37f)
+        viewModel.saveRandomPreset(RandomPresetTarget.SPEED, 2)
+        advanceUntilIdle()
+
+        val saved = viewModel.uiState.value.randomSpeedPresets[2]
+        assertEquals(50, saved.minPercent)
+        assertEquals(75, saved.maxPercent)
+        assertEquals(37, saved.savedSpeedPercent)
     }
 
     @Test
@@ -380,195 +488,6 @@ class ControlViewModelTest {
     }
 
     @Test
-    fun `listening dispatches only selected targets and never sensation`() = runTest {
-        every { cadenceDetector.consume(any(), any()) } returns
-            CadenceReading(peakDetected = true, peaksPerMinute = 60f, speedFraction = 0.5f)
-        audioLevelFlow.value = 0.5f
-        viewModel.setDepthLimits(0.2f, 0.8f)
-        viewModel.setListeningMode(true)
-        viewModel.setListeningTargetDepth(true)
-        advanceUntilIdle()
-
-        verify(exactly = 0) { bleManager.liveSet("speed", any()) }
-        verify { bleManager.liveSetDepthRange(depthPercent = 50, strokePercent = 30) }
-        verify(exactly = 0) { bleManager.liveSet("sensation", any()) }
-        assertEquals(0.2f, viewModel.uiState.value.depthMin)
-        assertEquals(0.8f, viewModel.uiState.value.depthMax)
-        assertEquals(0.5f, viewModel.uiState.value.listeningDepthCurrent)
-    }
-
-    @Test
-    fun `listening depth maps within the selected range without moving its handles`() = runTest {
-        viewModel.requestDepthRangeChange(0.3f, 0.7f)
-        advanceUntilIdle()
-        every { cadenceDetector.consume(any(), any()) } returns
-            CadenceReading(peakDetected = true, peaksPerMinute = 30f, speedFraction = 0.25f)
-        audioLevelFlow.value = 0.5f
-        viewModel.setListeningMode(true)
-        viewModel.setListeningTargetDepth(true)
-        advanceUntilIdle()
-
-        with(viewModel.uiState.value) {
-            assertEquals(0.3f, depthMin)
-            assertEquals(0.7f, depthMax)
-            assertEquals(0.4f, listeningDepthCurrent)
-        }
-        verify(exactly = 1) { bleManager.liveSetDepthRange(depthPercent = 40, strokePercent = 10) }
-    }
-
-    @Test
-    fun `listening speed maps volume to ceiling-scaled speed`() = runTest {
-        viewModel.setListeningMode(true)
-        viewModel.setListeningTargetSpeed(true)
-        audioLevelFlow.value = 0.7f
-        advanceUntilIdle()
-
-        assertEquals(0.7f, viewModel.uiState.value.speed)
-        assertTrue(viewModel.uiState.value.isRunning)
-        verify { bleManager.liveSet("speed", 70) }
-    }
-
-    @Test
-    fun `listening volume respects selected maximum ceiling`() = runTest {
-        // Niveau micro volontairement fort (1.0) : la vitesse = volume × plafond
-        // → 1.0 × 0.6 = 60 %, jamais au-delà du plafond réglé.
-        viewModel.setListeningCeiling(0.6f)
-        viewModel.setListeningMode(true)
-        viewModel.setListeningTargetSpeed(true)
-        audioLevelFlow.value = 1f
-        advanceUntilIdle()
-
-        assertEquals(0.6f, viewModel.uiState.value.listeningCeiling)
-        assertEquals(0.6f, viewModel.uiState.value.speed)
-        coVerify { safetySettingsRepository.setListeningCeiling(0.6f) }
-        verify { bleManager.liveSet("speed", 60) }
-    }
-
-    @Test
-    fun `volume silence drives speed to zero and stops running`() = runTest {
-        viewModel.setListeningMode(true)
-        viewModel.setListeningTargetSpeed(true)
-        audioLevelFlow.value = 0f
-        advanceUntilIdle()
-
-        assertEquals(0f, viewModel.uiState.value.speed)
-        assertFalse(viewModel.uiState.value.isRunning)
-        verify { bleManager.liveSet("speed", 0) }
-    }
-
-    @Test
-    fun `cadence maps depth within the selected range while volume drives speed`() = runTest {
-        every { cadenceDetector.consume(any(), any()) } returns
-            CadenceReading(peakDetected = true, peaksPerMinute = 72f, speedFraction = 0.8f)
-        viewModel.requestDepthRangeChange(0.2f, 0.6f)
-        advanceUntilIdle()
-        viewModel.setListeningMode(true)
-        viewModel.setListeningTargetSpeed(true)
-        viewModel.setListeningTargetDepth(true)
-        audioLevelFlow.value = 1f
-        advanceUntilIdle()
-
-        with(viewModel.uiState.value) {
-            // Les poignées ne bougent jamais ; la profondeur reste bornée par la plage.
-            assertEquals(0.2f, depthMin)
-            assertEquals(0.6f, depthMax)
-            assertNotNull(listeningDepthCurrent)
-            assertEquals(0.2f + 0.8f * (0.6f - 0.2f), listeningDepthCurrent!!, 0.001f)
-        }
-        verify { bleManager.liveSetDepthRange(depthPercent = 52, strokePercent = 32) }
-        verify { bleManager.liveSet("speed", 100) }
-    }
-
-    @Test
-    fun `sensation is never dispatched by the listening driver`() = runTest {
-        viewModel.setListeningMode(true)
-        viewModel.setListeningTargetSpeed(true)
-        audioLevelFlow.value = 0.75f
-        advanceUntilIdle()
-
-        verify(exactly = 0) { bleManager.liveSet("sensation", any()) }
-        verify(exactly = 0) { bleManager.liveSet("sensation", 75) }
-    }
-
-    @Test
-    fun `disabling listening restores the manual speed snapshot`() = runTest {
-        viewModel.applyPreset(
-            Preset(
-                name = "Manual 40%",
-                patternKey = KnownStrokeEnginePattern.key,
-                patternName = KnownStrokeEnginePattern.name,
-                speed = 0.4f,
-                depthMin = 0f,
-                depthMax = 1f
-            )
-        )
-        advanceUntilIdle()
-
-        viewModel.setListeningMode(true)
-        viewModel.setListeningTargetSpeed(true)
-        audioLevelFlow.value = 0.8f
-        advanceUntilIdle()
-
-        assertEquals(0.8f, viewModel.uiState.value.speed)
-        assertTrue(viewModel.uiState.value.isRunning)
-
-        viewModel.setListeningMode(false)
-        advanceUntilIdle()
-
-        assertEquals(0.4f, viewModel.uiState.value.speed)
-        assertTrue(viewModel.uiState.value.isRunning)
-    }
-
-    @Test
-    fun `disabling speed target mid-listening restores manual speed`() = runTest {
-        viewModel.applyPreset(
-            Preset(
-                name = "Manual 40%",
-                patternKey = KnownStrokeEnginePattern.key,
-                patternName = KnownStrokeEnginePattern.name,
-                speed = 0.4f,
-                depthMin = 0f,
-                depthMax = 1f
-            )
-        )
-        advanceUntilIdle()
-
-        viewModel.setListeningMode(true)
-        viewModel.setListeningTargetSpeed(true)
-        viewModel.setListeningTargetDepth(true)
-        audioLevelFlow.value = 0.8f
-        advanceUntilIdle()
-
-        assertEquals(0.8f, viewModel.uiState.value.speed)
-
-        viewModel.setListeningTargetSpeed(false)
-        advanceUntilIdle()
-
-        // La profondeur continue d'être pilotée, mais la vitesse revient au manuel.
-        assertEquals(0.4f, viewModel.uiState.value.speed)
-        assertTrue(viewModel.uiState.value.isRunning)
-    }
-
-    @Test
-    fun `pendingManualChange pauses the listening driver`() = runTest {
-        viewModel.setListeningMode(true)
-        viewModel.setListeningTargetSpeed(true)
-        audioLevelFlow.value = 0.5f
-        advanceUntilIdle()
-        verify { bleManager.liveSet("speed", 50) }
-
-        // Monter la vitesse manuelle au-dessus de la vitesse pilotée déclenche la garde.
-        viewModel.requestSpeedChange(0.9f)
-        advanceUntilIdle()
-        assertNotNull(viewModel.uiState.value.pendingManualChange)
-
-        // Le nouveau niveau sonore ne doit plus atteindre le BLE tant que la garde est ouverte.
-        audioLevelFlow.value = 1f
-        advanceUntilIdle()
-        verify(exactly = 1) { bleManager.liveSet("speed", 50) }
-    }
-
-    @Test
     fun `progressive speed live updates state without live speed command`() = runTest {
         patternsFlow.value = listOf(OssmPattern("progressive", "Progressif", PatternControlMode.PROGRESSIVE))
         advanceUntilIdle()
@@ -581,6 +500,307 @@ class ControlViewModelTest {
     }
 
     @Test
+    fun `latest live speed during stroke activation waits for activation completion`() = runTest {
+        settingsFlow.value = settingsFlow.value.copy(
+            speed = SliderGuardSettings(enabled = false, thresholdPercent = 10),
+        )
+        postSetupReadyFlow.value = false
+        connectionStateFlow.value = BleConnectionState.Connected("OSSM", "00:11:22:33:44:55")
+        advanceUntilIdle()
+
+        var activationFinished: ((Boolean) -> Unit)? = null
+        every {
+            bleManager.activatePatternVerified(
+                patternId = any(),
+                patternName = any(),
+                command = any(),
+                onFinished = any(),
+            )
+        } answers {
+            activationFinished = arg(3)
+            Unit
+        }
+
+        viewModel.activatePattern(KnownStrokeEnginePattern.key)
+        advanceUntilIdle()
+
+        viewModel.setSpeedLive(0.02f)
+        viewModel.setSpeedLive(0.07f)
+        advanceUntilIdle()
+        verify(exactly = 0) { bleManager.liveSet("speed", any()) }
+
+        postSetupReadyFlow.value = true
+        advanceUntilIdle()
+        assertNotNull(activationFinished)
+
+        activationFinished!!(true)
+        advanceUntilIdle()
+
+        assertEquals(0.07f, viewModel.uiState.value.speed)
+        verify(exactly = 1) {
+            bleManager.sendCommand(match {
+                it is OssmCommand.UpdateStrokeEngine &&
+                    kotlin.math.abs(it.command.speed - 0.07f) < 0.001f
+            })
+        }
+        verify(exactly = 0) { bleManager.liveSet("speed", any()) }
+    }
+
+    @Test
+    fun `committed speed during stroke activation is replayed only after completion`() = runTest {
+        settingsFlow.value = settingsFlow.value.copy(
+            speed = SliderGuardSettings(enabled = false, thresholdPercent = 10),
+        )
+        postSetupReadyFlow.value = false
+        connectionStateFlow.value = BleConnectionState.Connected("OSSM", "00:11:22:33:44:55")
+        advanceUntilIdle()
+
+        var activationFinished: ((Boolean) -> Unit)? = null
+        every {
+            bleManager.activatePatternVerified(
+                patternId = any(),
+                patternName = any(),
+                command = any(),
+                onFinished = any(),
+            )
+        } answers {
+            activationFinished = arg(3)
+            Unit
+        }
+
+        viewModel.activatePattern(KnownStrokeEnginePattern.key)
+        advanceUntilIdle()
+        viewModel.requestSpeedChange(0.01f)
+        advanceUntilIdle()
+
+        verify(exactly = 0) {
+            bleManager.sendCommand(match { it is OssmCommand.UpdateStrokeEngine })
+        }
+
+        postSetupReadyFlow.value = true
+        advanceUntilIdle()
+        assertNotNull(activationFinished)
+        activationFinished!!(true)
+        advanceUntilIdle()
+
+        verify(exactly = 1) {
+            bleManager.sendCommand(match {
+                it is OssmCommand.UpdateStrokeEngine &&
+                    kotlin.math.abs(it.command.speed - 0.01f) < 0.001f
+            })
+        }
+    }
+
+    @Test
+    fun `progressive controls retain speed zero and sensation until verified activation`() = runTest {
+        settingsFlow.value = settingsFlow.value.copy(
+            speed = SliderGuardSettings(enabled = false, thresholdPercent = 10),
+            depth = SliderGuardSettings(enabled = false, thresholdPercent = 5),
+        )
+        patternsFlow.value = listOf(
+            OssmPattern("progressive", "Progressif", PatternControlMode.PROGRESSIVE),
+        )
+        postSetupReadyFlow.value = false
+        connectionStateFlow.value = BleConnectionState.Connected("OSSM", "00:11:22:33:44:55")
+        advanceUntilIdle()
+
+        var activationFinished: ((Boolean) -> Unit)? = null
+        every {
+            bleManager.activatePatternVerified(
+                patternId = any(),
+                patternName = any(),
+                command = any(),
+                onFinished = any(),
+            )
+        } answers {
+            activationFinished = arg(3)
+            Unit
+        }
+
+        viewModel.activatePattern("progressive")
+        advanceUntilIdle()
+        viewModel.requestSpeedChange(0.01f)
+        viewModel.setDepthLive(0.25f, 0.65f)
+        viewModel.requestSensationChange(0.77f)
+        advanceUntilIdle()
+
+        verify(exactly = 0) {
+            bleManager.sendCommand(match { it is OssmCommand.UpdateStrokeEngine })
+        }
+
+        postSetupReadyFlow.value = true
+        advanceUntilIdle()
+        assertNotNull(activationFinished)
+        activationFinished!!(true)
+        runCurrent()
+
+        assertEquals(0.01f, viewModel.uiState.value.speed)
+        assertEquals(0.25f, viewModel.uiState.value.depthMin)
+        assertEquals(0.65f, viewModel.uiState.value.depthMax)
+        assertEquals(0.77f, viewModel.uiState.value.sensation)
+        verify(exactly = 1) {
+            bleManager.sendCommand(match {
+                it is OssmCommand.UpdateStrokeEngine &&
+                    kotlin.math.abs(it.command.speed - 0.01f) < 0.001f &&
+                    kotlin.math.abs(it.command.depthMin - 0.25f) < 0.001f &&
+                    kotlin.math.abs(it.command.depthMax - 0.65f) < 0.001f &&
+                    kotlin.math.abs(it.command.sensation - 0.77f) < 0.001f
+            })
+        }
+    }
+
+    @Test
+    fun `progressive pending zero remains stopped when activation completes`() = runTest {
+        settingsFlow.value = settingsFlow.value.copy(
+            speed = SliderGuardSettings(enabled = false, thresholdPercent = 10),
+        )
+        patternsFlow.value = listOf(
+            OssmPattern("progressive", "Progressif", PatternControlMode.PROGRESSIVE),
+        )
+        postSetupReadyFlow.value = false
+        connectionStateFlow.value = BleConnectionState.Connected("OSSM", "00:11:22:33:44:55")
+        advanceUntilIdle()
+
+        var activationFinished: ((Boolean) -> Unit)? = null
+        every {
+            bleManager.activatePatternVerified(
+                patternId = any(),
+                patternName = any(),
+                command = any(),
+                onFinished = any(),
+            )
+        } answers {
+            activationFinished = arg(3)
+            Unit
+        }
+
+        viewModel.activatePattern("progressive")
+        advanceUntilIdle()
+        viewModel.requestSpeedChange(0f)
+        advanceUntilIdle()
+
+        postSetupReadyFlow.value = true
+        advanceUntilIdle()
+        assertNotNull(activationFinished)
+        activationFinished!!(true)
+        runCurrent()
+
+        assertEquals(0f, viewModel.uiState.value.speed)
+        assertFalse(viewModel.uiState.value.isRunning)
+        verify(exactly = 0) {
+            bleManager.sendCommand(match { it is OssmCommand.UpdateStrokeEngine })
+        }
+    }
+
+    @Test
+    fun `progressive zero after activation stops instead of restarting at one percent`() = runTest {
+        settingsFlow.value = settingsFlow.value.copy(
+            speed = SliderGuardSettings(enabled = false, thresholdPercent = 10),
+        )
+        patternsFlow.value = listOf(
+            OssmPattern("progressive", "Progressif", PatternControlMode.PROGRESSIVE),
+        )
+        postSetupReadyFlow.value = false
+        connectionStateFlow.value = BleConnectionState.Connected("OSSM", "00:11:22:33:44:55")
+        advanceUntilIdle()
+
+        var activationFinished: ((Boolean) -> Unit)? = null
+        every {
+            bleManager.activatePatternVerified(
+                patternId = any(),
+                patternName = any(),
+                command = any(),
+                onFinished = any(),
+            )
+        } answers {
+            activationFinished = arg(3)
+            Unit
+        }
+
+        viewModel.activatePattern("progressive")
+        advanceUntilIdle()
+        postSetupReadyFlow.value = true
+        advanceUntilIdle()
+        assertNotNull(activationFinished)
+
+        // The verified activation still starts from the safety-zero command. The
+        // intentional 1% Progressive default must not reach the BLE seam before
+        // the verified callback confirms setup.
+        assertEquals(0f, viewModel.uiState.value.speed)
+        assertFalse(viewModel.uiState.value.isRunning)
+        verify(exactly = 0) {
+            bleManager.sendCommand(match { it is OssmCommand.UpdateStrokeEngine })
+        }
+
+        activationFinished!!(true)
+        runCurrent()
+        assertEquals(0.01f, viewModel.uiState.value.speed, 0.0001f)
+        assertTrue(viewModel.uiState.value.isRunning)
+        verify(exactly = 1) {
+            bleManager.sendCommand(match {
+                it is OssmCommand.UpdateStrokeEngine &&
+                    kotlin.math.abs(it.command.speed - 0.01f) < 0.0001f
+            })
+        }
+
+        viewModel.requestSpeedChange(0f)
+        runCurrent()
+        advanceTimeBy(65_000)
+        runCurrent()
+
+        assertEquals(0f, viewModel.uiState.value.speed)
+        assertFalse(viewModel.uiState.value.isRunning)
+        verify(exactly = 1) { bleManager.sendCommand(OssmCommand.Stop) }
+        // The activation's initial positive command is the only Update; the cancelled
+        // Progressive producer must not emit a later 1%/ramp command.
+        verify(exactly = 1) {
+            bleManager.sendCommand(match { it is OssmCommand.UpdateStrokeEngine })
+        }
+    }
+
+    @Test
+    fun `stop invalidates a queued stroke activation completion`() = runTest {
+        settingsFlow.value = settingsFlow.value.copy(
+            speed = SliderGuardSettings(enabled = false, thresholdPercent = 10),
+        )
+        postSetupReadyFlow.value = false
+        connectionStateFlow.value = BleConnectionState.Connected("OSSM", "00:11:22:33:44:55")
+        advanceUntilIdle()
+
+        var activationFinished: ((Boolean) -> Unit)? = null
+        every {
+            bleManager.activatePatternVerified(
+                patternId = any(),
+                patternName = any(),
+                command = any(),
+                onFinished = any(),
+            )
+        } answers {
+            activationFinished = arg(3)
+            Unit
+        }
+
+        viewModel.activatePattern(KnownStrokeEnginePattern.key)
+        advanceUntilIdle()
+        viewModel.requestSpeedChange(0.01f)
+        postSetupReadyFlow.value = true
+        advanceUntilIdle()
+        assertNotNull(activationFinished)
+
+        viewModel.stop()
+        advanceUntilIdle()
+        activationFinished!!(true)
+        runCurrent()
+
+        assertEquals(0f, viewModel.uiState.value.speed)
+        assertFalse(viewModel.uiState.value.isRunning)
+        verify(exactly = 1) { bleManager.sendCommand(OssmCommand.Stop) }
+        verify(exactly = 0) {
+            bleManager.sendCommand(match { it is OssmCommand.UpdateStrokeEngine })
+        }
+    }
+
+    @Test
     fun `pattern list from ble updates state`() = runTest {
         patternsFlow.value = listOf(
             KnownStrokeEnginePattern,
@@ -588,8 +808,9 @@ class ControlViewModelTest {
         )
         advanceUntilIdle()
 
-        assertEquals(3, viewModel.uiState.value.availablePatterns.size)
-        assertTrue(viewModel.uiState.value.availablePatterns.any { it.key == KnownAdaptivePattern.key })    }
+        assertEquals(2, viewModel.uiState.value.availablePatterns.size)
+        assertTrue(viewModel.uiState.value.availablePatterns.any { it.key == "simplePenetration" })
+    }
 
     @Test
     fun `small speed change sends stroke engine command immediately`() = runTest {
@@ -688,6 +909,8 @@ class ControlViewModelTest {
     fun `activating launch only pattern switches active key`() = runTest {
         val pattern = OssmPattern("simplePenetration", "Simple Penetration", PatternControlMode.LAUNCH_ONLY)
         patternsFlow.value = listOf(KnownStrokeEnginePattern, pattern)
+        postSetupReadyFlow.value = false
+        connectionStateFlow.value = BleConnectionState.Connected("OSSM", "00:11:22:33:44:55")
         advanceUntilIdle()
 
         viewModel.activatePattern(pattern.key)
@@ -695,11 +918,17 @@ class ControlViewModelTest {
 
         assertEquals(pattern.key, viewModel.uiState.value.activePatternKey)
         assertFalse(viewModel.uiState.value.activePatternSupportsControls)
+        verify(exactly = 0) { bleManager.activatePatternVerified(any(), any(), any(), any()) }
+
+        postSetupReadyFlow.value = true
+        advanceUntilIdle()
+
         verify {
             bleManager.activatePatternVerified(
                 patternId = 0,
                 patternName = pattern.name,
-                command = any()
+                command = any(),
+                onFinished = any()
             )
         }
     }
@@ -755,34 +984,123 @@ class ControlViewModelTest {
     }
 
     @Test
-    fun `live stream drag forwards every callback to the shared target scheduler`() = runTest {
+    fun `live stream drag starts with a bounded target and retains the latest desired callback`() = runTest {
         patternsFlow.value = listOf(OssmPattern("live", "Live", PatternControlMode.STREAMING))
         streamingReadyFlow.value = true
         machineStateFlow.value = MachineState(speed = 100)
         advanceUntilIdle()
 
         viewModel.setStreamPositionDrag(10)
-        assertEquals(10, viewModel.uiState.value.streamPositionPercent)
+        assertEquals(5, viewModel.uiState.value.streamPositionPercent)
         viewModel.setStreamPositionDrag(20)
         viewModel.setStreamPositionDrag(30)
 
-        verify(exactly = 1) { bleManager.sendCommand(OssmCommand.Stream(10, timeMs = 60)) }
-        verify(exactly = 1) { bleManager.sendCommand(OssmCommand.Stream(20, timeMs = 60)) }
-        verify(exactly = 1) { bleManager.sendCommand(OssmCommand.Stream(30, timeMs = 60)) }
+        verify(exactly = 1) { bleManager.sendCommand(OssmCommand.Stream(5, timeMs = 60)) }
     }
 
     @Test
-    fun `fast live stream drag preserves the latest finger target for central coalescing`() = runTest {
+    fun `anchored Live gesture follows fast back and forth directly without touch slew`() = runTest {
+        patternsFlow.value = listOf(OssmPattern("live", "Live", PatternControlMode.STREAMING))
+        streamingReadyFlow.value = true
+        machineStateFlow.value = MachineState(speed = 100)
+        advanceUntilIdle()
+
+        // Anchor = current position (0): pointer-down emits no motion.
+        viewModel.setStreamPositionDrag(0)
+        verify(exactly = 0) { bleManager.sendCommand(match { it is OssmCommand.Stream }) }
+
+        // Rapid anchor <-> far round trips: every sample is forwarded immediately, no 80 %/s cap.
+        viewModel.setStreamPositionDrag(100)
+        assertEquals(100, viewModel.uiState.value.streamPositionPercent)
+        viewModel.setStreamPositionDrag(0)
+        assertEquals(0, viewModel.uiState.value.streamPositionPercent)
+        viewModel.setStreamPositionDrag(90)
+        assertEquals(90, viewModel.uiState.value.streamPositionPercent)
+
+        verify(exactly = 1) { bleManager.sendCommand(OssmCommand.Stream(100, timeMs = 60)) }
+        verify(exactly = 1) { bleManager.sendCommand(OssmCommand.Stream(0, timeMs = 60)) }
+        verify(exactly = 1) { bleManager.sendCommand(OssmCommand.Stream(90, timeMs = 60)) }
+        verify(exactly = 0) { bleManager.sendCommand(OssmCommand.Stream(5, timeMs = 60)) }
+    }
+
+    @Test
+    fun `entry ramp only joins a far first contact then the gesture follows directly`() = runTest {
+        patternsFlow.value = listOf(OssmPattern("live", "Live", PatternControlMode.STREAMING))
+        streamingReadyFlow.value = true
+        machineStateFlow.value = MachineState(speed = 100)
+        advanceUntilIdle()
+
+        // A first contact far from the current position (e.g. TalkBack setProgress) is ramped.
+        viewModel.setStreamPositionDrag(60)
+        assertEquals(5, viewModel.uiState.value.streamPositionPercent)
+        advanceTimeBy(3_000)
+        runCurrent()
+        assertEquals(60, viewModel.uiState.value.streamPositionPercent)
+
+        // Once joined, the same gesture is no longer slewed.
+        viewModel.setStreamPositionDrag(0)
+        assertEquals(0, viewModel.uiState.value.streamPositionPercent)
+        viewModel.setStreamPositionDrag(100)
+        assertEquals(100, viewModel.uiState.value.streamPositionPercent)
+        verify(exactly = 1) { bleManager.sendCommand(OssmCommand.Stream(100, timeMs = 60)) }
+    }
+
+    @Test
+    fun `new touch during the slow return anchors at the current position without a jump`() = runTest {
         patternsFlow.value = listOf(OssmPattern("live", "Live", PatternControlMode.STREAMING))
         streamingReadyFlow.value = true
         machineStateFlow.value = MachineState(speed = 100)
         advanceUntilIdle()
 
         viewModel.setStreamPositionDrag(0)
-        viewModel.setStreamPositionDrag(100)
+        viewModel.setStreamPositionDrag(80)
+        viewModel.endLiveTouch()
+        advanceTimeBy(1_000)
+        runCurrent()
+        val returning = viewModel.uiState.value.streamPositionPercent
+        assertTrue("return is slow, got $returning", returning in 40..79)
 
-        verify(exactly = 1) { bleManager.sendCommand(OssmCommand.Stream(0, timeMs = 60)) }
-        verify(exactly = 1) { bleManager.sendCommand(OssmCommand.Stream(100, timeMs = 60)) }
+        // The pad anchors the new touch at the current logical position: no Stream is emitted
+        // and the return stops there (no physical jump, no continued return).
+        clearMocks(bleManager, answers = false)
+        viewModel.setStreamPositionDrag(returning)
+        advanceTimeBy(2_000)
+        runCurrent()
+        assertEquals(returning, viewModel.uiState.value.streamPositionPercent)
+        verify(exactly = 0) { bleManager.sendCommand(match { it is OssmCommand.Stream }) }
+
+        // Moving away adds depth beyond that anchor, directly.
+        viewModel.setStreamPositionDrag(returning + 15)
+        assertEquals(returning + 15, viewModel.uiState.value.streamPositionPercent)
+        verify(exactly = 1) {
+            bleManager.sendCommand(OssmCommand.Stream(returning + 15, timeMs = 60))
+        }
+    }
+
+    @Test
+    fun `STOP during a direct Live gesture cuts every later target`() = runTest {
+        patternsFlow.value = listOf(OssmPattern("live", "Live", PatternControlMode.STREAMING))
+        streamingReadyFlow.value = true
+        machineStateFlow.value = MachineState(speed = 100)
+        advanceUntilIdle()
+
+        viewModel.setStreamPositionDrag(0)
+        viewModel.setStreamPositionDrag(70)
+        viewModel.stopLiveTouch()
+        verify(exactly = 1) { bleManager.sendCommand(OssmCommand.Stop) }
+        val stoppedAt = viewModel.uiState.value.streamPositionPercent
+        assertFalse(viewModel.uiState.value.isRunning)
+
+        clearMocks(bleManager, answers = false)
+        advanceTimeBy(10_000)
+        runCurrent()
+        verify(exactly = 0) { bleManager.sendCommand(match { it is OssmCommand.Stream }) }
+        assertEquals(stoppedAt, viewModel.uiState.value.streamPositionPercent)
+
+        // The next gesture starts un-engaged again: a far first sample is ramped, not direct.
+        viewModel.setStreamPositionDrag(0)
+        viewModel.setStreamPositionDrag(90)
+        assertTrue(viewModel.uiState.value.streamPositionPercent <= stoppedAt + 5)
     }
 
     @Test
@@ -796,9 +1114,7 @@ class ControlViewModelTest {
         viewModel.setStreamPositionDrag(80)
         viewModel.setStreamPositionDrag(0)
 
-        verify(exactly = 1) { bleManager.sendCommand(OssmCommand.Stream(20, timeMs = 60)) }
-        verify(exactly = 1) { bleManager.sendCommand(OssmCommand.Stream(80, timeMs = 60)) }
-        verify(exactly = 1) { bleManager.sendCommand(OssmCommand.Stream(0, timeMs = 60)) }
+        verify(exactly = 1) { bleManager.sendCommand(OssmCommand.Stream(5, timeMs = 60)) }
     }
 
     @Test
@@ -828,8 +1144,7 @@ class ControlViewModelTest {
         viewModel.setStreamPositionDrag(20)
         viewModel.setStreamPosition(80)
 
-        verify(exactly = 1) { bleManager.sendCommand(OssmCommand.Stream(10, timeMs = 60)) }
-        verify(exactly = 1) { bleManager.sendCommand(OssmCommand.Stream(20, timeMs = 60)) }
+        verify(exactly = 1) { bleManager.sendCommand(OssmCommand.Stream(5, timeMs = 60)) }
         verify(exactly = 1) { bleManager.sendCommand(OssmCommand.Stream(80, timeMs = 60)) }
     }
 
@@ -843,10 +1158,63 @@ class ControlViewModelTest {
         viewModel.setStreamPositionDrag(65)
         viewModel.stopLiveTouch()
 
-        assertEquals(65, viewModel.uiState.value.streamPositionPercent)
+        assertEquals(5, viewModel.uiState.value.streamPositionPercent)
         assertFalse(viewModel.uiState.value.isRunning)
         verify(exactly = 1) { bleManager.sendCommand(OssmCommand.Stop) }
         verify(exactly = 0) { bleManager.emergencyStop() }
+    }
+
+    @Test
+    fun `normal Live release returns slowly to zero without STOP`() = runTest {
+        patternsFlow.value = listOf(OssmPattern("live", "Live", PatternControlMode.STREAMING))
+        streamingReadyFlow.value = true
+        machineStateFlow.value = MachineState(speed = 100)
+        advanceUntilIdle()
+
+        viewModel.setStreamPositionDrag(40)
+        advanceTimeBy(3_000)
+        runCurrent()
+        assertEquals(40, viewModel.uiState.value.streamPositionPercent)
+
+        viewModel.endLiveTouch()
+        runCurrent()
+        verify(exactly = 0) { bleManager.sendCommand(OssmCommand.Stop) }
+        advanceTimeBy(500)
+        runCurrent()
+        val midway = viewModel.uiState.value.streamPositionPercent
+        assertTrue("return is gradual (≤ 20 %/s), got $midway", midway in 1..39)
+
+        // 40 points at ≤ 20 %/s needs at least two seconds; give it ample time to finish.
+        advanceTimeBy(5_000)
+        runCurrent()
+        assertEquals(0, viewModel.uiState.value.streamPositionPercent)
+        assertFalse(viewModel.uiState.value.isRunning)
+        verify(exactly = 0) { bleManager.sendCommand(OssmCommand.Stop) }
+        verify { bleManager.sendCommand(match<OssmCommand.Stream> { it.positionPercent == 0 }) }
+    }
+
+    @Test
+    fun `STOP during the slow Live return cancels it and no target follows`() = runTest {
+        patternsFlow.value = listOf(OssmPattern("live", "Live", PatternControlMode.STREAMING))
+        streamingReadyFlow.value = true
+        machineStateFlow.value = MachineState(speed = 100)
+        advanceUntilIdle()
+
+        viewModel.setStreamPositionDrag(60)
+        advanceTimeBy(3_000)
+        runCurrent()
+        viewModel.endLiveTouch()
+        advanceTimeBy(300)
+        runCurrent()
+
+        viewModel.stop()
+        val stoppedAt = viewModel.uiState.value.streamPositionPercent
+        clearMocks(bleManager, answers = false)
+        advanceTimeBy(10_000)
+        runCurrent()
+
+        verify(exactly = 0) { bleManager.sendCommand(match { it is OssmCommand.Stream }) }
+        assertEquals(stoppedAt, viewModel.uiState.value.streamPositionPercent)
     }
 
     @Test

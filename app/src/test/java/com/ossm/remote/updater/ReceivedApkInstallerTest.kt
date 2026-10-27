@@ -2,11 +2,16 @@ package com.ossm.remote.updater
 
 import android.content.Intent
 import android.net.Uri
+import java.io.ByteArrayInputStream
+import java.io.File
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 
 @RunWith(RobolectricTestRunner::class)
 class ReceivedApkInstallerTest {
@@ -57,5 +62,28 @@ class ReceivedApkInstallerTest {
 
         assertNull(createReceivedApkInstallerIntent(missingStreamIntent, copiedApkUri))
         assertNull(createReceivedApkInstallerIntent(fileStreamIntent, copiedApkUri))
+    }
+
+    @Test
+    fun `uses unique cache files in the FileProvider safe updates directory`() {
+        val context = RuntimeEnvironment.getApplication()
+        val cacheRoot = File(context.cacheDir, "updates")
+        val firstContents = "first APK".toByteArray()
+        val secondContents = "second APK".toByteArray()
+        val firstApk = copyReceivedApkToCache(ByteArrayInputStream(firstContents), cacheRoot)
+        val secondApk = copyReceivedApkToCache(ByteArrayInputStream(secondContents), cacheRoot)
+
+        try {
+            assertNotEquals(firstApk, secondApk)
+            assertNotEquals(firstApk.name, secondApk.name)
+            assertEquals(cacheRoot, firstApk.parentFile)
+            assertEquals(cacheRoot, secondApk.parentFile)
+            assertEquals("updates/${firstApk.name}", firstApk.relativeTo(context.cacheDir).invariantSeparatorsPath)
+            assertEquals("updates/${secondApk.name}", secondApk.relativeTo(context.cacheDir).invariantSeparatorsPath)
+            assertArrayEquals(firstContents, firstApk.readBytes())
+        } finally {
+            firstApk.delete()
+            secondApk.delete()
+        }
     }
 }

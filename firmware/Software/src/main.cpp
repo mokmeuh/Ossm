@@ -8,6 +8,7 @@
 #include "services/board.h"
 #include "services/communication/mqtt.h"
 #include "services/communication/nimble.h"
+#include "services/communication/usb_serial.h"
 #include "services/display.h"
 #include "services/encoder.h"
 #include "services/led.h"
@@ -66,6 +67,7 @@ void __attribute__((weak)) setup() {
 
     // Initialize state machine after global state is set up
     initStateMachine();
+    initUsbSerial();
 
 #ifdef SIGNAL_DIAGNOSTICS
     startSignalDiagnostics();

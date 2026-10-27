@@ -46,7 +46,7 @@ fun DiagnosticsScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(OssmBackground, OssmSecondary)))
+            .background(OssmBackground)
     ) {
         Column(
             modifier = Modifier
@@ -61,10 +61,10 @@ fun DiagnosticsScreen(
             ) {
                 Text(
                     stringResource(R.string.diag_title),
-                    style = MaterialTheme.typography.titleLarge,
-                    color = OssmAccent,
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = OssmOnSurface,
                     fontWeight = FontWeight.Bold,
-                    letterSpacing = 2.sp
+                    modifier = Modifier.weight(1f)
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     IconButton(
@@ -78,7 +78,7 @@ fun DiagnosticsScreen(
                             )
                         }
                     ) {
-                        Icon(Icons.Default.ContentCopy, "Copier les logs", tint = OssmPrimary)
+                        Icon(Icons.Default.ContentCopy, stringResource(R.string.diag_copy), tint = OssmPrimary)
                     }
                     IconButton(onClick = onClear) {
                         Icon(Icons.Default.Delete, stringResource(R.string.diag_clear), tint = OssmError)
@@ -93,11 +93,11 @@ fun DiagnosticsScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(stringResource(R.string.diag_ble_state), color = OssmPrimaryLight, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         BleStatusIndicator(state = connectionState)
                     }
-                    Column(horizontalAlignment = Alignment.End) {
+                    Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.End) {
                         Text(stringResource(R.string.diag_last_cmd), color = OssmPrimaryLight, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         Text(
                             lastCommand.ifBlank { "—" },
@@ -129,9 +129,9 @@ fun DiagnosticsScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .background(Color(0xFF06060A), RoundedCornerShape(16.dp))
+                    .background(OssmSurface, RoundedCornerShape(16.dp))
                     .padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items(logs, key = { it.id }) { log ->
                     LogRow(log)
@@ -144,35 +144,28 @@ fun DiagnosticsScreen(
 @Composable
 private fun LogRow(log: DiagnosticsLog) {
     val color = when (log.level) {
-        LogLevel.DEBUG   -> Color(0xFF9E9E9E)
+        LogLevel.DEBUG   -> OssmOnSurfaceMuted
         LogLevel.INFO    -> OssmAccent
         LogLevel.WARNING -> OssmWarning
         LogLevel.ERROR   -> OssmError
     }
-    Row(
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         Text(
-            log.formattedTime(),
-            color = Color(0xFF616161),
-            fontSize = 10.sp,
+            "${log.formattedTime()}  [${log.tag}]",
+            color = OssmOnSurfaceMuted,
+            fontSize = 12.sp,
             fontFamily = FontFamily.Monospace,
-            modifier = Modifier.width(72.dp)
-        )
-        Text(
-            "[${log.tag}]",
-            color = color.copy(0.7f),
-            fontSize = 10.sp,
-            fontFamily = FontFamily.Monospace,
-            modifier = Modifier.width(60.dp)
+            modifier = Modifier.fillMaxWidth()
         )
         Text(
             log.message,
             color = color,
-            fontSize = 11.sp,
+            fontSize = 13.sp,
             fontFamily = FontFamily.Monospace,
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.fillMaxWidth()
         )
     }
 }

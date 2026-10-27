@@ -1,61 +1,141 @@
 <!doctype html>
-<html lang="en">
+<html lang="fr">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#061018" />
-    <meta name="description" content="OSSM Remote 2.0 secure control session" />
+    <meta name="description" content="Client web OSSM Remote v2.0.13 pour session de contrôle sécurisée" />
     <title>OSSM Remote</title>
     <link rel="stylesheet" href="/app.css" />
   </head>
   <body>
     <main class="shell">
       <header class="topbar">
-        <a class="wordmark" href="/" aria-label="OSSM Remote home">OSSM <span>REMOTE</span></a>
-        <div class="status-chip" id="status" role="status">CONNECTING</div>
+        <div class="brand-group">
+          <a class="wordmark" href="/" aria-label="Accueil OSSM Remote">OSSM <span>REMOTE</span></a>
+          <span class="hint" id="web-version">WEB v2.0.13</span>
+        </div>
+        <div class="status-chip" id="status" role="status">CONNEXION</div>
       </header>
-      <section class="session-head glass-panel">
-        <p class="eyebrow">SESSION CONTROL</p>
-        <h1 id="session-title">Secure remote</h1>
-        <p id="session-copy">Open a session link containing its access key.</p>
+      <section class="session-head" aria-labelledby="session-title">
+        <h1 id="session-title">Session privée</h1>
+        <p id="session-copy">Ouvrez le lien de session partagé par l’application OSSM.</p>
       </section>
-      <section class="video-stage floating glass-panel" id="video-stage" aria-label="Host video">
+      <section class="phone-limits" id="phone-limits" aria-labelledby="phone-limits-title" data-state="waiting">
+        <p class="eyebrow" id="phone-limits-title">MAXIMUMS FIXÉS PAR LE TÉLÉPHONE</p>
+        <p class="phone-limits-values" id="phone-limits-values" role="status" aria-live="polite">Maximums du téléphone : en attente</p>
+        <p class="phone-limits-note" id="phone-limits-note" hidden></p>
+      </section>
+      <section class="video-stage glass-panel" id="video-stage" aria-label="Flux caméra distant" data-cameras="0">
         <div class="video-placeholder" id="video-placeholder">
-          <span class="pulse-dot"></span><span>HOST VIDEO STANDBY</span>
+          <span class="pulse-dot"></span><span id="video-placeholder-label">AUCUNE CAMÉRA CONNECTÉE</span>
         </div>
-        <video id="host-video" autoplay muted playsinline aria-label="Muted live video from host"></video>
-        <div class="video-tools">
-          <button class="icon-button" id="split-video" type="button" aria-label="Toggle split video" aria-pressed="false">SPLIT</button>
-          <button class="icon-button" id="full-video" type="button" aria-label="Fullscreen video" aria-pressed="false">FULL</button>
+        <div class="video-grid" id="video-grid"></div>
+        <div class="media-tools" id="media-tools" aria-label="Commandes vidéo" hidden>
+          <button class="icon-button media-button" id="pause-video" type="button" aria-label="Pause vidéo" hidden>Pause vidéo</button>
+          <button class="icon-button media-button" id="stop-video" type="button" aria-label="Fermer la vidéo" aria-pressed="false" hidden>Fermer la vidéo</button>
         </div>
       </section>
-      <section class="controls glass-panel" id="remote-controls" aria-label="Remote controls">
-        <div class="control-grid">
-          <button class="control-button" data-command='{"type":"stop"}' type="button">STOP</button>
-          <button class="control-button" data-command='{"type":"end_live_touch"}' type="button">RELEASE</button>
-          <button class="control-button" data-command='{"type":"home"}' type="button">HOME</button>
-          <button class="control-button" data-command='{"type":"pause"}' type="button">PAUSE</button>
-          <button class="control-button" data-command='{"type":"resume"}' type="button">RESUME</button>
+      <section class="controls glass-panel" id="remote-controls" aria-label="Commandes à distance">
+        <fieldset class="mode-picker" id="pattern">
+          <legend class="mode-legend"><span class="eyebrow">MODE</span> <strong id="mode-title">Simple Stroke</strong></legend>
+          <p class="mode-group-label" id="mode-machine-label">Motifs machine</p>
+          <div class="mode-chips" role="presentation">
+            <label class="mode-chip"><input type="radio" name="pattern" value="simpleStroke" data-label="Simple Stroke" checked /><span>Simple Stroke</span></label>
+            <label class="mode-chip"><input type="radio" name="pattern" value="teasingPounding" data-label="Teasing Pounding" /><span>Teasing Pounding</span></label>
+            <label class="mode-chip"><input type="radio" name="pattern" value="roboStroke" data-label="Robo Stroke" /><span>Robo Stroke</span></label>
+            <label class="mode-chip"><input type="radio" name="pattern" value="halfNHalf" data-label="Half’n’Half" /><span>Half’n’Half</span></label>
+            <label class="mode-chip"><input type="radio" name="pattern" value="deeper" data-label="Deeper" /><span>Deeper</span></label>
+            <label class="mode-chip"><input type="radio" name="pattern" value="stopNGo" data-label="Stop’n’Go" /><span>Stop’n’Go</span></label>
+            <label class="mode-chip"><input type="radio" name="pattern" value="insist" data-label="Insist" /><span>Insist</span></label>
+          </div>
+          <p class="mode-group-label">Modes de l’application</p>
+          <div class="mode-chips" role="presentation">
+            <label class="mode-chip"><input type="radio" name="pattern" value="streamingLive" data-label="Direct" /><span>Direct</span></label>
+            <label class="mode-chip"><input type="radio" name="pattern" value="progressive" data-label="Progressif" /><span>Progressif</span></label>
+            <label class="mode-chip"><input type="radio" name="pattern" value="autoRandom" data-label="Aléatoire" /><span>Aléatoire</span></label>
+            <label class="mode-chip"><input type="radio" name="pattern" value="natural" data-label="Naturel" /><span>Naturel</span></label>
+          </div>
+        </fieldset>
+        <div class="slider-stack" id="parameter-controls">
+          <div class="slider-field"><div class="slider-head"><label for="speed">Vitesse</label><span class="limit-badge" id="speed-limit" hidden></span><output id="speed-value" for="speed">0 %</output></div><input id="speed" type="range" min="0" max="100" value="0" /></div>
+          <div class="slider-field sensation-field"><div class="slider-head"><label for="sensation">Sensation</label><span class="limit-badge" id="sensation-limit" hidden></span><output id="sensation-value" for="sensation">0</output></div><div class="centered-range" id="sensation-track" data-neutral="in"><input id="sensation" type="range" min="0" max="100" value="50" aria-valuetext="neutre" aria-describedby="sensation-legend" /><span class="neutral-mark" aria-hidden="true"></span></div><p class="sensation-legend" id="sensation-legend">Sans effet en Simple Stroke</p></div>
+          <div class="slider-field"><div class="slider-head"><label for="minimum">Minimum</label><span class="limit-badge" id="minimum-limit" hidden></span><output id="minimum-value" for="minimum">0 %</output></div><input id="minimum" type="range" min="0" max="100" value="0" /></div>
+          <div class="slider-field"><div class="slider-head"><label for="maximum">Profondeur</label><span class="limit-badge" id="maximum-limit" hidden></span><output id="maximum-value" for="maximum">100 %</output></div><input id="maximum" type="range" min="0" max="100" value="100" /></div>
         </div>
-        <div class="control-grid">
-          <label>Speed <input id="speed" type="range" min="0" max="100" value="0" /></label>
-          <label>Sensation <input id="sensation" type="range" min="0" max="100" value="50" /></label>
-          <label>Live position <input id="live" type="range" min="0" max="100" value="0" /></label>
-          <label>Retraction <input id="minimum" type="range" min="0" max="100" value="0" /></label>
-          <label>Depth <input id="maximum" type="range" min="0" max="100" value="100" /></label>
-          <label>Mode <select id="pattern"><option value="simpleStroke">Simple Stroke</option><option value="streamingLive">Live</option><option value="progressive">Progressive</option><option value="autoRandom">Auto Random</option></select></label>
+        <section class="live-touch-panel" id="live-touch-panel" hidden aria-label="Commande tactile directe">
+          <div class="live-touch-header">
+            <div>
+              <p class="eyebrow">TOUCHER DIRECT</p>
+              <strong>Zone libre</strong>
+            </div>
+            <output id="live-value" for="live-pad">0 %</output>
+          </div>
+          <div class="live-pad" id="live-pad" role="slider" tabindex="0" aria-label="Position directe" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="0 %, rentré" aria-describedby="live-legend live-hint" aria-disabled="true" data-state="idle">
+            <span class="live-pad-prompt" aria-hidden="true">Touchez n'importe où</span>
+            <span class="live-pad-floor" aria-hidden="true"><span class="live-pad-floor-label">reste à 0</span></span>
+            <span class="live-pad-origin" aria-hidden="true">
+              <span class="live-pad-arc live-pad-arc--25"><span class="live-pad-arc-label">25</span></span>
+              <span class="live-pad-arc live-pad-arc--50"><span class="live-pad-arc-label">50</span></span>
+              <span class="live-pad-arc live-pad-arc--75"><span class="live-pad-arc-label">75</span></span>
+              <span class="live-pad-arc live-pad-arc--100"><span class="live-pad-arc-label">100</span></span>
+              <span class="live-pad-baseline"></span>
+              <span class="live-pad-reach"></span>
+              <span class="live-pad-ray"></span>
+              <span class="live-pad-anchor"></span>
+              <span class="live-pad-finger"></span>
+            </span>
+          </div>
+          <p class="live-legend" id="live-legend">Touchez : ce point = 0 · montez = plus profond</p>
+          <p class="live-hint" id="live-hint">Relâchez : le téléphone ramène doucement à 0.</p>
+        </section>
+        <div class="thumb-dock" id="thumb-dock">
+          <div class="control-grid" id="standard-controls">
+            <button class="control-button" data-command='{"type":"home"}' type="button">POSITION INITIALE</button>
+            <button class="control-button" data-command='{"type":"pause"}' type="button">PAUSE</button>
+            <button class="control-button" data-command='{"type":"resume"}' type="button">REPRENDRE</button>
+          </div>
+          <button class="stop-button" id="emergency-stop" type="button"><span>STOP</span><small>Interrompt le mouvement en sécurité</small></button>
         </div>
-        <button class="stop-button" id="emergency-stop" type="button"><span>EMERGENCY STOP</span><small>Instantly relay to every participant</small></button>
       </section>
-      <section class="call-card glass-panel">
-        <div><p class="eyebrow">MEDIA</p><strong id="media-title">Camera and microphone are off</strong><p id="media-copy">Controls remain available if a call cannot connect.</p></div>
-        <button id="join-call" class="join-button" type="button">START CAMERA + VOICE</button>
+      <section class="call-card glass-panel" id="media-card">
+        <div><p class="eyebrow">MÉDIA</p><strong id="media-title">Caméras</strong><p id="media-copy">Aucune caméra connectée pour le moment : aucun appareil caméra n’a rejoint la session.</p></div>
+        <div class="camera-sharing-controls" id="camera-sharing-controls" hidden>
+          <button id="join-call" class="join-button" type="button" hidden>DÉMARRER CAMÉRA + VOIX</button>
+          <button id="flip-camera" class="join-button" type="button" hidden>Changer de caméra</button>
+          <button id="stop-sharing" class="join-button" type="button" hidden>Arrêter le partage</button>
+        </div>
       </section>
-      <section class="call-card glass-panel" id="camera-invite">
-        <div><p class="eyebrow">CAMERA INVITE</p><strong>Open this on the camera device</strong><p>The controller stays in charge. A camera can share video and voice but cannot send motion commands.</p></div>
-        <button id="copy-camera-invite" class="join-button" type="button">COPY CAMERA INVITE</button>
-      </section>
-      <p class="hint" id="participant-hint">Host: no · Controller: no · Cameras: 0</p>
+      <p class="hint" id="participant-hint">Téléphone&nbsp;:&nbsp;non&nbsp;· Contrôleur&nbsp;:&nbsp;non&nbsp;· Caméras&nbsp;:&nbsp;0</p>
+      <details class="debug-panel glass-panel" id="debug-panel">
+        <summary><span class="debug-heading">RAPPORT TECHNIQUE</span><span class="debug-summary" id="debug-summary">En attente de connexion</span></summary>
+        <div class="debug-content">
+          <p class="debug-privacy">Partage sûr : l’identifiant, la clé, les commandes, le média, les adresses IP et les identifiants d’appareil sont omis. Le nom d’hôte d’origine est inclus.</p>
+          <dl class="debug-state" aria-label="État de connexion expurgé">
+              <div><dt>Navigateur</dt><dd id="debug-browser">Vérification</dd></div>
+              <div><dt>Origine</dt><dd id="debug-origin">Masquée</dd></div>
+              <div><dt>Session / clé</dt><dd id="debug-session">Vérification</dd></div>
+              <div><dt>Rôle</dt><dd id="debug-role">Vérification</dd></div>
+              <div><dt>Téléphone</dt><dd id="debug-host">Inconnu</dd></div>
+              <div><dt>Bail contrôleur</dt><dd id="debug-lease">Inconnu</dd></div>
+              <div><dt>Présence</dt><dd id="debug-presence">Inconnue</dd></div>
+              <div><dt>WebSocket</dt><dd id="debug-websocket">Non ouvert</dd></div>
+              <div class="debug-state__last-event"><dt>Dernier événement</dt><dd id="debug-last-event" role="status" aria-live="polite">Page chargée</dd></div>
+          </dl>
+          <section class="debug-app" aria-labelledby="debug-app-title">
+            <p class="eyebrow" id="debug-app-title">DIAGNOSTIC DU TÉLÉPHONE</p>
+            <p id="debug-app-event">Aucun diagnostic reçu.</p>
+          </section>
+          <section aria-labelledby="debug-events-title">
+            <p class="eyebrow" id="debug-events-title">ÉVÉNEMENTS RÉCENTS</p>
+            <ol class="debug-log" id="debug-log" aria-label="Événements récents expurgés"></ol>
+          </section>
+          <div class="debug-actions">
+            <button class="icon-button debug-copy" id="copy-debug-report" type="button">COPIER LE RAPPORT SÛR</button>
+            <p class="debug-copy-status" id="debug-copy-status" role="status" aria-live="polite"></p>
+          </div>
+        </div>
+      </details>
     </main>
     <script type="module" src="/app.js"></script>
   </body>

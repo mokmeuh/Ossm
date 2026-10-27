@@ -7,7 +7,7 @@ enum class PatternControlMode {
     PROGRESSIVE,         // app-driven: full strokes, speed auto-ramps +1% per stroke
     LAUNCH_ONLY,         // pattern that can be activated but exposes no parameter sliders
     AUTO_RANDOM,         // app-driven: randomly mixes the chosen patterns within set limits
-    ADAPTIVE             // app-driven: learns preferences and drives the 7 firmware patterns
+    NATURAL              // app-driven: coherent local gesture sequences on Teasing Pounding (2.3.18)
 }
 
 data class OssmPattern(
@@ -47,13 +47,31 @@ val KnownAutoRandomPattern = OssmPattern(
     mode = PatternControlMode.AUTO_RANDOM
 )
 
-// Adaptive mode: the app learns the user's preferences over sessions and drives the 7
-// firmware stroke-engine patterns intelligently. Locked until enough learning is done.
-val KnownAdaptivePattern = OssmPattern(
-    key = "adaptive",
-    name = "Mode adaptatif",
-    mode = PatternControlMode.ADAPTIVE
+// Naturel (2.3.18): coherent phone-generated gesture sequences. Runs on the firmware stroke
+// engine's Teasing Pounding pattern (id 1), whose bipolar sensation sets the in/out speed ratio,
+// so the phone only modulates speed/depth/stroke/sensation through the coalesced live writers.
+// Stable key "natural" is also accepted by the browser's select_pattern.
+const val NATURAL_PATTERN_KEY = "natural"
+
+val KnownNaturalPattern = OssmPattern(
+    key = NATURAL_PATTERN_KEY,
+    name = "Naturel",
+    mode = PatternControlMode.NATURAL,
+    id = 1
 )
+
+// Voix (2.3.26): spoken French instructions executed through the Live pipeline. It reuses the
+// STREAMING entry (verified band, slow entry convergence, streamingReady gate) and is told apart
+// from Live by its stable key. Phone-only: the browser cannot select it.
+const val VOICE_PATTERN_KEY = "voice"
+
+val KnownVoicePattern = OssmPattern(
+    key = VOICE_PATTERN_KEY,
+    name = "Voix",
+    mode = PatternControlMode.STREAMING
+)
+
+fun OssmPattern?.isVoicePattern(): Boolean = this?.key == VOICE_PATTERN_KEY
 
 val KnownStrokeEnginePatterns = listOf(
     OssmPattern("simpleStroke",     "Simple Stroke",     PatternControlMode.STROKE_ENGINE, id = 0),
@@ -73,6 +91,8 @@ val KnownStrokeEnginePattern = KnownStrokeEnginePatterns.first()
 // kills the randomness. Its plain in-out motion is already covered by "Simple Stroke" (id 0).
 val AutoRandomMixablePatterns: List<OssmPattern> = KnownStrokeEnginePatterns
 
-// Picker: Auto Random, Mode adaptatif, Progressif, Live, then the 7 stroke patterns.
-val KnownFallbackPatterns: List<OssmPattern> =
-    listOf(KnownAutoRandomPattern, KnownAdaptivePattern, KnownProgressivePattern, KnownStreamingPattern) + KnownStrokeEnginePatterns
+// Picker: Auto Random, Naturel, Progressif, Live, Voix, then the 7 stroke patterns.
+val KnownAppDrivenPatterns: List<OssmPattern> =
+    listOf(KnownAutoRandomPattern, KnownNaturalPattern, KnownProgressivePattern, KnownStreamingPattern, KnownVoicePattern)
+
+val KnownFallbackPatterns: List<OssmPattern> = KnownAppDrivenPatterns + KnownStrokeEnginePatterns

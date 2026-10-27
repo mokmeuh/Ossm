@@ -18,19 +18,19 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"
         android:maxSdkVersion="30" />
 
-    <!-- Storage for funscripts -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
-
-    <!-- Micro : mode « à l'écoute » (niveau sonore traité sur l'appareil, jamais enregistré) -->
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />
-
-    <!-- Video/funscript par URL (ExoPlayer streaming + téléchargement funscript) -->
+    <!-- Réseau : session Internet, partage OTA local, serveur de mises à jour -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
-    <!-- Notification de mise à jour disponible (Android 13+) -->
+    <!-- Partage de la caméra du propriétaire pour la session distante (WebView du broker) -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Permission normale (sans invite) requise par la WebView Chromium pour la capture audio WebRTC -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+
+    <!-- Notifications des services au premier plan (Android 13+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Overlay flottant : bulle par-dessus les applications -->
@@ -39,6 +39,11 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
+    <!-- Caméra/micro facultatifs : l'app reste installable sans eux (section caméra seulement). -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
 
     <application
         android:name=".OssmApplication"
@@ -50,17 +55,9 @@
         android:theme="@style/Theme.OssmRemote"
         android:usesCleartextTraffic="true">
 
-        <!-- WorkManager : auto-init desactive pour utiliser la HiltWorkerFactory (@HiltWorker)
-             via Configuration.Provider dans OssmApplication -->
-        <provider
-            android:name="androidx.startup.InitializationProvider"
-            android:authorities="${applicationId}.androidx-startup"
-            android:exported="false"
-            tools:node="merge">
-            <meta-data
-                android:name="androidx.work.WorkManagerInitializer"
-                tools:node="remove" />
-        </provider>
+        <!-- Voix 2.3.27 : GPU de LiteRT-LM (facultatif, repli CPU). -->
+        <uses-native-library android:name="libOpenCL.so" android:required="false" />
+        <uses-native-library android:name="libvndksupport.so" android:required="false" />
 
         <provider
             android:name="androidx.core.content.FileProvider"
@@ -89,6 +86,12 @@
             </intent-filter>
         </activity>
 
+        <!-- OTA locale 2.3.32 : lecteur du QR de jumelage (zxing-android-embedded), suit l'orientation. -->
+        <activity
+            android:name="com.journeyapps.barcodescanner.CaptureActivity"
+            android:screenOrientation="fullSensor"
+            tools:replace="screenOrientation" />
+
         <!-- Overlay flottant (bulle de contrôle) : service au premier plan spécial
              (specialUse sur API 34+, ignoré sur les versions antérieures). -->
         <service
@@ -99,6 +102,17 @@
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="floating_control_overlay" />
+        </service>
+
+        <!-- Outbound broker session. -->
+        <service
+            android:name=".remote.RemoteSessionService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse"
+            tools:targetApi="upside_down_cake">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="authenticated_outbound_remote_session_with_motion_safety" />
         </service>
 
     </application>

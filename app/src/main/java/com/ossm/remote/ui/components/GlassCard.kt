@@ -7,12 +7,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.ossm.remote.ui.theme.OssmGlass
 import com.ossm.remote.ui.theme.OssmGlassBorder
+import com.ossm.remote.ui.theme.OssmSurface
 
 @Composable
 fun GlassCard(
@@ -26,19 +27,10 @@ fun GlassCard(
     Column(
         modifier = modifier
             .clip(shape)
-            .background(
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        tint.copy(alpha = 0.18f),
-                        tint.copy(alpha = 0.08f)
-                    )
-                )
-            )
+            .background(tint.copy(alpha = 0.06f).compositeOver(OssmSurface))
             .border(
                 width = 1.dp,
-                brush = Brush.linearGradient(
-                    colors = listOf(OssmGlassBorder, Color.Transparent, OssmGlassBorder)
-                ),
+                color = OssmGlassBorder,
                 shape = shape
             )
             .padding(padding),

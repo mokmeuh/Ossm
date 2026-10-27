@@ -1,9 +1,23 @@
 package com.ossm.remote.ui.components
 
 import kotlin.math.abs
+import kotlin.math.roundToInt
+
+internal data class LiveTrackGeometry(
+    val top: Float,
+    val bottom: Float,
+    val height: Float,
+    val thumbY: Float
+)
+
+/**
+ * Movement below this distance (px) does not restart the Precision stationary clock.
+ * It never gates position emission: every integer change of the displayed target is sent.
+ */
+internal const val LIVE_STATIONARY_THRESHOLD_PX = 8f
 
 internal class LiveSliderState(
-    private val movementThresholdPx: Float = 0f,
+    private val stationaryThresholdPx: Float = 0f,
     private val precisionEnabled: Boolean = false
 ) {
     var valuePercent: Float = 0f
@@ -19,6 +33,7 @@ internal class LiveSliderState(
     private var latestPointerY = 0f
     private var stationarySinceMillis = 0L
     private var halfSpan: Float? = null
+    private var lastEmittedPercent = 0
 
     fun onDown(pointerY: Float, trackHeightPx: Float, uptimeMillis: Long): Float {
         return onDown(
@@ -40,24 +55,32 @@ internal class LiveSliderState(
         halfSpan = null
         this.trackHeightPx = trackHeightPx.coerceAtLeast(1f)
         this.valuePercent = valuePercent.coerceIn(GLOBAL_RANGE)
+        lastEmittedPercent = this.valuePercent.roundToInt()
         dragOriginY = pointerY
         dragOriginValue = this.valuePercent
         stationaryAnchorY = pointerY
         latestPointerY = pointerY
         stationarySinceMillis = uptimeMillis
-        return valuePercent
+        return this.valuePercent
     }
 
     fun onMove(pointerY: Float, uptimeMillis: Long): Float? {
         if (!active) return null
         latestPointerY = pointerY
-        if (abs(pointerY - stationaryAnchorY) <= movementThresholdPx) return null
+        // Clock only: sensor jitter within the threshold must not keep Precision from arming.
+        if (abs(pointerY - stationaryAnchorY) > stationaryThresholdPx) {
+            stationaryAnchorY = pointerY
+            stationarySinceMillis = uptimeMillis
+        }
 
+        // Emission is never gated by the threshold: the displayed integer target is the only dedupe.
         val span = visibleRange.endInclusive - visibleRange.start
         valuePercent = (dragOriginValue + (dragOriginY - pointerY) / trackHeightPx * span)
             .coerceIn(GLOBAL_RANGE)
-        stationaryAnchorY = pointerY
-        stationarySinceMillis = uptimeMillis
+        // A sub-percent touch must not arm motion at the unchanged displayed target.
+        val nextPercent = valuePercent.roundToInt()
+        if (nextPercent == lastEmittedPercent) return null
+        lastEmittedPercent = nextPercent
         return valuePercent
     }
 
@@ -79,6 +102,7 @@ internal class LiveSliderState(
         }
         halfSpan = nextHalfSpan
         stationarySinceMillis = uptimeMillis
+        stationaryAnchorY = latestPointerY
         dragOriginY = latestPointerY
         dragOriginValue = valuePercent
         return true
@@ -119,6 +143,31 @@ internal fun liveThumbCenterY(
     val top = inset
     val bottom = height - inset
     return bottom - (bottom - top) * (valuePercent.coerceIn(0f, 100f) / 100f)
+}
+
+internal fun liveDisplayedFraction(
+    valuePercent: Float,
+    visibleRange: ClosedFloatingPointRange<Float>
+): Float {
+    val start = visibleRange.start
+    val end = visibleRange.endInclusive
+    val span = (end - start).coerceAtLeast(1f)
+    return ((valuePercent.coerceIn(0f, 100f) - start) / span).coerceIn(0f, 1f)
+}
+
+internal fun liveTrackGeometry(
+    valuePercent: Float,
+    visibleRange: ClosedFloatingPointRange<Float>,
+    canvasHeightPx: Float,
+    trackInsetPx: Float
+): LiveTrackGeometry {
+    val height = canvasHeightPx.coerceAtLeast(1f)
+    val inset = trackInsetPx.coerceIn(0f, height / 2f)
+    val top = inset
+    val bottom = (height - inset).coerceAtLeast(top)
+    val trackHeight = (bottom - top).coerceAtLeast(1f)
+    val thumbY = bottom - trackHeight * liveDisplayedFraction(valuePercent, visibleRange)
+    return LiveTrackGeometry(top = top, bottom = bottom, height = trackHeight, thumbY = thumbY)
 }
 
 internal fun isLiveThumbHit(pointerY: Float, thumbY: Float, hitRadiusPx: Float): Boolean =

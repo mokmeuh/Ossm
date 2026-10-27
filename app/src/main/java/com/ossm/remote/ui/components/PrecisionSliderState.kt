@@ -60,15 +60,24 @@ internal class PrecisionSliderState(
 
     fun onMove(pointerX: Float, uptimeMillis: Long): Boolean {
         if (!active) return false
-        latestPointerX = pointerX
-        if (abs(pointerX - stationaryAnchorX) <= movementThresholdPx) return false
 
+        val previousValue = valuePercent
+        latestPointerX = pointerX
+
+        // The movement threshold is only a stationary-clock debounce. Mapping must still
+        // happen for every pointer position so a slow/small drag does not appear frozen or
+        // advance in an 8 px staircase. The drag remains relative to the original (or last
+        // precision-narrowed) origin, so a tap still cannot teleport the value.
         val span = visibleRange.endInclusive - visibleRange.start
         valuePercent = (dragOriginValue + (pointerX - dragOriginX) / trackWidthPx * span)
             .coerceIn(GLOBAL_RANGE)
-        stationaryAnchorX = pointerX
-        stationarySinceMillis = uptimeMillis
-        return true
+
+        if (abs(pointerX - stationaryAnchorX) > movementThresholdPx) {
+            stationaryAnchorX = pointerX
+            stationarySinceMillis = uptimeMillis
+        }
+
+        return valuePercent != previousValue
     }
 
     fun advanceTime(uptimeMillis: Long): Boolean {

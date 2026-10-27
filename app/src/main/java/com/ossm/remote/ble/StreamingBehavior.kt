@@ -5,11 +5,7 @@ internal fun mapLiveStreamPositionPercent(
     liveInvert: Boolean
 ): Int {
     val clamped = sliderPercent.coerceIn(0, 100)
-    // Calibration empirique (test appareil 2026-07-09) : sur ce firmware,
-    // stream HAUT = HOME, stream BAS = FOND. Le pad Live a 100 % (doigt en haut)
-    // DOIT aller au FOND -> on INVERSE par defaut (slider 100 -> stream 2 = fond ;
-    // slider 0 -> stream 98 = home). C'est le mapping "baseline validee appareil".
-    // liveInvert (flag utilisateur, false par defaut) permet de re-basculer en direct.
+    // Firmware wire positions run opposite to the Live pad's Home-to-Fond axis.
     val mapped = if (liveInvert) clamped else 100 - clamped
     return mapped.coerceIn(2, 98)
 }

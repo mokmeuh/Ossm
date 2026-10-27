@@ -63,7 +63,7 @@ fun BleStatusIndicator(
         Text(
             text = state.label(),
             color = dotColor,
-            fontSize = 12.sp,
+            fontSize = 14.sp,
             fontWeight = FontWeight.Medium,
             maxLines = 1
         )

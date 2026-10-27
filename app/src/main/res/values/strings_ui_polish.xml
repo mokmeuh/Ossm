@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Rail de presets aléatoires (Contrôle) -->
+    <string name="ui2_preset_saved_speed_short">Vit. %1$d%%</string>
+    <string name="ui2_preset_cd_saved">%1$d%% à %2$d%%, vitesse enregistrée %3$d%%</string>
+    <string name="ui2_random_short">Aléatoire</string>
+
+    <!-- Bandeau d\'état (Contrôle) -->
+    <string name="ui2_status_disconnected_title">OSSM non connecté</string>
+    <string name="ui2_status_disconnected_hint">Connectez-vous pour activer les commandes</string>
+    <string name="ui2_status_calibrating">Calibration en cours (%1$s) — attendez la fin</string>
+
+    <!-- Écran Connexion -->
+    <string name="ui2_scan_searching_title">Recherche de l\'OSSM…</string>
+    <string name="ui2_scan_searching_body">Le téléphone écoute les appareils Bluetooth proches. Si un seul OSSM est détecté, la connexion démarre automatiquement.</string>
+    <string name="ui2_scan_tips_title">Rien n\'apparaît ?</string>
+    <string name="ui2_scan_tip_power">Allumez la machine et attendez la fin de son démarrage.</string>
+    <string name="ui2_scan_tip_close">Rapprochez le téléphone de l\'OSSM (moins de 2 m).</string>
+    <string name="ui2_scan_tip_bluetooth">Vérifiez que le Bluetooth est activé sur le téléphone.</string>
+    <string name="ui2_scan_none_title">Aucun appareil trouvé</string>
+    <string name="ui2_scan_none_body">Appuyez sur le bouton ci-dessus pour relancer la recherche.</string>
+
+    <!-- Session distante (Contrôle) -->
+    <string name="ui2_remote_banner_limits">Session distante : maximums %1$d %% / %2$d–%3$d %%</string>
+    <string name="ui2_remote_blocked_zero">Maximum à 0 % : le site ne peut rien faire bouger, montez le curseur</string>
+    <string name="ui2_remote_live_prefix">Envoyé par le site : %1$s</string>
+    <string name="ui2_remote_live_waiting">Le site n\'a encore rien envoyé</string>
+    <string name="ui2_remote_live_speed">vitesse %1$d %%</string>
+    <string name="ui2_remote_live_depth">profondeur %1$d–%2$d %%</string>
+    <string name="ui2_remote_live_pattern">pattern %1$s</string>
+    <string name="ui2_remote_live_position">Live %1$d %%</string>
+    <string name="ui2_remote_banner_sensation_range">Sensation %1$s (%2$s–%3$s)</string>
+    <string name="ui2_remote_live_sensation">sensation %1$s</string>
+
+    <!-- Session Internet (Réglages) -->
+    <string name="ui2_remote_copy">Copier</string>
+    <string name="ui2_remote_copied">Lien copié dans le presse-papiers.</string>
+
+    <!-- Caméra de la session distante (Connexion) -->
+    <string name="ui2_camera_section_title">Caméra pour la session distante</string>
+    <string name="ui2_camera_section_body">Montrez une vue à la personne qui contrôle. Le lien caméra ne donne jamais le contrôle de la machine.</string>
+    <string name="ui2_camera_share_mine">Partager ma caméra</string>
+    <string name="ui2_camera_invite">Inviter un autre appareil comme caméra</string>
+    <string name="ui2_camera_invite_chooser">Lien caméra OSSM</string>
+    <string name="ui2_camera_copy">Copier le lien caméra</string>
+    <string name="ui2_camera_copied">Lien caméra copié dans le presse-papiers.</string>
+    <string name="ui2_camera_screen_title">Partage de ma caméra</string>
+    <string name="ui2_camera_screen_hint">Votre aperçu s\'affiche ci-dessous ; seule la personne qui contrôle la session le voit. Arrêtez le partage pour libérer la caméra et le micro.</string>
+    <string name="ui2_camera_stop">Arrêter le partage</string>
+    <string name="ui2_camera_invalid_link">Lien caméra invalide pour ce serveur. Régénérez le lien de session.</string>
+    <string name="ui2_camera_permission_title">Autorisez la caméra et le micro</string>
+    <string name="ui2_camera_permission_body">Le partage a besoin de la caméra et du micro. Rien n\'est envoyé avant votre accord.</string>
+    <string name="ui2_camera_permission_refused">Caméra ou micro refusé : le partage reste désactivé. Autorisez-les ici ou dans les réglages de l\'app.</string>
+    <string name="ui2_camera_permission_grant">Autoriser la caméra et le micro</string>
+    <string name="ui2_camera_permission_settings">Ouvrir les réglages de l\'app</string>
+
+
+    <!-- 2.3.16 : sensation bipolaire (0 = neutre) -->
+    <string name="ctl_sensation_intensity_max">Sensation : intensité max permise au site</string>
+    <string name="ctl_sensation_neutral">0 = neutre</string>
+    <string name="ctl_sensation_legend_out_in">← retrait rapide · avancée rapide →</string>
+
+    <!-- 2.3.16 : section caméra toujours visible + diagnostic -->
+    <string name="ui2_camera_no_session">Démarrez une session distante pour partager la caméra.</string>
+    <string name="ui2_camera_start_session">Démarrer la session</string>
+    <string name="ui2_camera_session_starting">Session distante en cours de démarrage…</string>
+    <string name="ui2_camera_regenerate_needed">Régénérez le lien pour obtenir le lien caméra.</string>
+    <string name="ui2_camera_regenerate">Régénérer le lien</string>
+    <string name="ui2_camera_diag_title">Diagnostic caméra</string>
+    <string name="ui2_camera_renderer_gone">Le moteur d\'affichage du partage s\'est arrêté : caméra et micro libérés. Arrêtez puis relancez le partage.</string>
+    <string name="ctl_wizard_step1">Étape 1/2 — Place la machine au FOND désiré avec le slider, puis appuie sur « Définir le fond ».</string>
+    <string name="ctl_wizard_step2">Étape 2/2 — Place maintenant le point de RETRAIT, puis appuie sur « Définir le retrait ».</string>
+    <string name="ctl_wizard_preparing">Préparation… Machine : %1$s</string>
+    <string name="ctl_knob_to_zero">→ Baisse le bouton de vitesse physique à 0.</string>
+    <string name="ctl_wizard_depth_set">Fond défini : %1$d %%</string>
+    <string name="ctl_select_pattern_to_start">Sélectionnez un pattern pour commencer.</string>
+    <string name="ctl_launch_only_hint">Pattern lancé — aucun paramètre à ajuster.</string>
+    <string name="ctl_machine_state">Machine : %1$s</string>
+    <string name="ctl_knob_to_zero_mode">→ Baisse le bouton de vitesse physique à 0 pour entrer dans le mode.</string>
+    <string name="ctl_chaos_title">Mode aléatoire au max</string>
+    <string name="ctl_chaos_hint">Au plafond, coups variés et imprévisibles</string>
+    <string name="ctl_auto_intro">Choisis les modes à mélanger, fixe tes limites, puis démarre le mix aléatoire.</string>
+    <string name="ctl_auto_modes_header">MODES À MÉLANGER</string>
+    <string name="ctl_auto_speed_header">VITESSE MAX</string>
+    <string name="ctl_auto_speed_ceiling">Plafond du mix</string>
+    <string name="ctl_auto_intensity_cap">Intensité max</string>
+    <string name="ctl_auto_randomness">Aléatoire</string>
+    <string name="ctl_auto_intensity_value">Intensité %1$d%%</string>
+    <string name="ctl_auto_running_hint">Le mix monte progressivement en intensité sans dépasser tes limites.</string>
+    <string name="ctl_auto_initial_intensity">Intensité de départ</string>
+    <string name="ctl_auto_dialog_title">Vérifie tes limites</string>
+    <string name="ctl_auto_dialog_count">Tu vas lancer Auto Random avec %1$d mode(s) sélectionné(s).</string>
+    <string name="ctl_auto_dialog_limits">Vitesse max : %1$d%%\nProfondeur : %2$d%% - %3$d%%</string>
+    <string name="ctl_auto_dialog_warning">Assure-toi que ces limites sont bien celles que tu ne veux jamais dépasser avant le départ.</string>
+    <string name="ctl_preset_default_name">Mon Profil</string>
+    <string name="ctl_preset_fallback_name">Profil</string>
+    <string name="ctl_preset_save_title">Sauvegarder le profil</string>
+    <string name="ctl_preset_name_label">Nom du profil</string>
+    <string name="ctl_preset_save">Sauvegarder</string>
+    <string name="ctl_abrupt_title">Changement brusque détecté</string>
+    <string name="ctl_abrupt_body">Êtes-vous sûr de vouloir changer autant d\'un coup sur %1$s ? La variation dépasse %2$d %%. Cette protection évite un mouvement soudain si le téléphone ou le slider est accroché.</string>
+    <string name="ctl_abrupt_skip_session">Ne pas me le rappeler pour cette session</string>
+    <string name="ctl_abrupt_never">Ne plus jamais me le redemander</string>
+    <string name="ctl_abrupt_confirm">Oui, je suis sûr</string>
+    <string name="ctl_wizard_set_depth">Définir le fond</string>
+    <string name="ctl_wizard_set_retract">Définir le retrait</string>
+    <string name="ctl_resume">Reprendre</string>
+    <string name="ctl_pause">Pause</string>
+    <string name="ctl_abrupt_speed">la vitesse</string>
+    <string name="ctl_abrupt_depth">la profondeur</string>
+</resources>

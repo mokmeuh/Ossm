@@ -2,6 +2,7 @@ package com.ossm.remote.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -25,9 +27,12 @@ import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BluetoothDisabled
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
@@ -35,13 +40,17 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.ScreenLockRotation
+import androidx.compose.material.icons.filled.ScreenRotation
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.TouchApp
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -59,27 +68,36 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -91,23 +109,36 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.ossm.remote.R
-import com.ossm.remote.adaptive.AdaptivePace
-import com.ossm.remote.adaptive.AdaptiveUiState
-import com.ossm.remote.data.repository.AdaptiveSettings
 import com.ossm.remote.model.AutoRandomMixablePatterns
 import com.ossm.remote.model.BleConnectionState
 import com.ossm.remote.model.KnownStrokeEnginePatterns
 import com.ossm.remote.model.MachineState
 import com.ossm.remote.model.OssmPattern
+import com.ossm.remote.model.isVoicePattern
 import com.ossm.remote.model.PatternControlMode
 import com.ossm.remote.model.Preset
+import com.ossm.remote.ui.components.BipolarStyle
 import com.ossm.remote.ui.components.ControlSlider
+import com.ossm.remote.ui.components.signedValueColor
+import com.ossm.remote.ui.components.InlineControlSliderMetrics
+import com.ossm.remote.ui.components.LargeControlSliderMetrics
+import com.ossm.remote.ui.components.LocalControlSliderMetrics
+import com.ossm.remote.ui.components.RangeBarControl
+import com.ossm.remote.ui.components.RangeBarMarker
+import com.ossm.remote.ui.components.RegularControlSliderMetrics
+import com.ossm.remote.ui.components.SliderFrame
 import com.ossm.remote.ui.components.GlassCard
 import com.ossm.remote.ui.components.HomeButton
 import com.ossm.remote.ui.components.LocalControlPrecisionEnabled
+import com.ossm.remote.ui.components.LiveAnchorPad
+import com.ossm.remote.ui.components.LiveLimitIcon
+import com.ossm.remote.ui.components.LiveLimitSide
+import com.ossm.remote.ui.components.LiveLimitsState
 import com.ossm.remote.ui.components.PatternButton
 import com.ossm.remote.ui.components.PrecisionScalarSlider
 import com.ossm.remote.ui.components.ProgressiveSpeedBar
+import com.ossm.remote.ui.components.StopBar
+import com.ossm.remote.ui.components.StopBarHeight
 import com.ossm.remote.ui.components.StopButton
 import com.ossm.remote.ui.components.StreamPositionSlider
 import com.ossm.remote.ui.theme.OssmAccent
@@ -117,17 +148,24 @@ import com.ossm.remote.ui.theme.OssmError
 import com.ossm.remote.ui.theme.OssmGlass
 import com.ossm.remote.ui.theme.OssmGlassBorder
 import com.ossm.remote.ui.theme.OssmOnSurface
+import com.ossm.remote.ui.theme.OssmOnSurfaceMuted
+import com.ossm.remote.ui.theme.OssmOnPrimary
+import com.ossm.remote.ui.theme.OssmSurfaceRaised
+import com.ossm.remote.ui.theme.OssmOutline
 import com.ossm.remote.ui.theme.OssmPrimary
 import com.ossm.remote.ui.theme.OssmSurface
+import com.ossm.remote.remote.PhoneHostMotionLimits
+import com.ossm.remote.remote.RemoteSessionView
 import kotlin.math.roundToInt
 import com.ossm.remote.ui.theme.OssmPrimaryLight
 import com.ossm.remote.ui.theme.OssmSecondary
-import com.ossm.remote.ui.theme.OssmSurface
 import com.ossm.remote.ui.theme.OssmWarning
 import com.ossm.remote.ui.theme.PatternColors
-import com.ossm.remote.viewmodel.AdaptiveViewModel
 import com.ossm.remote.viewmodel.ControlUiState
 import com.ossm.remote.viewmodel.GuardedControl
+import com.ossm.remote.viewmodel.LiveRecordingState
+import com.ossm.remote.viewmodel.RandomPresetTarget
+import com.ossm.remote.viewmodel.RandomRangePreset
 import com.ossm.remote.viewmodel.RandomTarget
 
 @Composable
@@ -135,6 +173,7 @@ fun ControlScreen(
     connectionState: BleConnectionState,
     machineState: MachineState,
     uiState: ControlUiState,
+    onPrecisionEnabledChange: (String, Boolean) -> Unit,
     onSpeedCommit: (Float) -> Unit,
     onSpeedLive: (Float) -> Unit,
     onDepthRangeCommit: (Float, Float) -> Unit,
@@ -143,15 +182,13 @@ fun ControlScreen(
     onSensationLive: (Float) -> Unit,
     onProgressiveMaxCommit: (Float) -> Unit,
     onChaosToggle: (Boolean) -> Unit,
-    onStreamPosition: (Int) -> Unit,
     onStreamDrag: (Int) -> Unit,
     onStreamTouchEnd: () -> Unit,
-    onRangeWizardStart: () -> Unit,
+    onStreamTouchCancel: () -> Unit = onStreamTouchEnd,
     onRangeWizardCapture: () -> Unit,
     onRangeWizardCancel: () -> Unit,
     onPattern: (String) -> Unit,
     onStop: () -> Unit,
-    onHome: () -> Unit,
     onAutoToggleSelected: (String) -> Unit,
     onAutoMaxSpeedChange: (Float) -> Unit,
     onAutoIntensityCapChange: (Float) -> Unit,
@@ -172,24 +209,33 @@ fun ControlScreen(
     onPatternOrderSave: (List<String>) -> Unit,
     onRandomToggle: (RandomTarget, Boolean) -> Unit,
     onDepthRandomToggle: (Boolean) -> Unit,
-    listeningLevel: Float,
-    onListeningToggle: (Boolean) -> Unit,
-    onListeningCeilingCommit: (Float) -> Unit,
-    onListeningTargetSpeedChange: (Boolean) -> Unit,
-    onListeningTargetDepthChange: (Boolean) -> Unit,
+    onRandomPresetSave: (RandomPresetTarget, Int) -> Unit,
+    onRandomPresetApply: (RandomPresetTarget, Int) -> Unit,
+    onRandomPresetEdit: (RandomPresetTarget, Int, Int, Int, Boolean) -> Unit,
     onLiveInvertToggle: (Boolean) -> Unit,
-    onLiveAccelerationChange: (Int) -> Unit
+    onLiveAccelerationChange: (Int) -> Unit,
+    onLiveRecordToggle: () -> Unit,
+    remoteSession: RemoteSessionView = RemoteSessionView(),
+    onSpeedCommitWithEpoch: ((Float, Long) -> Unit)? = null,
+    onSpeedLiveWithEpoch: ((Float, Long) -> Unit)? = null,
+    onSensationRandomRangeChange: (Float, Float) -> Unit = { _, _ -> },
+    onSensationCommitWithEpoch: ((Float, Long) -> Unit)? = null,
+    onSensationLiveWithEpoch: ((Float, Long) -> Unit)? = null,
+    naturalActions: NaturalControlActions = NaturalControlActions(),
+    voiceActions: VoiceControlActions = VoiceControlActions(),
+    voiceAi: com.ossm.remote.voice.VoiceAiUiState = com.ossm.remote.voice.VoiceAiUiState(),
+    voiceModelRoot: String? = null,
 ) {
     val connected = connectionState is BleConnectionState.Connected
+    val usbControlActive = (connectionState as? BleConnectionState.Connected)?.address == "USB-C"
     val machineBusy = machineState.isHoming || machineState.isPreflight
     val slidersEnabled = connected && !machineBusy
-    val adaptiveVm: AdaptiveViewModel = hiltViewModel()
-    val adaptiveState by adaptiveVm.adaptiveUiState.collectAsState()
-    val adaptiveSettings by adaptiveVm.settings.collectAsState()
-    val adaptiveManualAdjustments by adaptiveVm.manualAdjustments.collectAsState()
     var showSaveDialog by remember { mutableStateOf(false) }
     var showReorderDialog by remember { mutableStateOf(false) }
     var patternPickerOpen by remember { mutableStateOf(false) }
+    // Back closes the pattern picker first (registered after the app-level handler, so it wins).
+    androidx.activity.compose.BackHandler(enabled = patternPickerOpen) { patternPickerOpen = false }
+    var editingRandomPreset by remember { mutableStateOf<RandomPresetEdit?>(null) }
     val connectionSessionAddress = (connectionState as? BleConnectionState.Connected)?.address
     var observedPositionRange by remember(connectionSessionAddress) {
         mutableStateOf(ObservedPositionRange.empty())
@@ -205,46 +251,118 @@ fun ControlScreen(
     var speedDraft by remember { mutableFloatStateOf(uiState.speed) }
     var depthRangeDraft by remember { mutableStateOf(uiState.depthMin..uiState.depthMax) }
     var sensationDraft by remember { mutableFloatStateOf(uiState.sensation) }
-    val precisionOverrides = remember { mutableStateMapOf<String, Boolean>() }
     val activePattern = uiState.activePattern
     val actionVisibility = controlActionVisibility(activePattern)
-    val precisionEnabled = activePattern?.let { isPrecisionEnabled(it, precisionOverrides) } ?: true
+    val precisionEnabled = activePattern?.let { isPrecisionEnabled(it, uiState.precisionOverrides) } ?: false
+    // Capture the epoch from the composition that owns a pointer gesture. The Store compares
+    // this token against its authoritative StateFlow value, closing the STOP-to-recomposition
+    // window before pointerInput's cancellation key is applied.
+    val scalarGestureEpoch = uiState.liveGestureEpoch
+    fun dispatchSpeedLive(value: Float) {
+        onSpeedLiveWithEpoch?.invoke(value, scalarGestureEpoch) ?: onSpeedLive(value)
+    }
+    fun dispatchSpeedCommit(value: Float) {
+        onSpeedCommitWithEpoch?.invoke(value, scalarGestureEpoch) ?: onSpeedCommit(value)
+    }
+    fun dispatchSensationLive(value: Float) {
+        onSensationLiveWithEpoch?.invoke(value, scalarGestureEpoch) ?: onSensationLive(value)
+    }
+    fun dispatchSensationCommit(value: Float) {
+        onSensationCommitWithEpoch?.invoke(value, scalarGestureEpoch) ?: onSensationCommit(value)
+    }
 
+    // During a remote session every local slider shows (and sets) the ENVELOPE maximum, never the
+    // value the site is driving. When the session ends the drafts fall back to the safe local state
+    // (speed 0, last effective depth/sensation). Only drafts change here: no command is sent.
+    //
+    // 2.3.17: the drafts are written synchronously by the finger, while uiState/remoteSession
+    // reach this composable through collectAsState one frame (or more) later. Re-keying on every
+    // drag tick used to overwrite the draft with the PREVIOUS tick's value: the RangeSlider thumb
+    // and the displayed numbers flickered backwards during a drag. External values are now
+    // applied only after a short quiet period following the last local edit, and always from
+    // the LATEST state (never the stale snapshot that restarted the effect). Starting/ending a
+    // remote session is applied immediately.
+    val draftEditClock = remember { ControlDraftEditClock() }
+    val latestUiState = rememberUpdatedState(uiState)
+    val latestRemoteSession = rememberUpdatedState(remoteSession)
     LaunchedEffect(
         uiState.speed,
         uiState.depthMin,
         uiState.depthMax,
         uiState.sensation,
-        uiState.activePatternKey
+        uiState.activePatternKey,
+        remoteSession.active,
+        remoteSession.speedMax,
+        remoteSession.depthMin,
+        remoteSession.depthMax,
+        remoteSession.sensationMin,
+        remoteSession.sensationMax
     ) {
-        speedDraft = uiState.speed
-        depthRangeDraft = uiState.depthMin..uiState.depthMax
-        sensationDraft = uiState.sensation
-    }
-
-    // Retour au curseur manuel après le mode à l'écoute : tant que le micro pilote la
-    // vitesse, le slider est masqué. À la sortie (mode coupé ou cible vitesse décochée),
-    // resynchronise le brouillon sur la vitesse manuelle restaurée par le ViewModel,
-    // sinon le pouce resterait sur la dernière valeur live du micro.
-    LaunchedEffect(uiState.listeningMode, uiState.listeningTargetSpeed) {
-        if (!(uiState.listeningMode && uiState.listeningTargetSpeed)) {
-            speedDraft = uiState.speed
+        val sessionToggled = draftEditClock.consumeSessionChange(remoteSession.active)
+        if (!sessionToggled) {
+            val quietMs = draftEditClock.remainingQuietMs(android.os.SystemClock.uptimeMillis())
+            if (quietMs > 0L) kotlinx.coroutines.delay(quietMs)
+        }
+        val ui = latestUiState.value
+        val remote = latestRemoteSession.value
+        if (remote.active) {
+            speedDraft = remote.speedMax
+            depthRangeDraft = remote.depthMin..remote.depthMax
+            // Sensation is bipolar: the local slider sets the symmetric intensity |s - 0.5|.
+            sensationDraft = sessionSensationDraft(sensationDraft, remote.sensationIntensity)
+        } else {
+            speedDraft = ui.speed
+            depthRangeDraft = ui.depthMin..ui.depthMax
+            sensationDraft = ui.sensation
         }
     }
+
+    // The Live pad is the whole screen: no STOP bar, rotation lock or connection banner there.
+    val liveBareScreen = uiState.rangeWizard == null &&
+        uiState.activePattern?.mode == PatternControlMode.STREAMING &&
+        uiState.activePattern?.isVoicePattern() != true
+    // Live is always played upright: portrait is forced while the pad is on screen and the
+    // previous orientation setting is handed back when it leaves.
+    val liveActivity = LocalContext.current.findActivity()
+    DisposableEffect(liveBareScreen, liveActivity) {
+        val previous = liveActivity?.requestedOrientation
+        if (liveBareScreen && liveActivity != null) {
+            liveActivity.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
+        onDispose {
+            if (liveBareScreen && liveActivity != null) {
+                liveActivity.requestedOrientation = previous
+                    ?: android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            }
+        }
+    }
+    val showStopBar = actionVisibility.showStop && !liveBareScreen
+    val showActionRail = showStopBar || actionVisibility.showPause
+    val statusKind = if (liveBareScreen) null else controlStatusKind(
+        usbControlActive = usbControlActive,
+        connected = connected,
+        machineBusy = machineBusy,
+        machineError = machineState.isError
+    )
+    val settingsScrollState = rememberScrollState()
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(OssmBackground, OssmSecondary)))
+            .background(OssmBackground)
     ) {
         CompositionLocalProvider(LocalControlPrecisionEnabled provides precisionEnabled) {
         CompactControlScaffold(
-            showActionRail = actionVisibility.showStop || actionVisibility.showPause,
+            showActionRail = showActionRail,
+            bare = liveBareScreen,
             actionRail = { landscape ->
                 CompactActionRail(
                     landscape = landscape,
-                    showStop = actionVisibility.showStop,
+                    showStop = showStopBar,
                     showPause = actionVisibility.showPause,
+                    showRotation = !liveBareScreen,
+                    statusKind = null,
+                    machineState = machineState,
                     isPaused = uiState.isPaused,
                     pauseEnabled = connected
                         && uiState.activePattern?.mode != PatternControlMode.STREAMING
@@ -255,43 +373,30 @@ fun ControlScreen(
                 )
             }
         ) { compactLandscape ->
-            if (!connected) {
-                GlassCard(modifier = Modifier.fillMaxWidth(), tint = OssmWarning) {
-                    Text(
-                        stringResource(R.string.ctl_connect_prompt),
-                        color = OssmWarning,
-                        fontSize = 13.sp,
-                        textAlign = TextAlign.Center
-                    )
-                }
-            } else if (machineBusy) {
-                GlassCard(modifier = Modifier.fillMaxWidth(), tint = OssmAccent) {
-                    Text(
-                        "Calibration en cours (${machineState.displayLabel}) — attendez la fin",
-                        color = OssmAccent,
-                        fontSize = 13.sp,
-                        textAlign = TextAlign.Center
-                    )
-                }
-            } else if (machineState.isError) {
-                GlassCard(modifier = Modifier.fillMaxWidth(), tint = OssmError) {
-                    Text(
-                        machineState.displayLabel,
-                        color = OssmError,
-                        fontSize = 13.sp,
-                        textAlign = TextAlign.Center
-                    )
-                }
+            // The status is never inserted in the STOP line: a one-row banner under the STOP
+            // bar in portrait; in landscape, where there is no height to spare, a pill in the
+            // card header instead.
+            if (statusKind != null && !compactLandscape) {
+                ControlStatusLine(
+                    kind = statusKind,
+                    machineState = machineState,
+                    boxed = true,
+                    singleLine = true
+                )
             }
 
+            // Voix shares the STREAMING entry but has its own scrollable panel (no touch pad).
             val liveControlActive = uiState.rangeWizard == null &&
-                activePattern?.mode == PatternControlMode.STREAMING
+                activePattern?.mode == PatternControlMode.STREAMING &&
+                !activePattern.isVoicePattern()
+            val liveLimits = remember { LiveLimitsState() }
             GlassCard(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .then(if (liveControlActive) Modifier.weight(1f) else Modifier)
+                    // The card always takes the whole height between STOP and the bottom bar.
+                    .weight(1f)
                     .testTag("control_card"),
-                padding = if (compactLandscape) 10.dp else 16.dp
+                padding = if (liveBareScreen) 6.dp else if (compactLandscape) 12.dp else 16.dp
             ) {
                 Row(
                     modifier = Modifier
@@ -306,28 +411,51 @@ fun ControlScreen(
                     )
                     Text(
                         controlHeaderTitle(activePattern),
-                        color = OssmPrimaryLight,
-                        fontSize = 12.sp,
+                        color = OssmOnSurface,
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.5.sp,
-                        textAlign = TextAlign.Center,
+                        textAlign = TextAlign.Start,
                         maxLines = 1,
+                        softWrap = false,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier
                             .weight(1f)
                             .padding(horizontal = 4.dp)
                     )
+                    if (compactLandscape && statusKind != null) {
+                        ControlStatusPill(kind = statusKind, machineState = machineState)
+                    }
                     if (activePattern != null) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (liveControlActive) {
+                                LiveLimitButton(
+                                    side = LiveLimitSide.UPPER,
+                                    limits = liveLimits,
+                                    enabled = connected && uiState.streamingReady
+                                )
+                                LiveLimitButton(
+                                    side = LiveLimitSide.LOWER,
+                                    limits = liveLimits,
+                                    enabled = connected && uiState.streamingReady
+                                )
+                                LiveRecordButton(
+                                    state = uiState.liveRecordingState,
+                                    enabled = connected && uiState.streamingReady,
+                                    onClick = onLiveRecordToggle
+                                )
+                            }
+                            if (activePattern.isVoicePattern()) {
+                                VoiceInfoButton()
+                            }
                             SettingsGearButton(onInfoClick = { showInfoDialog = true })
                             if (connected && actionVisibility.showSave) {
                                 IconButton(
                                     onClick = { showSaveDialog = true },
                                     modifier = Modifier
-                                        .size(40.dp)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(OssmGlass)
-                                        .border(1.dp, OssmGlassBorder, RoundedCornerShape(10.dp))
+                                        .size(48.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(OssmSurfaceRaised)
+                                        .border(1.dp, OssmOutline, RoundedCornerShape(12.dp))
                                 ) {
                                     Icon(
                                         Icons.Default.Save,
@@ -340,14 +468,66 @@ fun ControlScreen(
                     }
                 }
 
+                if (remoteSession.active) {
+                    RemoteSessionBanner(
+                        view = remoteSession,
+                        patternName = remoteSession.remotePatternKey?.let { key ->
+                            uiState.availablePatterns.firstOrNull { it.key == key }?.name ?: key
+                        },
+                        compact = compactLandscape
+                    )
+                }
+
+                // Live and the range wizard own their gestures, so only the ordinary settings
+                // body may scroll. STOP stays outside this card and always visible.
+                val scrollBody = !liveControlActive && uiState.rangeWizard == null
+                // Slider patterns spread their controls over the full card height.
+                val spreadControls = scrollBody && activePattern != null &&
+                    (activePattern.mode == PatternControlMode.STROKE_ENGINE ||
+                        activePattern.mode == PatternControlMode.PROGRESSIVE)
+                BoxWithConstraints(
+                    modifier = if (liveControlActive || scrollBody) {
+                        Modifier.weight(1f).fillMaxWidth()
+                    } else {
+                        Modifier.fillMaxWidth()
+                    }
+                ) {
+                val bodyViewport = maxHeight
+                val bodyBounded = constraints.hasBoundedHeight
+                // Slider modes never scroll: the controls are sized to the card. Short cards
+                // (landscape) put each slider on one line so all of them stay visible and the
+                // tracks get nearly the whole card width.
+                val sliderMetrics = when {
+                    !spreadControls || !bodyBounded -> RegularControlSliderMetrics
+                    compactLandscape || bodyViewport < 400.dp -> InlineControlSliderMetrics
+                    bodyViewport >= 560.dp -> LargeControlSliderMetrics
+                    else -> RegularControlSliderMetrics
+                }
+                CompositionLocalProvider(LocalControlSliderMetrics provides sliderMetrics) {
+                Column(
+                    modifier = when {
+                        liveControlActive -> Modifier.fillMaxSize()
+                        spreadControls && bodyBounded -> Modifier.fillMaxSize()
+                        scrollBody -> Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(settingsScrollState)
+                        else -> Modifier.fillMaxWidth()
+                    },
+                    verticalArrangement = if (spreadControls) Arrangement.SpaceEvenly else Arrangement.Top
+                ) {
+                // SAFETY: entering or leaving a remote session recreates the controls, which
+                // cancels any drag/hold in progress WITHOUT committing it. A gesture started on
+                // the envelope maximum can therefore never be committed as a direct motor
+                // command once the session has ended.
+                key(remoteSession.active) {
                 when {
                     uiState.rangeWizard != null -> {
                         val wiz = uiState.rangeWizard
                         Text(
                             if (wiz.step == 1)
-                                "Étape 1/2 — Place la machine au FOND désiré avec le slider, puis appuie sur « Définir le fond »."
+                                stringResource(R.string.ctl_wizard_step1)
                             else
-                                "Étape 2/2 — Place maintenant le point de RETRAIT, puis appuie sur « Définir le retrait ».",
+                                stringResource(R.string.ctl_wizard_step2),
                             color = OssmOnSurface,
                             fontSize = 13.sp,
                             modifier = Modifier.padding(bottom = 10.dp)
@@ -355,9 +535,9 @@ fun ControlScreen(
                         if (!uiState.streamingReady) {
                             Text(
                                 buildString {
-                                    append("Préparation… Machine : ${machineState.state}")
+                                    append(stringResource(R.string.ctl_wizard_preparing, machineState.state.toString()))
                                     if (machineState.isPreflight) {
-                                        append("\n→ Baisse le bouton de vitesse physique à 0.")
+                                        append("\n" + stringResource(R.string.ctl_knob_to_zero))
                                     }
                                 },
                                 color = OssmWarning.copy(alpha = 0.9f),
@@ -369,7 +549,11 @@ fun ControlScreen(
                             positionPercent = uiState.streamPositionPercent,
                             enabled = slidersEnabled && uiState.streamingReady,
                             onPositionDrag = onStreamDrag,
-                            onTouchEnd = onStreamTouchEnd,
+                            // Range calibration is a stop-only workflow; the phone-owned
+                            // slow return belongs exclusively to the Live radial pad.
+                            onTouchEnd = onStreamTouchCancel,
+                            onTouchCancel = onStreamTouchCancel,
+                            gestureCancellationKey = uiState.liveGestureEpoch,
                             compact = compactLandscape,
                             fillAvailable = false
                         )
@@ -387,7 +571,7 @@ fun ControlScreen(
                                 colors = ButtonDefaults.buttonColors(containerColor = OssmConnected)
                             ) {
                                 Text(
-                                    if (wiz.step == 1) "Définir le fond" else "Définir le retrait",
+                                    if (wiz.step == 1) stringResource(R.string.ctl_wizard_set_depth) else stringResource(R.string.ctl_wizard_set_retract),
                                     textAlign = TextAlign.Center,
                                     lineHeight = 16.sp
                                 )
@@ -401,7 +585,7 @@ fun ControlScreen(
                                 colors = ButtonDefaults.buttonColors(containerColor = OssmWarning)
                             ) {
                                 Text(
-                                    "Annuler",
+                                    stringResource(R.string.ctl_cancel),
                                     textAlign = TextAlign.Center,
                                     lineHeight = 16.sp
                                 )
@@ -410,7 +594,7 @@ fun ControlScreen(
                         if (wiz.step == 2 && wiz.capturedMax != null) {
                             Spacer(Modifier.height(8.dp))
                             Text(
-                                "Fond défini : ${(wiz.capturedMax * 100).toInt()} %",
+                                stringResource(R.string.ctl_wizard_depth_set, (wiz.capturedMax * 100).toInt()),
                                 color = OssmConnected,
                                 fontSize = 12.sp
                             )
@@ -418,16 +602,26 @@ fun ControlScreen(
                     }
                     activePattern == null -> {
                         Text(
-                            "Selectionnez un pattern pour commencer.",
+                            stringResource(R.string.ctl_select_pattern_to_start),
                             color = OssmOnSurface.copy(alpha = 0.7f),
                             fontSize = 13.sp
                         )
                     }
                     activePattern.mode == PatternControlMode.LAUNCH_ONLY -> {
                         Text(
-                            "Pattern lancé — aucun paramètre à ajuster.",
+                            stringResource(R.string.ctl_launch_only_hint),
                             color = OssmOnSurface.copy(alpha = 0.7f),
                             fontSize = 13.sp
+                        )
+                    }
+                    activePattern.isVoicePattern() -> {
+                        VoiceControlPanel(
+                            uiState = uiState,
+                            connected = connected,
+                            slidersEnabled = slidersEnabled,
+                            actions = voiceActions,
+                            voiceAi = voiceAi,
+                            modelRoot = voiceModelRoot,
                         )
                     }
                     activePattern.mode == PatternControlMode.STREAMING -> {
@@ -435,12 +629,12 @@ fun ControlScreen(
                             Text(
                                 buildString {
                                     append(stringResource(R.string.ctl_live_preparing))
-                                    append("\nMachine : ${machineState.state}")
+                                    append("\n" + stringResource(R.string.ctl_machine_state, machineState.state.toString()))
                                     machineState.stroke?.let { append("  stroke=$it") }
                                     machineState.depth?.let { append("  depth=$it") }
                                     machineState.speed?.let { append("  speed=$it") }
                                     if (machineState.isPreflight) {
-                                        append("\n→ Baisse le bouton de vitesse physique à 0 pour entrer dans le mode.")
+                                        append("\n" + stringResource(R.string.ctl_knob_to_zero_mode))
                                     }
                                 },
                                 color = OssmWarning.copy(alpha = 0.9f),
@@ -448,11 +642,14 @@ fun ControlScreen(
                                 modifier = Modifier.padding(bottom = 10.dp)
                             )
                         }
-                        StreamPositionSlider(
+                        LiveAnchorPad(
                             positionPercent = uiState.streamPositionPercent,
                             enabled = slidersEnabled && uiState.streamingReady,
                             onPositionDrag = onStreamDrag,
                             onTouchEnd = onStreamTouchEnd,
+                            onTouchCancel = onStreamTouchCancel,
+                            gestureCancellationKey = uiState.liveGestureEpoch,
+                            limits = liveLimits,
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxWidth(),
@@ -463,7 +660,7 @@ fun ControlScreen(
                     activePattern.mode == PatternControlMode.PROGRESSIVE -> {
                         ProgressiveSpeedBar(
                             currentValue = uiState.speed,
-                            maxValue = uiState.progressiveMaxSpeed,
+                            maxValue = if (remoteSession.active) remoteSession.speedMax else uiState.progressiveMaxSpeed,
                             enabled = slidersEnabled,
                             onMaxChange = onProgressiveMaxCommit
                         )
@@ -473,15 +670,16 @@ fun ControlScreen(
                             maxValue = depthRangeDraft.endInclusive,
                             enabled = slidersEnabled,
                             positionFraction = positionFraction,
-                            listeningDepthCurrent = uiState.listeningDepthCurrent,
                             randomMinValue = uiState.randomDepthMinCurrent,
                             randomMaxValue = uiState.randomDepthMaxCurrent,
                             onRangeChange = { min, max ->
                                 depthRangeDraft = min..max
+                                draftEditClock.markLocalEdit(android.os.SystemClock.uptimeMillis())
                                 onDepthLive(min, max)
                             },
                             onRangeCommit = { min, max ->
                                 depthRangeDraft = min..max
+                                draftEditClock.markLocalEdit(android.os.SystemClock.uptimeMillis())
                                 onDepthRangeCommit(min, max)
                             }
                         )
@@ -489,8 +687,19 @@ fun ControlScreen(
                         CenteredSensationSlider(
                             value = sensationDraft,
                             enabled = slidersEnabled,
-                            onValueChange = { value -> sensationDraft = value; onSensationLive(value) },
-                            onValueCommit = { value -> sensationDraft = value; onSensationCommit(value) }
+                            patternKey = activePattern?.key,
+                            remoteSession = remoteSession,
+                            gestureCancellationKey = uiState.liveGestureEpoch,
+                            onValueChange = { value ->
+                                sensationDraft = value
+                                draftEditClock.markLocalEdit(android.os.SystemClock.uptimeMillis())
+                                dispatchSensationLive(value)
+                            },
+                            onValueCommit = { value ->
+                                sensationDraft = value
+                                draftEditClock.markLocalEdit(android.os.SystemClock.uptimeMillis())
+                                dispatchSensationCommit(value)
+                            }
                         )
                         Spacer(Modifier.height(12.dp))
                         Row(
@@ -510,27 +719,56 @@ fun ControlScreen(
                             Spacer(Modifier.width(8.dp))
                             Column {
                                 Text(
-                                    "Mode aléatoire au max",
+                                    stringResource(R.string.ctl_chaos_title),
                                     color = OssmOnSurface,
                                     fontSize = 14.sp
                                 )
                                 Text(
-                                    "Au plafond, coups variés et imprévisibles",
+                                    stringResource(R.string.ctl_chaos_hint),
                                     color = OssmOnSurface.copy(alpha = 0.6f),
                                     fontSize = 11.sp
                                 )
                             }
                         }
                     }
+                    activePattern.mode == PatternControlMode.NATURAL -> {
+                        NaturalControlPanel(
+                            uiState = uiState,
+                            remoteSession = remoteSession,
+                            connected = connected,
+                            slidersEnabled = slidersEnabled,
+                            actions = naturalActions,
+                            depthEditor = {
+                                DepthRangeEditor(
+                                    minValue = depthRangeDraft.start,
+                                    maxValue = depthRangeDraft.endInclusive,
+                                    enabled = slidersEnabled,
+                                    positionFraction = positionFraction,
+                                    randomMinValue = uiState.naturalDepthMinCurrent,
+                                    randomMaxValue = uiState.naturalDepthMaxCurrent,
+                                    onRangeChange = { min, max ->
+                                        depthRangeDraft = min..max
+                                        draftEditClock.markLocalEdit(android.os.SystemClock.uptimeMillis())
+                                        onDepthLive(min, max)
+                                    },
+                                    onRangeCommit = { min, max ->
+                                        depthRangeDraft = min..max
+                                        draftEditClock.markLocalEdit(android.os.SystemClock.uptimeMillis())
+                                        onDepthRangeCommit(min, max)
+                                    }
+                                )
+                            }
+                        )
+                    }
                     activePattern.mode == PatternControlMode.AUTO_RANDOM -> {
                         Text(
-                            "Choisis les modes a melanger, fixe tes limites, puis demarre le mix aleatoire.",
+                            stringResource(R.string.ctl_auto_intro),
                             color = OssmOnSurface.copy(alpha = 0.7f),
                             fontSize = 12.sp,
                             modifier = Modifier.padding(bottom = 10.dp)
                         )
                         Text(
-                            "MODES A MELANGER",
+                            stringResource(R.string.ctl_auto_modes_header),
                             color = OssmPrimaryLight,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
@@ -548,7 +786,7 @@ fun ControlScreen(
                         }
                         Spacer(Modifier.height(14.dp))
                         Text(
-                            "VITESSE MAX",
+                            stringResource(R.string.ctl_auto_speed_header),
                             color = OssmPrimaryLight,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
@@ -556,30 +794,33 @@ fun ControlScreen(
                         )
                         Spacer(Modifier.height(6.dp))
                         ControlSlider(
-                            label = "Plafond du mix",
-                            value = uiState.autoMaxSpeed,
+                            label = stringResource(R.string.ctl_auto_speed_ceiling),
+                            value = if (remoteSession.active) remoteSession.speedMax else uiState.autoMaxSpeed,
                             onValueChange = onAutoMaxSpeedChange,
                             onValueCommit = onAutoMaxSpeedChange,
                             enabled = slidersEnabled,
-                            activeColor = OssmPrimary
+                            activeColor = OssmPrimary,
+                            gestureCancellationKey = uiState.liveGestureEpoch
                         )
                         Spacer(Modifier.height(12.dp))
                         ControlSlider(
-                            label = "Intensite max",
+                            label = stringResource(R.string.ctl_auto_intensity_cap),
                             value = uiState.autoIntensityCap,
                             onValueChange = onAutoIntensityCapChange,
                             onValueCommit = onAutoIntensityCapChange,
                             enabled = slidersEnabled,
-                            activeColor = OssmAccent
+                            activeColor = OssmAccent,
+                            gestureCancellationKey = uiState.liveGestureEpoch
                         )
                         Spacer(Modifier.height(12.dp))
                         ControlSlider(
-                            label = "Randomness",
+                            label = stringResource(R.string.ctl_auto_randomness),
                             value = uiState.autoRandomness,
                             onValueChange = onAutoRandomnessChange,
                             onValueCommit = onAutoRandomnessChange,
                             enabled = slidersEnabled,
-                            activeColor = OssmWarning
+                            activeColor = OssmWarning,
+                            gestureCancellationKey = uiState.liveGestureEpoch
                         )
                         Spacer(Modifier.height(12.dp))
                         DepthRangeEditor(
@@ -587,15 +828,16 @@ fun ControlScreen(
                             maxValue = depthRangeDraft.endInclusive,
                             enabled = slidersEnabled,
                             positionFraction = positionFraction,
-                            listeningDepthCurrent = uiState.listeningDepthCurrent,
                             randomMinValue = uiState.randomDepthMinCurrent,
                             randomMaxValue = uiState.randomDepthMaxCurrent,
                             onRangeChange = { min, max ->
                                 depthRangeDraft = min..max
+                                draftEditClock.markLocalEdit(android.os.SystemClock.uptimeMillis())
                                 onDepthLive(min, max)
                             },
                             onRangeCommit = { min, max ->
                                 depthRangeDraft = min..max
+                                draftEditClock.markLocalEdit(android.os.SystemClock.uptimeMillis())
                                 onDepthRangeCommit(min, max)
                             }
                         )
@@ -606,25 +848,26 @@ fun ControlScreen(
                                 tint = OssmConnected
                             ) {
                                 Text(
-                                    "Intensite ${(uiState.autoIntensity * 100).toInt()}%",
+                                    stringResource(R.string.ctl_auto_intensity_value, (uiState.autoIntensity * 100).toInt()),
                                     color = OssmConnected,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Spacer(Modifier.height(4.dp))
                                 Text(
-                                    "Le mix monte progressivement en intensite sans depasser tes limites.",
+                                    stringResource(R.string.ctl_auto_running_hint),
                                     color = OssmOnSurface.copy(alpha = 0.75f),
                                     fontSize = 12.sp
                                 )
                             }
                         } else {
                             ControlSlider(
-                                label = "Intensite de depart",
+                                label = stringResource(R.string.ctl_auto_initial_intensity),
                                 value = uiState.autoInitialIntensity,
                                 onValueChange = onAutoInitialIntensityChange,
                                 onValueCommit = onAutoInitialIntensityChange,
                                 enabled = slidersEnabled,
-                                activeColor = OssmConnected
+                                activeColor = OssmConnected,
+                                gestureCancellationKey = uiState.liveGestureEpoch
                             )
                         }
                         Spacer(Modifier.height(12.dp))
@@ -662,112 +905,115 @@ fun ControlScreen(
                             }
                         }
                     }
-                    activePattern.mode == PatternControlMode.ADAPTIVE -> {
-                        AdaptiveModeContent(
-                            adaptiveState = adaptiveState,
-                            settings = adaptiveSettings,
-                            manualAdjustments = adaptiveManualAdjustments,
-                            connected = connected,
-                            onEnabledChange = adaptiveVm::setEnabled,
-                            onPaceChange = adaptiveVm::setPace,
-                            onDiversityChange = adaptiveVm::setDiversity,
-                            onStart = adaptiveVm::startAdaptive,
-                            onStop = adaptiveVm::stopAdaptive
-                        )
-                    }
                     else -> {
                         // Simple Stroke et Teasing & Pounding exposent le mode aléatoire /
                         // piston : une case « Aléatoire » collée sous chaque curseur.
                         val isRandomCapable = activePattern.key == "teasingPounding" ||
                             activePattern.key == "simpleStroke"
 
-                        if (uiState.listeningMode && uiState.listeningTargetSpeed) {
-                            // Mode à l'écoute : la vitesse est PILOTÉE par le VOLUME du
-                            // micro. Deux barres, comme le mode Progressif : plafond ROUGE
-                            // réglable (max que le micro peut atteindre) + barre BLEUE live
-                            // = vitesse réelle (volume × plafond).
-                            ProgressiveSpeedBar(
-                                currentValue = uiState.speed,
-                                maxValue = uiState.listeningCeiling,
-                                enabled = slidersEnabled,
-                                onMaxChange = onListeningCeilingCommit,
-                                label = stringResource(R.string.ctl_speed_listening),
-                                fillColor = OssmAccent
-                            )
-                        } else {
-                            ControlSlider(
-                                label = stringResource(R.string.ctl_speed),
-                                value = speedDraft,
-                                onValueChange = { speedDraft = it; onSpeedLive(it) },
-                                onValueCommit = { committed ->
-                                    speedDraft = committed
-                                    onSpeedCommit(committed)
-                                },
-                                enabled = slidersEnabled,
-                                activeColor = OssmPrimary,
-                                currentMarker = uiState.randomSpeedCurrent,
-                                displayValue = "${((uiState.randomSpeedCurrent ?: speedDraft) * 100).toInt()}%",
-                                displayValueColor = if (uiState.randomSpeedCurrent != null) OssmError else null
-                            )
-                        }
-                        if (isRandomCapable) {
-                            RandomModeRow(
-                                label = stringResource(R.string.ctl_random_speed),
-                                checked = uiState.randSpeed,
-                                onCheckedChange = { onRandomToggle(RandomTarget.SPEED, it) }
-                            )
-                        }
-                        Spacer(Modifier.height(12.dp))
+                        ControlSlider(
+                            label = stringResource(R.string.ctl_speed),
+                            value = speedDraft,
+                            onValueChange = {
+                                speedDraft = it
+                                draftEditClock.markLocalEdit(android.os.SystemClock.uptimeMillis())
+                                dispatchSpeedLive(it)
+                            },
+                            onValueCommit = { committed ->
+                                speedDraft = committed
+                                draftEditClock.markLocalEdit(android.os.SystemClock.uptimeMillis())
+                                dispatchSpeedCommit(committed)
+                            },
+                            enabled = slidersEnabled,
+                            activeColor = OssmPrimary,
+                            gestureCancellationKey = uiState.liveGestureEpoch,
+                            currentMarker = uiState.randomSpeedCurrent,
+                            displayValue = "${((uiState.randomSpeedCurrent ?: speedDraft) * 100).toInt()}%",
+                            displayValueColor = if (uiState.randomSpeedCurrent != null) OssmError else null,
+                            headerAccessory = if (isRandomCapable) {
+                                {
+                                    RandomToggle(
+                                        label = stringResource(R.string.ctl_random_speed),
+                                        checked = uiState.randSpeed,
+                                        enabled = slidersEnabled,
+                                        onCheckedChange = { onRandomToggle(RandomTarget.SPEED, it) },
+                                        visibleLabel = stringResource(R.string.ui2_random_short)
+                                    )
+                                }
+                            } else null
+                        )
+                        Spacer(Modifier.height(6.dp))
                         DepthRangeEditor(
                             minValue = depthRangeDraft.start,
                             maxValue = depthRangeDraft.endInclusive,
                             enabled = slidersEnabled,
                             positionFraction = positionFraction,
-                            listeningDepthCurrent = uiState.listeningDepthCurrent,
                             randomMinValue = uiState.randomDepthMinCurrent,
                             randomMaxValue = uiState.randomDepthMaxCurrent,
+                            headerAccessory = if (isRandomCapable) {
+                                {
+                                    RandomToggle(
+                                        label = stringResource(R.string.ctl_random_depth),
+                                        checked = uiState.randDepthMin || uiState.randDepthMax,
+                                        enabled = slidersEnabled,
+                                        onCheckedChange = { checked -> onDepthRandomToggle(checked) },
+                                        visibleLabel = stringResource(R.string.ui2_random_short)
+                                    )
+                                }
+                            } else null,
                             onRangeChange = { min, max ->
                                 depthRangeDraft = min..max
+                                draftEditClock.markLocalEdit(android.os.SystemClock.uptimeMillis())
                                 onDepthLive(min, max)
                             },
                             onRangeCommit = { min, max ->
                                 depthRangeDraft = min..max
+                                draftEditClock.markLocalEdit(android.os.SystemClock.uptimeMillis())
                                 onDepthRangeCommit(min, max)
                             }
                         )
-                        if (isRandomCapable) {
-                            // Une SEULE case pour la profondeur : le piston se promène
-                            // entre le min et le max réglés.
-                            RandomModeRow(
-                                label = stringResource(R.string.ctl_random_depth),
-                                checked = uiState.randDepthMin || uiState.randDepthMax,
-                                onCheckedChange = { onDepthRandomToggle(it) }
-                            )
-                        }
                         if (shouldShowSensationSlider(activePattern)) {
-                            Spacer(Modifier.height(12.dp))
+                            Spacer(Modifier.height(6.dp))
                             CenteredSensationSlider(
                                 value = sensationDraft,
                                 enabled = slidersEnabled,
-                                onValueChange = { value -> sensationDraft = value; onSensationLive(value) },
-                                onValueCommit = { value -> sensationDraft = value; onSensationCommit(value) }
-                            )
-                        }
-                        // Pied de section : mode à l'écoute (micro).
-                        if (isRandomCapable) {
-                            Spacer(Modifier.height(16.dp))
-                            ListeningModeFooter(
-                            enabled = uiState.listeningMode,
-                            level = listeningLevel,
-                            onToggle = onListeningToggle,
-                            speedTargetEnabled = uiState.listeningTargetSpeed,
-                            depthTargetEnabled = uiState.listeningTargetDepth,
-                            onSpeedTargetChange = onListeningTargetSpeedChange,
-                            onDepthTargetChange = onListeningTargetDepthChange
+                                patternKey = activePattern.key,
+                                remoteSession = remoteSession,
+                                gestureCancellationKey = uiState.liveGestureEpoch,
+                                randomCurrent = uiState.randomSensationCurrent,
+                                randomRange = if (isRandomCapable && uiState.randSensation) {
+                                    uiState.randomSensationMin..uiState.randomSensationMax
+                                } else null,
+                                onRandomRangeChange = onSensationRandomRangeChange,
+                                headerAccessory = if (isRandomCapable) {
+                                    {
+                                        RandomToggle(
+                                            label = stringResource(R.string.ctl_random_sensation),
+                                            checked = uiState.randSensation,
+                                            enabled = slidersEnabled,
+                                            onCheckedChange = { onRandomToggle(RandomTarget.SENSATION, it) },
+                                            visibleLabel = stringResource(R.string.ui2_random_short)
+                                        )
+                                    }
+                                } else null,
+                                onValueChange = { value ->
+                                sensationDraft = value
+                                draftEditClock.markLocalEdit(android.os.SystemClock.uptimeMillis())
+                                dispatchSensationLive(value)
+                            },
+                                onValueCommit = { value ->
+                                sensationDraft = value
+                                draftEditClock.markLocalEdit(android.os.SystemClock.uptimeMillis())
+                                dispatchSensationCommit(value)
+                            }
                             )
                         }
                     }
                 }
+                } // key(remoteSession.active)
+                } // settings body column
+                } // slider metrics
+                } // settings body viewport
             }
 
         }
@@ -835,7 +1081,7 @@ fun ControlScreen(
             onDepthLimitsChange = onDepthLimitsChange,
             precisionChecked = precisionEnabled,
             onPrecisionCheckedChange = { enabled ->
-                activePattern?.let { precisionOverrides[it.key] = enabled }
+                activePattern?.let { onPrecisionEnabledChange(it.key, enabled) }
             },
             showLiveInvert = shouldShowLiveInvertSetting(activePattern),
             liveInvertChecked = uiState.liveInvert,
@@ -843,6 +1089,7 @@ fun ControlScreen(
             showLiveAcceleration = shouldShowLiveAccelerationSetting(activePattern),
             liveAccelerationPercent = uiState.liveAccelerationPercent,
             onLiveAccelerationChange = onLiveAccelerationChange,
+            gestureCancellationKey = uiState.liveGestureEpoch,
             onDismiss = { showInfoDialog = false }
         )
     }
@@ -857,12 +1104,33 @@ fun ControlScreen(
             onDismiss = onAutoCancelStart
         )
     }
+
+    editingRandomPreset?.let { edit ->
+        val preset = when (edit.target) {
+            RandomPresetTarget.SPEED -> uiState.randomSpeedPresets.getOrNull(edit.index)
+            RandomPresetTarget.DEPTH -> uiState.randomDepthPresets.getOrNull(edit.index)
+        }
+        if (preset != null) {
+            RandomRangePresetDialog(
+                target = edit.target,
+                index = edit.index,
+                preset = preset,
+                currentSpeedPercent = (uiState.speed * 100f).roundToInt(),
+                onSave = { min, max, saveSpeedToo ->
+                    onRandomPresetEdit(edit.target, edit.index, min, max, saveSpeedToo)
+                    editingRandomPreset = null
+                },
+                onDismiss = { editingRandomPreset = null }
+            )
+        }
+    }
 }
 
 @Composable
 internal fun CompactControlScaffold(
     modifier: Modifier = Modifier,
     showActionRail: Boolean = true,
+    bare: Boolean = false,
     actionRail: @Composable (landscape: Boolean) -> Unit,
     content: @Composable ColumnScope.(landscape: Boolean) -> Unit
 ) {
@@ -876,12 +1144,13 @@ internal fun CompactControlScaffold(
             Row(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    .padding(start = 4.dp, end = 8.dp, top = 2.dp, bottom = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
+                // Rail just as wide as the round STOP, so the card starts right after it.
                 Box(
                     modifier = Modifier
-                        .width(112.dp)
+                        .width(StopBarHeight + 8.dp)
                         .fillMaxHeight(),
                     contentAlignment = Alignment.Center
                 ) {
@@ -900,8 +1169,8 @@ internal fun CompactControlScaffold(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(
-                        horizontal = if (landscape) 8.dp else 16.dp,
-                        vertical = if (landscape) 6.dp else 8.dp
+                        horizontal = if (bare) 4.dp else if (landscape) 8.dp else 16.dp,
+                        vertical = if (bare) 4.dp else if (landscape) 6.dp else 8.dp
                     ),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -909,7 +1178,7 @@ internal fun CompactControlScaffold(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(110.dp),
+                            .height(ActionRailHeight),
                         contentAlignment = Alignment.Center
                     ) {
                         actionRail(false)
@@ -921,53 +1190,307 @@ internal fun CompactControlScaffold(
     }
 }
 
+// 2.3.28: portrait rail = compact STOP bar (56dp) + pause on the same line.
+private val ActionRailHeight = StopBarHeight
+private val StopButtonSize = 88.dp
+
+internal enum class ControlStatusKind { USB, DISCONNECTED, CALIBRATING, ERROR }
+
+internal fun controlStatusKind(
+    usbControlActive: Boolean,
+    connected: Boolean,
+    machineBusy: Boolean,
+    machineError: Boolean
+): ControlStatusKind? = when {
+    usbControlActive -> ControlStatusKind.USB
+    !connected -> ControlStatusKind.DISCONNECTED
+    machineBusy -> ControlStatusKind.CALIBRATING
+    machineError -> ControlStatusKind.ERROR
+    else -> null
+}
+
+/**
+ * Compact connection/machine status. [boxed] draws it as a one-row tinted banner (landscape,
+ * Live); otherwise it is bare content meant to sit inside the portrait action rail.
+ */
+@Composable
+private fun ControlStatusLine(
+    kind: ControlStatusKind,
+    machineState: MachineState,
+    modifier: Modifier = Modifier,
+    boxed: Boolean = false,
+    singleLine: Boolean = false
+) {
+    val tint = when (kind) {
+        ControlStatusKind.USB -> OssmConnected
+        ControlStatusKind.DISCONNECTED -> OssmWarning
+        ControlStatusKind.CALIBRATING -> OssmAccent
+        ControlStatusKind.ERROR -> OssmError
+    }
+    val icon = when (kind) {
+        ControlStatusKind.USB -> Icons.Default.CheckCircle
+        ControlStatusKind.DISCONNECTED -> Icons.Default.BluetoothDisabled
+        ControlStatusKind.CALIBRATING -> Icons.Default.Info
+        ControlStatusKind.ERROR -> Icons.Default.Warning
+    }
+    val shape = RoundedCornerShape(12.dp)
+    val rowModifier = modifier
+        .then(
+            if (boxed) {
+                Modifier
+                    .fillMaxWidth()
+                    .clip(shape)
+                    .background(tint.copy(alpha = 0.12f))
+                    .border(1.dp, tint.copy(alpha = 0.4f), shape)
+                    .padding(horizontal = 12.dp, vertical = if (singleLine) 6.dp else 8.dp)
+            } else {
+                Modifier
+            }
+        )
+        .semantics(mergeDescendants = true) {}
+    Row(
+        modifier = rowModifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(if (singleLine) 20.dp else 24.dp))
+        if (singleLine) {
+            val text = when (kind) {
+                ControlStatusKind.DISCONNECTED ->
+                    stringResource(R.string.ui2_status_disconnected_title) + " · " +
+                        stringResource(R.string.ui2_status_disconnected_hint)
+                ControlStatusKind.USB -> stringResource(R.string.ctl_usb_active)
+                ControlStatusKind.CALIBRATING -> stringResource(R.string.ui2_status_calibrating, machineState.displayLabel)
+                ControlStatusKind.ERROR -> machineState.displayLabel
+            }
+            Text(
+                text,
+                color = tint,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false).testTag("control_status_line")
+            )
+        } else Column(modifier = Modifier.weight(1f, fill = false)) {
+            when (kind) {
+                ControlStatusKind.DISCONNECTED -> {
+                    Text(
+                        stringResource(R.string.ui2_status_disconnected_title),
+                        color = tint,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        stringResource(R.string.ui2_status_disconnected_hint),
+                        color = OssmOnSurfaceMuted,
+                        fontSize = 12.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                ControlStatusKind.USB -> Text(
+                    stringResource(R.string.ctl_usb_active),
+                    color = tint,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 3
+                )
+                ControlStatusKind.CALIBRATING -> Text(
+                    stringResource(R.string.ui2_status_calibrating, machineState.displayLabel),
+                    color = tint,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 3
+                )
+                ControlStatusKind.ERROR -> Text(
+                    machineState.displayLabel,
+                    color = tint,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 3
+                )
+            }
+        }
+    }
+}
+
+/** One-row status pill for the landscape card header; takes no vertical space of its own. */
+@Composable
+private fun ControlStatusPill(
+    kind: ControlStatusKind,
+    machineState: MachineState
+) {
+    val tint = when (kind) {
+        ControlStatusKind.USB -> OssmConnected
+        ControlStatusKind.DISCONNECTED -> OssmWarning
+        ControlStatusKind.CALIBRATING -> OssmAccent
+        ControlStatusKind.ERROR -> OssmError
+    }
+    val icon = when (kind) {
+        ControlStatusKind.USB -> Icons.Default.CheckCircle
+        ControlStatusKind.DISCONNECTED -> Icons.Default.BluetoothDisabled
+        ControlStatusKind.CALIBRATING -> Icons.Default.Info
+        ControlStatusKind.ERROR -> Icons.Default.Warning
+    }
+    val label = when (kind) {
+        ControlStatusKind.DISCONNECTED -> stringResource(R.string.ui2_status_disconnected_title)
+        ControlStatusKind.USB -> stringResource(R.string.ctl_usb_active)
+        ControlStatusKind.CALIBRATING ->
+            stringResource(R.string.ui2_status_calibrating, machineState.displayLabel)
+        ControlStatusKind.ERROR -> machineState.displayLabel
+    }
+    val shape = RoundedCornerShape(50)
+    Row(
+        modifier = Modifier
+            .widthIn(max = 240.dp)
+            .clip(shape)
+            .background(tint.copy(alpha = 0.14f))
+            .border(1.dp, tint.copy(alpha = 0.45f), shape)
+            .padding(horizontal = 10.dp, vertical = 6.dp)
+            .semantics(mergeDescendants = true) {}
+            .testTag("control_status_pill"),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
+        Text(
+            label,
+            color = tint,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
 @Composable
 private fun CompactActionRail(
     landscape: Boolean,
     showStop: Boolean,
     showPause: Boolean,
+    showRotation: Boolean,
+    statusKind: ControlStatusKind?,
+    machineState: MachineState,
     isPaused: Boolean,
     pauseEnabled: Boolean,
     onStop: () -> Unit,
     onPause: () -> Unit,
     onResume: () -> Unit
 ) {
-    val actions: @Composable () -> Unit = {
-        if (showStop) {
-            Box(
-                modifier = Modifier
-                    .size(110.dp)
-                    .testTag("control_stop"),
-                contentAlignment = Alignment.Center
-            ) {
-                StopButton(onClick = onStop, modifier = Modifier.size(110.dp))
-            }
-        }
-        if (showPause) {
-            PausePlayButton(
-                isPaused = isPaused,
-                enabled = pauseEnabled,
-                onPause = onPause,
-                onResume = onResume
-            )
-        }
-    }
+    // Same controls in both orientations: the STOP bar, pause/play and the rotation lock.
+    // Landscape stands them up in a narrow column (STOP written top to bottom).
     if (landscape) {
         Column(
             modifier = Modifier.fillMaxHeight(),
-            verticalArrangement = Arrangement.SpaceEvenly,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            actions()
+            if (showStop) {
+                StopBar(
+                    onClick = onStop,
+                    vertical = true,
+                    modifier = Modifier
+                        .width(StopBarHeight)
+                        .weight(1f)
+                        .testTag("control_stop")
+                )
+            } else {
+                Spacer(Modifier.weight(1f))
+            }
+            if (showPause) {
+                PausePlayButton(
+                    isPaused = isPaused,
+                    enabled = pauseEnabled,
+                    onPause = onPause,
+                    onResume = onResume,
+                    size = StopBarHeight
+                )
+            }
+            if (showRotation) RotationLockButton(width = StopBarHeight, height = 44.dp)
         }
     } else {
+        // 2.3.28: one compact line: wide STOP bar (first in TalkBack order), pause/play 56dp.
+        // The status banner is drawn under this line, never inside it.
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            actions()
+            if (showStop) {
+                StopBar(
+                    onClick = onStop,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(StopBarHeight)
+                        .testTag("control_stop")
+                )
+            } else {
+                Spacer(Modifier.weight(1f))
+            }
+            if (showPause) {
+                PausePlayButton(
+                    isPaused = isPaused,
+                    enabled = pauseEnabled,
+                    onPause = onPause,
+                    onResume = onResume,
+                    size = StopBarHeight
+                )
+            }
+            if (showRotation) RotationLockButton(width = 44.dp, height = StopBarHeight)
         }
+    }
+}
+
+private tailrec fun android.content.Context.findActivity(): android.app.Activity? = when (this) {
+    is android.app.Activity -> this
+    is android.content.ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
+
+/**
+ * Locks the screen in its current orientation inside the app only. The phone's own
+ * auto-rotate setting is never touched: outside the app it keeps working as before, and
+ * unlocking hands the orientation back to the phone.
+ */
+@Composable
+private fun RotationLockButton(width: Dp, height: Dp) {
+    val activity = LocalContext.current.findActivity()
+    var locked by remember {
+        mutableStateOf(
+            activity?.requestedOrientation == android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LOCKED
+        )
+    }
+    val description = stringResource(
+        if (locked) R.string.ctl_rotation_unlock else R.string.ctl_rotation_lock
+    )
+    val shape = RoundedCornerShape(14.dp)
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .size(width = width, height = height)
+            .clip(shape)
+            .background(if (locked) OssmPrimary.copy(alpha = 0.28f) else OssmSurfaceRaised)
+            .border(1.dp, if (locked) OssmPrimary else OssmOutline, shape)
+            .toggleable(value = locked, role = Role.Switch) { lock ->
+                activity?.requestedOrientation = if (lock) {
+                    android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LOCKED
+                } else {
+                    android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                }
+                locked = lock
+            }
+            .semantics { contentDescription = description }
+    ) {
+        Icon(
+            imageVector = if (locked) Icons.Default.ScreenLockRotation else Icons.Default.ScreenRotation,
+            contentDescription = null,
+            tint = if (locked) OssmPrimaryLight else OssmOnSurfaceMuted,
+            modifier = Modifier.size(24.dp)
+        )
     }
 }
 
@@ -979,10 +1502,10 @@ private fun PatternOpenerButton(
     IconButton(
         onClick = onClick,
         modifier = modifier
-            .size(40.dp)
-            .clip(RoundedCornerShape(10.dp))
-            .background(OssmGlass)
-            .border(1.dp, OssmGlassBorder, RoundedCornerShape(10.dp))
+            .size(48.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(OssmSurfaceRaised)
+            .border(1.dp, OssmOutline, RoundedCornerShape(12.dp))
     ) {
         Icon(
             Icons.Default.TouchApp,
@@ -1015,7 +1538,7 @@ private fun PatternPickerOverlay(
                 .clip(RoundedCornerShape(20.dp))
                 .background(OssmBackground)
         ) {
-        GlassCard(modifier = Modifier.fillMaxWidth()) {
+        GlassCard(modifier = Modifier.fillMaxSize()) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1024,15 +1547,14 @@ private fun PatternPickerOverlay(
                 Column(Modifier.weight(1f)) {
                     Text(
                         stringResource(R.string.ctl_patterns),
-                        color = OssmPrimaryLight,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.5.sp
+                        color = OssmOnSurface,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
                     )
                     Text(
                         stringResource(R.string.ctl_patterns_hint),
-                        color = OssmOnSurface.copy(alpha = 0.62f),
-                        fontSize = 11.sp
+                        color = OssmOnSurfaceMuted,
+                        style = MaterialTheme.typography.bodyMedium
                     )
                 }
                 IconButton(
@@ -1057,17 +1579,27 @@ private fun PatternPickerOverlay(
             } else {
                 val ordered = uiState.orderedPatterns
                 val rows = ordered.chunked(2)
-                Column(
+                // The buttons share the whole card height (no empty space below them); only
+                // when there are too many for the card do they keep a minimum height and scroll.
+                BoxWithConstraints(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 420.dp)
+                        .weight(1f)
+                ) {
+                val gap = 8.dp
+                val rowHeight = if (rows.isEmpty()) 52.dp else {
+                    ((maxHeight - gap * (rows.size - 1)) / rows.size).coerceIn(52.dp, 120.dp)
+                }
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
                         .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(gap)
                 ) {
                     rows.forEach { rowPatterns ->
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(gap)
                         ) {
                             rowPatterns.forEach { pattern ->
                                 val index = ordered.indexOf(pattern)
@@ -1078,13 +1610,17 @@ private fun PatternPickerOverlay(
                                     onClick = { onPattern(pattern.key) },
                                     onLongClick = onReorder,
                                     enabled = true,
-                                    modifier = Modifier.weight(1f)
+                                    fontSize = if (rowHeight >= 72.dp) 16.sp else 13.sp,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(rowHeight)
                                 )
                             }
                             if (rowPatterns.size == 1) Spacer(Modifier.weight(1f))
                         }
                     }
                 }
+                } // patterns box
             }
         }
         }
@@ -1102,6 +1638,9 @@ internal fun shouldShowLiveInvertSetting(pattern: OssmPattern?): Boolean =
 internal fun shouldShowLiveAccelerationSetting(pattern: OssmPattern?): Boolean =
     pattern?.mode == PatternControlMode.STREAMING
 
+internal fun shouldShowLiveRecordButton(pattern: OssmPattern?): Boolean =
+    pattern?.mode == PatternControlMode.STREAMING
+
 internal data class ControlActionVisibility(
     val showStop: Boolean,
     val showPause: Boolean,
@@ -1111,7 +1650,9 @@ internal data class ControlActionVisibility(
 internal fun controlActionVisibility(pattern: OssmPattern?): ControlActionVisibility {
     val isLive = pattern?.mode == PatternControlMode.STREAMING
     return ControlActionVisibility(
-        showStop = !isLive,
+        // Live release now starts a slow phone-owned return; STOP must remain reachable
+        // while that return is in flight and must never be hidden by the radial surface.
+        showStop = true,
         showPause = !isLive,
         showSave = pattern != null && !isLive
     )
@@ -1120,23 +1661,231 @@ internal fun controlActionVisibility(pattern: OssmPattern?): ControlActionVisibi
 internal fun isPrecisionEnabled(
     pattern: OssmPattern,
     overrides: Map<String, Boolean>
-): Boolean = overrides[pattern.key] ?: (pattern.mode != PatternControlMode.STREAMING)
+): Boolean = overrides[pattern.key] ?: false
+
+/** Sensation 0..1 (0.5 = neutral) on the firmware's signed scale −100…0…+100. */
+internal fun signedSensationPercent(value: Float): Int =
+    ((value.coerceIn(0f, 1f) - 0.5f) * 200f).roundToInt().coerceIn(-100, 100)
+
+/** "+40", "0", "−20" (true minus sign). */
+internal fun signedSensationLabel(value: Float): String {
+    val signed = signedSensationPercent(value)
+    return when {
+        signed > 0 -> "+$signed"
+        signed < 0 -> "−${-signed}"
+        else -> "0"
+    }
+}
+
+/** Symmetric intensity d (0..0.5) as "±D" on the −100…+100 scale. */
+internal fun sensationIntensityLabel(intensity: Float): String =
+    "±${(intensity.coerceIn(0f, 0.5f) * 200f).roundToInt()}"
+
+/**
+ * In a session the local slider sets only the intensity d = |s − 0.5|. Keep the side the user
+ * dragged to (no jump from 0.2 to 0.8); otherwise show the intensity on the positive side.
+ */
+internal fun sessionSensationDraft(currentDraft: Float, intensity: Float): Float {
+    val d = intensity.coerceIn(0f, 0.5f)
+    if (kotlin.math.abs(kotlin.math.abs(currentDraft - 0.5f) - d) < 0.005f) return currentDraft
+    return if (currentDraft < 0.5f) 0.5f - d else 0.5f + d
+}
+
+/**
+ * Legend of the two sensation directions, only where the firmware pattern is known
+ * (StrokeEngine pattern.h: TeasingPounding and HalfnHalf, sensation < 0 = out faster,
+ * > 0 = in faster). Null for the other modes: no guessing.
+ */
+/** Banner "Sensation ±D (a–b)" arguments on the −100…0…+100 scale. */
+internal fun remoteSensationBannerArgs(view: RemoteSessionView): Array<String> = arrayOf(
+    sensationIntensityLabel(view.sensationIntensity),
+    signedSensationLabel(view.sensationMin),
+    signedSensationLabel(view.sensationMax),
+)
+
+internal fun sensationLegendRes(patternKey: String?): Int? = when (patternKey) {
+    "teasingPounding", "halfNHalf" -> R.string.ctl_sensation_legend_out_in
+    else -> null
+}
 
 @Composable
 private fun CenteredSensationSlider(
     value: Float,
     enabled: Boolean,
+    patternKey: String?,
+    remoteSession: RemoteSessionView,
+    gestureCancellationKey: Long = 0L,
+    randomCurrent: Float? = null,
+    headerAccessory: (@Composable RowScope.() -> Unit)? = null,
+    /** Bounds of the random sensation (0..1, 0.5 = neutral); non-null = random mode on. */
+    randomRange: ClosedFloatingPointRange<Float>? = null,
+    onRandomRangeChange: (Float, Float) -> Unit = { _, _ -> },
     onValueChange: (Float) -> Unit,
     onValueCommit: (Float) -> Unit
 ) {
-    ControlSlider(
-        label = stringResource(R.string.ctl_sensation),
-        value = value,
-        onValueChange = onValueChange,
-        onValueCommit = onValueCommit,
-        enabled = enabled,
-        activeColor = OssmAccent
+    val inSession = remoteSession.active
+    val metrics = LocalControlSliderMetrics.current
+    Column(modifier = Modifier.fillMaxWidth()) {
+        if (randomRange != null) {
+            // Random mode: two bars bound the range the random sensation may use; the red
+            // line is the value currently sent to the machine.
+            val label = stringResource(R.string.ctl_sensation)
+            SliderFrame(
+                label = label,
+                displayValue = randomCurrent?.let(::signedSensationLabel)
+                    ?: "${signedSensationLabel(randomRange.start)} / ${signedSensationLabel(randomRange.endInclusive)}",
+                enabled = enabled,
+                displayValueColor = randomCurrent?.let(::signedValueColor),
+                headerAccessory = headerAccessory
+            ) {
+                RangeBarControl(
+                    start = randomRange.start,
+                    end = randomRange.endInclusive,
+                    enabled = enabled,
+                    activeColor = OssmAccent,
+                    label = stringResource(R.string.ctl_random_sensation),
+                    onRangeChange = onRandomRangeChange,
+                    onRangeCommit = onRandomRangeChange,
+                    modifier = Modifier.weight(1f),
+                    // White line = sensation currently sent (green/red already code the sign).
+                    markers = listOfNotNull(randomCurrent?.let { RangeBarMarker(it, OssmOnSurface) }),
+                    snapValue = 0.5f,
+                    valueText = ::signedSensationLabel,
+                    gestureCancellationKey = gestureCancellationKey,
+                    bipolar = BipolarStyle()
+                )
+            }
+        } else ControlSlider(
+            label = stringResource(
+                if (inSession) R.string.ctl_sensation_intensity_max else R.string.ctl_sensation
+            ),
+            value = value,
+            onValueChange = onValueChange,
+            onValueCommit = onValueCommit,
+            enabled = enabled,
+            activeColor = OssmAccent,
+            displayValue = when {
+                randomCurrent != null -> signedSensationLabel(randomCurrent)
+                inSession -> sensationIntensityLabel(PhoneHostMotionLimits.sensationIntensityOf(value))
+                else -> signedSensationLabel(value)
+            },
+            // Green when positive, red when negative (signed value only, not the session cap).
+            displayValueColor = if (inSession) null else signedValueColor(randomCurrent ?: value),
+            // In a session, the marker shows the sensation the site is actually using;
+            // in random mode it shows the value currently sent to the machine.
+            currentMarker = randomCurrent ?: if (inSession) remoteSession.remoteSensation else null,
+            headerAccessory = headerAccessory,
+            gestureCancellationKey = gestureCancellationKey,
+            // Invisible detent on neutral: dragging close to 0 lands exactly on 0.
+            snapValue = 0.5f,
+            bipolar = BipolarStyle()
+        )
+        if (metrics.showScaleLegends) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text("−100", color = OssmOnSurfaceMuted, fontSize = 11.sp)
+            Text(stringResource(R.string.ctl_sensation_neutral), color = OssmOnSurfaceMuted, fontSize = 11.sp)
+            Text("+100", color = OssmOnSurfaceMuted, fontSize = 11.sp)
+        }
+        sensationLegendRes(patternKey)?.let { legend ->
+            Text(
+                stringResource(legend),
+                color = OssmOnSurfaceMuted,
+                fontSize = 11.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+        } // scale legends
+    }
+}
+@Composable
+private fun LiveLimitButton(
+    side: LiveLimitSide,
+    limits: LiveLimitsState,
+    enabled: Boolean
+) {
+    val moving = limits.isMoving(side)
+    val locked = limits.fractionOf(side) != null && !moving
+    val description = stringResource(
+        when {
+            moving -> if (side == LiveLimitSide.UPPER) R.string.ctl_limit_upper_moving else R.string.ctl_limit_lower_moving
+            locked -> if (side == LiveLimitSide.UPPER) R.string.ctl_limit_upper_locked else R.string.ctl_limit_lower_locked
+            else -> if (side == LiveLimitSide.UPPER) R.string.ctl_limit_upper_add else R.string.ctl_limit_lower_add
+        }
     )
+    val tint = when {
+        moving -> OssmAccent
+        locked -> OssmPrimaryLight
+        else -> OssmOnSurface.copy(alpha = 0.8f)
+    }
+    IconButton(
+        enabled = enabled,
+        onClick = { limits.toggle(side) },
+        modifier = Modifier
+            .size(48.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (moving) OssmAccent.copy(alpha = 0.22f) else OssmSurfaceRaised)
+            .border(
+                if (moving || locked) 2.dp else 1.dp,
+                if (moving) OssmAccent else if (locked) OssmPrimaryLight else OssmOutline,
+                RoundedCornerShape(10.dp)
+            )
+            .semantics { contentDescription = description }
+    ) {
+        LiveLimitIcon(side = side, color = if (enabled) tint else tint.copy(alpha = 0.3f))
+    }
+}
+
+@Composable
+private fun LiveRecordButton(
+    state: LiveRecordingState,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    val description = stringResource(liveRecordContentDescription(state))
+    val active = state != LiveRecordingState.IDLE
+    IconButton(
+        enabled = enabled,
+        onClick = onClick,
+        modifier = Modifier
+            .size(48.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(OssmSurfaceRaised)
+            .border(
+                1.dp,
+                if (active) OssmError else OssmOutline,
+                RoundedCornerShape(10.dp)
+            )
+            .semantics { contentDescription = description }
+    ) {
+        Box(
+            modifier = Modifier
+                .size(if (state == LiveRecordingState.RECORDING) 18.dp else 14.dp)
+                .clip(CircleShape)
+                .background(
+                    OssmError.copy(
+                        alpha = if (enabled) {
+                            if (active) 1f else 0.72f
+                        } else {
+                            0.25f
+                        }
+                    )
+                )
+        )
+    }
+}
+
+private fun liveRecordContentDescription(state: LiveRecordingState): Int = when (state) {
+    LiveRecordingState.IDLE -> R.string.ctl_rec_idle
+    LiveRecordingState.ARMED -> R.string.ctl_rec_armed
+    LiveRecordingState.RECORDING -> R.string.ctl_rec_recording
+    LiveRecordingState.RECORDED -> R.string.ctl_rec_recorded
+    LiveRecordingState.PLAYING -> R.string.ctl_rec_playing
 }
 
 @Composable
@@ -1146,10 +1895,10 @@ private fun SettingsGearButton(
     IconButton(
         onClick = onInfoClick,
         modifier = Modifier
-            .size(40.dp)
-            .clip(RoundedCornerShape(10.dp))
-            .background(OssmGlass)
-            .border(1.dp, OssmGlassBorder, RoundedCornerShape(10.dp))
+            .size(48.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(OssmSurfaceRaised)
+            .border(1.dp, OssmOutline, RoundedCornerShape(12.dp))
     ) {
         Icon(
             Icons.Default.Settings,
@@ -1165,37 +1914,29 @@ private fun PausePlayButton(
     isPaused: Boolean,
     enabled: Boolean,
     onPause: () -> Unit,
-    onResume: () -> Unit
+    onResume: () -> Unit,
+    size: Dp = 64.dp
 ) {
     val activeColor = if (isPaused) OssmConnected else OssmWarning
     Box(
         contentAlignment = Alignment.Center,
-        modifier = Modifier.size(80.dp)
+        modifier = Modifier.size(size)
     ) {
         Box(
             contentAlignment = Alignment.Center,
             modifier = Modifier
-                .size(76.dp)
+                .size(size - 4.dp)
                 .clip(CircleShape)
-                .background(
-                    Brush.radialGradient(
-                        colors = if (enabled) {
-                            listOf(activeColor, activeColor.copy(alpha = 0.6f))
-                        } else {
-                            listOf(OssmOnSurface.copy(0.15f), OssmOnSurface.copy(0.08f))
-                        }
-                    )
-                )
-                .border(2.dp, activeColor.copy(alpha = if (enabled) 0.6f else 0.15f), CircleShape)
-                .pointerInput(isPaused, enabled) {
-                    if (!enabled) return@pointerInput
-                    detectTapGestures { if (isPaused) onResume() else onPause() }
+                .background(if (enabled) activeColor else OssmSurfaceRaised)
+                .border(1.dp, if (enabled) activeColor else OssmOutline, CircleShape)
+                .clickable(enabled = enabled, role = Role.Button) {
+                    if (isPaused) onResume() else onPause()
                 }
         ) {
             Icon(
                 imageVector = if (isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
-                contentDescription = if (isPaused) "Reprendre" else "Pause",
-                tint = androidx.compose.ui.graphics.Color.White,
+                contentDescription = if (isPaused) stringResource(R.string.ctl_resume) else stringResource(R.string.ctl_pause),
+                tint = if (enabled) OssmBackground else OssmOnSurfaceMuted,
                 modifier = Modifier.size(30.dp)
             )
         }
@@ -1219,6 +1960,7 @@ private fun ControlSettingsDialog(
     showLiveAcceleration: Boolean,
     liveAccelerationPercent: Int,
     onLiveAccelerationChange: (Int) -> Unit,
+    gestureCancellationKey: Long = 0L,
     onDismiss: () -> Unit
 ) {
     var depthLimits by remember { mutableStateOf(depthLimitMin..depthLimitMax) }
@@ -1253,12 +1995,12 @@ private fun ControlSettingsDialog(
                     .fillMaxWidth()
                     .heightIn(max = maxHeight * 0.9f),
                 shape = RoundedCornerShape(24.dp),
-                color = OssmSurface.copy(alpha = 0.98f),
+                color = OssmSurface,
                 tonalElevation = 10.dp,
                 shadowElevation = 18.dp,
-                border = androidx.compose.foundation.BorderStroke(1.dp, OssmGlassBorder)
+                border = androidx.compose.foundation.BorderStroke(1.dp, OssmOutline)
             ) {
-                Column(modifier = Modifier.padding(18.dp)) {
+                Column(modifier = Modifier.padding(16.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
@@ -1270,7 +2012,7 @@ private fun ControlSettingsDialog(
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.weight(1f)
                         )
-                        IconButton(onClick = onDismiss) {
+                        IconButton(onClick = onDismiss, modifier = Modifier.size(48.dp)) {
                             Icon(
                                 imageVector = Icons.Default.Close,
                                 contentDescription = stringResource(R.string.ctl_close_settings),
@@ -1312,6 +2054,10 @@ private fun ControlSettingsDialog(
                                     enabled = true,
                                     precisionEnabled = precisionChecked,
                                     activeColor = OssmAccent,
+                                    label = stringResource(
+                                        R.string.ctl_live_acceleration_value,
+                                        accelerationDraft
+                                    ),
                                     onValueChange = { percent ->
                                         accelerationDraft = (10f + percent * 0.9f)
                                             .roundToInt()
@@ -1324,6 +2070,7 @@ private fun ControlSettingsDialog(
                                         accelerationDraft = acceleration
                                         onLiveAccelerationChange(acceleration)
                                     },
+                                    gestureCancellationKey = gestureCancellationKey,
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .heightIn(min = 56.dp)
@@ -1344,8 +2091,8 @@ private fun ControlSettingsDialog(
                             HorizontalDivider(color = OssmGlassBorder)
                             Text(
                                 text = stringResource(R.string.ctl_guards_intro),
-                                color = OssmOnSurface.copy(alpha = 0.8f),
-                                fontSize = 13.sp
+                                color = OssmOnSurfaceMuted,
+                                style = MaterialTheme.typography.bodyMedium
                             )
                             SettingsToggleRow(
                                 title = stringResource(R.string.ctl_speed),
@@ -1406,7 +2153,7 @@ private fun ControlSettingsDialog(
                                     .fillMaxWidth()
                                     .padding(horizontal = 8.dp, vertical = 12.dp),
                                 shape = RoundedCornerShape(14.dp),
-                                color = OssmSecondary.copy(alpha = 0.98f),
+                                color = OssmSurfaceRaised,
                                 tonalElevation = 12.dp,
                                 shadowElevation = 14.dp,
                                 border = androidx.compose.foundation.BorderStroke(1.dp, OssmPrimaryLight)
@@ -1424,7 +2171,10 @@ private fun ControlSettingsDialog(
                     Button(
                         onClick = onDismiss,
                         modifier = Modifier.align(Alignment.End),
-                        colors = ButtonDefaults.buttonColors(containerColor = OssmPrimary)
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = OssmPrimary,
+                            contentColor = OssmOnPrimary
+                        )
                     ) {
                         Text(stringResource(R.string.ctl_understood))
                     }
@@ -1442,27 +2192,46 @@ private fun SettingsToggleRow(
     onCheckedChange: (Boolean) -> Unit,
     onExplanationVisibilityChange: (Boolean) -> Unit
 ) {
+    // 2.3.31 a11y: label + switch form ONE toggleable target (TalkBack reads name + state);
+    // the press-and-hold info button stays outside the toggleable area.
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 56.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        SettingLabelWithInfo(
-            title = title,
-            explanation = explanation,
-            onExplanationVisibilityChange = onExplanationVisibilityChange,
-            modifier = Modifier.weight(1f)
-        )
-        Spacer(Modifier.width(12.dp))
-        Switch(
-            checked = checked,
-            onCheckedChange = onCheckedChange,
-            modifier = Modifier.sizeIn(minWidth = 56.dp, minHeight = 56.dp),
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = OssmPrimary,
-                checkedTrackColor = OssmPrimary.copy(alpha = 0.35f)
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .heightIn(min = 56.dp)
+                .toggleable(
+                    value = checked,
+                    role = Role.Switch,
+                    onValueChange = onCheckedChange
+                ),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = title,
+                color = OssmOnSurface,
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.weight(1f)
             )
+            Spacer(Modifier.width(12.dp))
+            Switch(
+                checked = checked,
+                onCheckedChange = null,
+                modifier = Modifier.sizeIn(minWidth = 56.dp, minHeight = 56.dp),
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = OssmOnPrimary,
+                    checkedTrackColor = OssmPrimary
+                )
+            )
+        }
+        Spacer(Modifier.width(4.dp))
+        PressHoldInfo(
+            explanation = explanation,
+            onVisibilityChange = onExplanationVisibilityChange
         )
     }
 }
@@ -1496,13 +2265,27 @@ private fun PressHoldInfo(
     explanation: String,
     onVisibilityChange: (Boolean) -> Unit
 ) {
+    // 2.3.31 a11y: TalkBack reads the explanation and can toggle it with a double tap
+    // (the touch gesture stays press-and-hold).
+    var shownByAccessibility by remember(explanation) { mutableStateOf(false) }
+    val holdLabel = stringResource(R.string.ctl_hold_for_info)
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
-            .size(40.dp)
+            .size(48.dp)
             .clip(CircleShape)
             .background(OssmGlass)
             .border(1.dp, OssmGlassBorder, CircleShape)
+            .clearAndSetSemantics {
+                role = Role.Button
+                contentDescription = holdLabel
+                stateDescription = explanation
+                onClick(label = holdLabel) {
+                    shownByAccessibility = !shownByAccessibility
+                    onVisibilityChange(shownByAccessibility)
+                    true
+                }
+            }
             .pointerInput(explanation) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
@@ -1519,6 +2302,7 @@ private fun PressHoldInfo(
                             ) break
                         }
                     } finally {
+                        shownByAccessibility = false
                         onVisibilityChange(false)
                     }
                 }
@@ -1526,7 +2310,7 @@ private fun PressHoldInfo(
     ) {
         Icon(
             imageVector = Icons.Default.Info,
-            contentDescription = stringResource(R.string.ctl_hold_for_info),
+            contentDescription = null,
             tint = OssmPrimaryLight,
             modifier = Modifier.size(20.dp)
         )
@@ -1544,117 +2328,241 @@ private fun InfoLine(title: String, description: String) {
     }
 }
 
-@Composable
-private fun ListeningModeFooter(
-    enabled: Boolean,
-    level: Float,
-    onToggle: (Boolean) -> Unit,
-    speedTargetEnabled: Boolean,
-    depthTargetEnabled: Boolean,
-    onSpeedTargetChange: (Boolean) -> Unit,
-    onDepthTargetChange: (Boolean) -> Unit
-) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        HorizontalDivider(color = OssmGlassBorder)
-        Spacer(Modifier.height(6.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    stringResource(R.string.ctl_listening_title),
-                    color = OssmOnSurface,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    stringResource(R.string.ctl_listening_hint),
-                    color = OssmOnSurface.copy(alpha = 0.6f),
-                    fontSize = 11.sp
-                )
-            }
-            Switch(
-                checked = enabled,
-                onCheckedChange = onToggle,
-                modifier = Modifier.sizeIn(minWidth = 56.dp, minHeight = 56.dp),
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = OssmAccent,
-                    checkedTrackColor = OssmAccent.copy(alpha = 0.4f)
-                )
-            )
-        }
-        // Témoin de niveau sonore (visible seulement quand le mode est actif).
-        if (enabled) {
-            Spacer(Modifier.height(6.dp))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(6.dp)
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(OssmOnSurface.copy(alpha = 0.12f))
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(level.coerceIn(0f, 1f))
-                        .height(6.dp)
-                        .clip(RoundedCornerShape(3.dp))
-                        .background(OssmAccent)
-                )
-            }
-            Spacer(Modifier.height(10.dp))
-            Text(
-                "Le micro agit sur",
-                color = OssmPrimaryLight,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold
-            )
-            SliderGuardRow(
-                title = "Vitesse",
-                description = "Le volume du son pilote la vitesse.",
-                checked = speedTargetEnabled,
-                onCheckedChange = onSpeedTargetChange
-            )
-            SliderGuardRow(
-                title = "Profondeur",
-                description = "La fréquence des pics sonores pilote la profondeur.",
-                checked = depthTargetEnabled,
-                onCheckedChange = onDepthTargetChange
-            )
-        }
-    }
-}
+private data class RandomPresetEdit(
+    val target: RandomPresetTarget,
+    val index: Int
+)
 
 @Composable
-private fun RandomModeRow(
+private fun RandomToggle(
     label: String,
     checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit
+    enabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    visibleLabel: String = label
 ) {
+    // Compact one-line toggle (48dp): the whole row is one checkbox target, so TalkBack reads
+    // "label, checkbox, state" instead of an unnamed box next to loose text. The on-screen text
+    // may be shorter than [label] (the section header already names speed/depth); TalkBack
+    // still gets the full [label].
+    val toggleSize = LocalControlSliderMetrics.current.toggleMinSize
     Row(
         modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onCheckedChange(!checked) }
-            .padding(vertical = 2.dp),
+            .heightIn(min = toggleSize)
+            .toggleable(
+                value = checked,
+                enabled = enabled,
+                role = Role.Checkbox,
+                onValueChange = onCheckedChange
+            )
+            .semantics { contentDescription = label },
         verticalAlignment = Alignment.CenterVertically
     ) {
         Checkbox(
             checked = checked,
-            onCheckedChange = onCheckedChange,
-            modifier = Modifier.sizeIn(minWidth = 56.dp, minHeight = 56.dp),
+            onCheckedChange = null,
+            enabled = enabled,
+            modifier = Modifier.sizeIn(minWidth = toggleSize, minHeight = toggleSize),
             colors = CheckboxDefaults.colors(
                 checkedColor = OssmAccent,
                 uncheckedColor = OssmOnSurface.copy(alpha = 0.5f)
             )
         )
-        Spacer(Modifier.width(8.dp))
         Text(
-            label,
-            color = OssmOnSurface,
-            fontSize = 14.sp,
-            modifier = Modifier.weight(1f)
+            text = visibleLabel,
+            color = if (enabled) OssmOnSurface.copy(alpha = 0.9f) else OssmOnSurface.copy(alpha = 0.5f),
+            fontSize = 13.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.clearAndSetSemantics {}
         )
     }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun RandomPresetRow(
+    presets: List<RandomRangePreset>,
+    selectedIndex: Int,
+    enabled: Boolean,
+    target: RandomPresetTarget,
+    onSave: (RandomPresetTarget, Int) -> Unit,
+    onApply: (RandomPresetTarget, Int) -> Unit,
+    onLongPress: (Int) -> Unit
+) {
+    val activePresetLabel = stringResource(R.string.ctl_random_preset_active)
+    val inactivePresetLabel = stringResource(R.string.ctl_random_preset_inactive)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        presets.forEachIndexed { index, preset ->
+            val selected = index == selectedIndex
+            val presetDescription = preset.savedSpeedPercent?.let { saved ->
+                stringResource(R.string.ui2_preset_cd_saved, preset.minPercent, preset.maxPercent, saved)
+            } ?: "${preset.minPercent}%–${preset.maxPercent}%"
+            Surface(
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = 48.dp)
+                    .combinedClickable(
+                        enabled = enabled,
+                        onClick = { onSave(target, index) },
+                        onDoubleClick = { onApply(target, index) },
+                        onLongClick = { onLongPress(index) }
+                    )
+                    .semantics {
+                        contentDescription = presetDescription
+                        stateDescription = if (selected) activePresetLabel else inactivePresetLabel
+                        role = Role.Button
+                    }
+                    .border(
+                        width = 1.dp,
+                        color = if (selected) OssmAccent else OssmGlassBorder,
+                        shape = RoundedCornerShape(10.dp)
+                    ),
+                shape = RoundedCornerShape(10.dp),
+                color = if (selected) OssmPrimary.copy(alpha = 0.22f) else OssmGlass.copy(alpha = 0.72f)
+            ) {
+                // Compact chip: one readable "min–max%" line, plus an optional saved-speed line.
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp, vertical = 6.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = "${preset.minPercent}–${preset.maxPercent}%",
+                        color = if (selected) OssmAccent else OssmOnSurface,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        softWrap = false,
+                        textAlign = TextAlign.Center
+                    )
+                    preset.savedSpeedPercent?.let { saved ->
+                        Text(
+                            text = stringResource(R.string.ui2_preset_saved_speed_short, saved),
+                            color = OssmAccent,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            softWrap = false,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RandomRangePresetDialog(
+    target: RandomPresetTarget,
+    index: Int,
+    preset: RandomRangePreset,
+    currentSpeedPercent: Int,
+    onSave: (Int, Int, Boolean) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var minText by remember(target, index, preset.minPercent) { mutableStateOf(preset.minPercent.toString()) }
+    var maxText by remember(target, index, preset.maxPercent) { mutableStateOf(preset.maxPercent.toString()) }
+    var saveSpeedToo by remember(target, index, preset.savedSpeedPercent) {
+        mutableStateOf(preset.savedSpeedPercent != null)
+    }
+    val min = minText.toIntOrNull()
+    val max = maxText.toIntOrNull()
+    val valid = min != null && max != null && min in 0..100 && max in 0..100 && min <= max
+    val targetLabel = if (target == RandomPresetTarget.SPEED) {
+        stringResource(R.string.ctl_speed)
+    } else {
+        stringResource(R.string.ctl_depth)
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = OssmGlass,
+        shape = RoundedCornerShape(24.dp),
+        tonalElevation = 8.dp,
+        title = {
+            Text(
+                stringResource(R.string.ctl_random_preset_title, targetLabel, index + 1),
+                color = OssmOnSurface
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    stringResource(R.string.ctl_random_preset_hint),
+                    color = OssmOnSurface.copy(alpha = 0.72f),
+                    fontSize = 12.sp
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = minText,
+                        onValueChange = { minText = it.filter(Char::isDigit).take(3) },
+                        label = { Text(stringResource(R.string.ctl_random_preset_min)) },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = OssmPrimary,
+                            unfocusedBorderColor = OssmGlassBorder,
+                            focusedTextColor = OssmOnSurface,
+                            unfocusedTextColor = OssmOnSurface
+                        )
+                    )
+                    OutlinedTextField(
+                        value = maxText,
+                        onValueChange = { maxText = it.filter(Char::isDigit).take(3) },
+                        label = { Text(stringResource(R.string.ctl_random_preset_max)) },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = OssmPrimary,
+                            unfocusedBorderColor = OssmGlassBorder,
+                            focusedTextColor = OssmOnSurface,
+                            unfocusedTextColor = OssmOnSurface
+                        )
+                    )
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(
+                        checked = saveSpeedToo,
+                        onCheckedChange = { saveSpeedToo = it },
+                        colors = CheckboxDefaults.colors(checkedColor = OssmAccent)
+                    )
+                    Text(
+                        stringResource(R.string.ctl_random_save_speed, currentSpeedPercent),
+                        color = OssmOnSurface,
+                        fontSize = 12.sp
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (valid) onSave(min ?: 0, max ?: 0, saveSpeedToo)
+                },
+                enabled = valid,
+                colors = ButtonDefaults.buttonColors(containerColor = OssmPrimary)
+            ) {
+                Text(stringResource(R.string.ctl_save))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.ctl_cancel), color = OssmPrimaryLight)
+            }
+        }
+    )
 }
 
 @Composable
@@ -1701,19 +2609,19 @@ private fun AutoRandomStartDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = OssmSurface,
-        title = { Text("Verifier tes limites", color = OssmOnSurface) },
+        title = { Text(stringResource(R.string.ctl_auto_dialog_title), color = OssmOnSurface) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    "Tu vas lancer Auto Random avec $selectedCount mode(s) selectionne(s).",
+                    stringResource(R.string.ctl_auto_dialog_count, selectedCount),
                     color = OssmOnSurface
                 )
                 Text(
-                    "Vitesse max: $maxSpeedPercent%\nProfondeur: $depthMinPercent% - $depthMaxPercent%",
+                    stringResource(R.string.ctl_auto_dialog_limits, maxSpeedPercent, depthMinPercent, depthMaxPercent),
                     color = OssmOnSurface.copy(alpha = 0.8f)
                 )
                 Text(
-                    "Assure-toi que ces limites sont bien celles que tu ne veux jamais depasser avant le depart.",
+                    stringResource(R.string.ctl_auto_dialog_warning),
                     color = OssmWarning,
                     fontSize = 12.sp
                 )
@@ -1729,7 +2637,7 @@ private fun AutoRandomStartDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Annuler", color = OssmPrimaryLight)
+                Text(stringResource(R.string.ctl_cancel), color = OssmPrimaryLight)
             }
         }
     )
@@ -1743,7 +2651,9 @@ private fun SliderGuardRow(
     onCheckedChange: (Boolean) -> Unit
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -1762,7 +2672,7 @@ private fun SliderGuardRow(
         Spacer(Modifier.width(12.dp))
         Switch(
             checked = checked,
-            onCheckedChange = onCheckedChange,
+            onCheckedChange = null,
             modifier = Modifier.sizeIn(minWidth = 56.dp, minHeight = 56.dp),
             colors = SwitchDefaults.colors(
                 checkedThumbColor = OssmPrimary,
@@ -1773,197 +2683,51 @@ private fun SliderGuardRow(
 }
 
 @Composable
-private fun DepthRangeEditor(
+internal fun DepthRangeEditor(
     minValue: Float,
     maxValue: Float,
     enabled: Boolean,
     onRangeChange: (Float, Float) -> Unit,
     onRangeCommit: (Float, Float) -> Unit,
     positionFraction: Float? = null,
-    listeningDepthCurrent: Float? = null,
     randomMinValue: Float? = null,
-    randomMaxValue: Float? = null
+    randomMaxValue: Float? = null,
+    headerAccessory: (@Composable RowScope.() -> Unit)? = null,
+    gestureCancellationKey: Long = 0L
 ) {
-    var sliderWidthPx by remember { mutableIntStateOf(0) }
-    // Dernière barre touchée : true = FOND (max, droite), false = RETRAIT (min, gauche).
-    // Les boutons +/- agissent sur CETTE barre. Défaut = fond (comportement d'avant).
-    var selectedIsMax by remember { mutableStateOf(true) }
     val displayedMin = randomMinValue ?: minValue
     val displayedMax = randomMaxValue ?: maxValue
     val randomRangeActive = randomMinValue != null || randomMaxValue != null
-
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                stringResource(R.string.ctl_depth),
-                color = OssmPrimaryLight,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.sp
-            )
-            Text(
-                "${(displayedMin * 100).toInt()}% - ${(displayedMax * 100).toInt()}%",
-                color = when {
-                    !enabled -> OssmOnSurface.copy(alpha = 0.4f)
-                    randomRangeActive -> OssmError
-                    else -> OssmOnSurface
-                },
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-        }
-
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            // −/+ agissent sur la DERNIÈRE barre touchée (retrait ou fond), pas de 1 %.
-            FilledTonalIconButton(
-                onClick = {
-                    if (selectedIsMax) {
-                        onRangeCommit(minValue, (maxValue - 0.01f).coerceIn(minValue, 1f))
-                    } else {
-                        onRangeCommit((minValue - 0.01f).coerceIn(0f, maxValue), maxValue)
-                    }
-                },
-                enabled = enabled,
-                modifier = Modifier.size(52.dp),
-                shape = CircleShape,
-                colors = IconButtonDefaults.filledTonalIconButtonColors(
-                    containerColor = OssmAccent.copy(alpha = 0.18f),
-                    contentColor = OssmAccent,
-                    disabledContainerColor = OssmAccent.copy(0.06f),
-                    disabledContentColor = OssmAccent.copy(0.3f)
-                )
-            ) {
-                Text("−", fontSize = 26.sp, fontWeight = FontWeight.Bold)
-            }
-
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .onSizeChanged { sliderWidthPx = it.width }
-                    .pointerInput(enabled, minValue, maxValue, sliderWidthPx) {
-                        detectTapGestures { offset ->
-                            if (!enabled || sliderWidthPx <= 0) return@detectTapGestures
-                            val fraction = (offset.x / sliderWidthPx.toFloat()).coerceIn(0f, 1f)
-                            val tappedValue = fraction
-                            val tappedMin = kotlin.math.abs(tappedValue - minValue) <= kotlin.math.abs(tappedValue - maxValue)
-                            selectedIsMax = !tappedMin
-                        }
-                    }
-            ) {
-                // Surbrillance discrète du curseur SÉLECTIONNÉ (celui que +/- ajustent).
-                if (sliderWidthPx > 0) {
-                    val selFrac = (if (selectedIsMax) maxValue else minValue).coerceIn(0f, 1f)
-                    val hx = with(LocalDensity.current) { (sliderWidthPx * selFrac).toDp() }
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.CenterStart)
-                            .offset(x = hx - 15.dp)
-                            .size(30.dp)
-                            .clip(CircleShape)
-                            .background(OssmAccent.copy(alpha = 0.22f))
-                    )
-                }
-                RangeSlider(
-                    value = minValue..maxValue,
-                    onValueChange = { range ->
-                        // Détecte le curseur déplacé pour cibler les boutons +/-.
-                        val dMin = kotlin.math.abs(range.start - minValue)
-                        val dMax = kotlin.math.abs(range.endInclusive - maxValue)
-                        if (dMin > 0.0001f || dMax > 0.0001f) selectedIsMax = dMax >= dMin
-                        onRangeChange(range.start, range.endInclusive)
-                    },
-                    onValueChangeFinished = {
-                        onRangeCommit(minValue, maxValue)
-                    },
-                    valueRange = 0f..1f,
-                    enabled = enabled,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
-                    colors = androidx.compose.material3.SliderDefaults.colors(
-                        thumbColor = OssmAccent,
-                        activeTrackColor = OssmAccent,
-                        inactiveTrackColor = OssmAccent.copy(alpha = 0.25f)
-                    )
-                )
-                if (positionFraction != null && sliderWidthPx > 0) {
-                    val xDp = with(LocalDensity.current) {
-                        (sliderWidthPx * positionFraction.coerceIn(0f, 1f)).toDp()
-                    }
-                    Box(
-                        modifier = Modifier
-                            .offset(x = xDp - 1.5.dp)
-                            .width(3.dp)
-                            .height(48.dp)
-                        .background(OssmError.copy(alpha = 0.9f))
-                    )
-                }
-                listeningDepthCurrent?.let { depth ->
-                    val xDp = with(LocalDensity.current) {
-                        (sliderWidthPx * depth.coerceIn(0f, 1f)).toDp()
-                    }
-                    Box(
-                        modifier = Modifier
-                            .offset(x = xDp - 1.5.dp)
-                            .width(3.dp)
-                            .height(48.dp)
-                            .background(OssmError)
-                    )
-                }
-                randomMinValue?.let { randomValue ->
-                    val xDp = with(LocalDensity.current) {
-                        (sliderWidthPx * randomValue.coerceIn(0f, 1f)).toDp()
-                    }
-                    Box(
-                        modifier = Modifier
-                            .offset(x = xDp - 1.5.dp)
-                            .width(3.dp)
-                            .height(48.dp)
-                            .background(OssmError.copy(alpha = 0.95f))
-                    )
-                }
-                randomMaxValue?.let { randomValue ->
-                    val xDp = with(LocalDensity.current) {
-                        (sliderWidthPx * randomValue.coerceIn(0f, 1f)).toDp()
-                    }
-                    Box(
-                        modifier = Modifier
-                            .offset(x = xDp - 1.5.dp)
-                            .width(3.dp)
-                            .height(48.dp)
-                            .background(OssmError.copy(alpha = 0.95f))
-                    )
-                }
-            }
-
-            FilledTonalIconButton(
-                onClick = {
-                    if (selectedIsMax) {
-                        onRangeCommit(minValue, (maxValue + 0.01f).coerceIn(minValue, 1f))
-                    } else {
-                        onRangeCommit((minValue + 0.01f).coerceIn(0f, maxValue), maxValue)
-                    }
-                },
-                enabled = enabled,
-                modifier = Modifier.size(52.dp),
-                shape = CircleShape,
-                colors = IconButtonDefaults.filledTonalIconButtonColors(
-                    containerColor = OssmAccent.copy(alpha = 0.18f),
-                    contentColor = OssmAccent,
-                    disabledContainerColor = OssmAccent.copy(0.06f),
-                    disabledContentColor = OssmAccent.copy(0.3f)
-                )
-            ) {
-                Text("+", fontSize = 26.sp, fontWeight = FontWeight.Bold)
-            }
-        }
+    val markers = buildList {
+        positionFraction?.let { add(RangeBarMarker(it, OssmError.copy(alpha = 0.9f))) }
+        randomMinValue?.let { add(RangeBarMarker(it, OssmError)) }
+        randomMaxValue?.let { add(RangeBarMarker(it, OssmError)) }
+    }
+    val label = stringResource(R.string.ctl_depth)
+    SliderFrame(
+        label = label,
+        displayValue = "${(displayedMin * 100).toInt()}–${(displayedMax * 100).toInt()}%",
+        enabled = enabled,
+        displayValueColor = when {
+            !enabled -> OssmOnSurface.copy(alpha = 0.4f)
+            randomRangeActive -> OssmError
+            else -> null
+        },
+        headerAccessory = headerAccessory
+    ) {
+        // -/+ move the bar touched last (retract or depth); the depth bar by default.
+        RangeBarControl(
+            start = minValue,
+            end = maxValue,
+            enabled = enabled,
+            activeColor = OssmAccent,
+            label = label,
+            onRangeChange = onRangeChange,
+            onRangeCommit = onRangeCommit,
+            modifier = Modifier.weight(1f),
+            markers = markers,
+            gestureCancellationKey = gestureCancellationKey
+        )
     }
 }
 
@@ -2056,7 +2820,7 @@ private fun ReorderPatternsDialog(
             ) { Text(stringResource(R.string.ctl_save)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Annuler", color = OssmOnSurface.copy(alpha = 0.7f)) }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.ctl_cancel), color = OssmOnSurface.copy(alpha = 0.7f)) }
         }
     )
 }
@@ -2067,17 +2831,19 @@ private fun SavePresetDialog(
     onDismiss: () -> Unit,
     onSave: (Preset) -> Unit
 ) {
-    var name by remember { mutableStateOf("Mon Profil") }
+    val defaultPresetName = stringResource(R.string.ctl_preset_default_name)
+    val fallbackPresetName = stringResource(R.string.ctl_preset_fallback_name)
+    var name by remember { mutableStateOf(defaultPresetName) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = OssmSurface,
-        title = { Text("Sauvegarder le profil", color = OssmOnSurface) },
+        title = { Text(stringResource(R.string.ctl_preset_save_title), color = OssmOnSurface) },
         text = {
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
-                label = { Text("Nom du profil") },
+                label = { Text(stringResource(R.string.ctl_preset_name_label)) },
                 singleLine = true,
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = OssmPrimary,
@@ -2093,7 +2859,7 @@ private fun SavePresetDialog(
                     val pattern = currentState.activePattern ?: return@Button
                     onSave(
                         Preset(
-                            name = name.ifBlank { "Profil" },
+                            name = name.ifBlank { fallbackPresetName },
                             patternKey = pattern.key,
                             patternName = pattern.name,
                             speed = currentState.speed,
@@ -2104,11 +2870,11 @@ private fun SavePresetDialog(
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = OssmPrimary)
             ) {
-                Text("Sauvegarder")
+                Text(stringResource(R.string.ctl_preset_save))
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Annuler", color = OssmPrimaryLight) }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.ctl_cancel), color = OssmPrimaryLight) }
         }
     )
 }
@@ -2126,21 +2892,21 @@ private fun AbruptChangeDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = OssmSurface,
-        title = { Text("Changement brusque detecte", color = OssmOnSurface) },
+        title = { Text(stringResource(R.string.ctl_abrupt_title), color = OssmOnSurface) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    "Vous etes sur de vouloir changer autant d'un coup sur ${controlLabel(control)}? La variation depasse ${thresholdPercent} %. Cette protection evite un mouvement soudain si le telephone ou le slider est accroche.",
+                    stringResource(R.string.ctl_abrupt_body, stringResource(controlLabel(control)), thresholdPercent),
                     color = OssmOnSurface.copy(alpha = 0.8f)
                 )
                 HorizontalDivider(color = OssmGlassBorder)
                 GuardCheckboxRow(
-                    label = "Ne pas me le rappeler pour cette session",
+                    label = stringResource(R.string.ctl_abrupt_skip_session),
                     checked = skipForSession,
                     onCheckedChange = { skipForSession = it }
                 )
                 GuardCheckboxRow(
-                    label = "Ne plus jamais me le redemander",
+                    label = stringResource(R.string.ctl_abrupt_never),
                     checked = neverAskAgain,
                     onCheckedChange = { neverAskAgain = it }
                 )
@@ -2151,20 +2917,20 @@ private fun AbruptChangeDialog(
                 onClick = { onConfirm(skipForSession, neverAskAgain) },
                 colors = ButtonDefaults.buttonColors(containerColor = OssmWarning)
             ) {
-                Text("Oui, je suis sur")
+                Text(stringResource(R.string.ctl_abrupt_confirm))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Annuler", color = OssmError)
+                Text(stringResource(R.string.ctl_cancel), color = OssmError)
             }
         }
     )
 }
 
-private fun controlLabel(control: GuardedControl): String = when (control) {
-    GuardedControl.SPEED -> "la vitesse"
-    GuardedControl.DEPTH -> "la profondeur"
+private fun controlLabel(control: GuardedControl): Int = when (control) {
+    GuardedControl.SPEED -> R.string.ctl_abrupt_speed
+    GuardedControl.DEPTH -> R.string.ctl_abrupt_depth
 }
 
 @Composable
@@ -2174,7 +2940,9 @@ private fun GuardCheckboxRow(
     onCheckedChange: (Boolean) -> Unit
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -2186,7 +2954,7 @@ private fun GuardCheckboxRow(
         )
         Switch(
             checked = checked,
-            onCheckedChange = onCheckedChange,
+            onCheckedChange = null,
             modifier = Modifier.sizeIn(minWidth = 56.dp, minHeight = 56.dp),
             colors = SwitchDefaults.colors(
                 checkedThumbColor = OssmPrimary,
@@ -2196,383 +2964,101 @@ private fun GuardCheckboxRow(
     }
 }
 
+/**
+ * Bandeau compact affiché pendant une session distante active : maximums (vitesse, profondeur,
+ * sensation) fixés par les curseurs locaux, valeurs EN DIRECT envoyées par le site, et avertissement si le maximum de
+ * vitesse est à 0 % (le site ne peut alors rien faire bouger).
+ */
 @Composable
-private fun AdaptiveModeContent(
-    adaptiveState: AdaptiveUiState,
-    settings: AdaptiveSettings,
-    manualAdjustments: Long,
-    connected: Boolean,
-    onEnabledChange: (Boolean) -> Unit,
-    onPaceChange: (AdaptivePace) -> Unit,
-    onDiversityChange: (Float) -> Unit,
-    onStart: () -> Unit,
-    onStop: () -> Unit
+private fun RemoteSessionBanner(
+    view: RemoteSessionView,
+    patternName: String?,
+    compact: Boolean
 ) {
-    AdaptiveStatusCard(
-        state = adaptiveState,
-        manualAdjustments = manualAdjustments
-    )
-    Spacer(Modifier.height(10.dp))
-    AdaptiveSettingsCard(
-        settings = settings,
-        running = adaptiveState.running,
-        enabled = connected,
-        onEnabledChange = onEnabledChange,
-        onPaceChange = onPaceChange,
-        onDiversityChange = onDiversityChange,
-        onStart = onStart,
-        onStop = onStop
-    )
-}
-
-@Composable
-private fun AdaptiveStatusCard(
-    state: AdaptiveUiState,
-    manualAdjustments: Long
-) {
-    GlassCard(modifier = Modifier.fillMaxWidth(), tint = OssmPrimary) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = if (state.locked) Icons.Default.Lock else Icons.Default.LockOpen,
-                contentDescription = stringResource(
-                    if (state.locked) R.string.adapt_locked else R.string.adapt_unlocked
-                ),
-                tint = if (state.locked) OssmWarning else OssmConnected,
-                modifier = Modifier.size(22.dp)
-            )
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    stringResource(
-                        if (state.locked) R.string.adapt_locked else R.string.adapt_unlocked
-                    ),
-                    color = if (state.locked) OssmWarning else OssmConnected,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    stringResource(
-                        if (state.locked) R.string.adapt_locked_hint else R.string.adapt_unlocked_hint
-                    ),
-                    color = OssmOnSurface.copy(alpha = 0.6f),
-                    fontSize = 11.sp
-                )
-            }
-            Text(
-                state.firmwareLevel.name,
-                color = OssmAccent,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.sp
-            )
+    val blocked = view.motionBlockedByZeroMaximum
+    val accent = if (blocked) OssmWarning else OssmPrimaryLight
+    val shape = RoundedCornerShape(10.dp)
+    fun pct(value: Float) = (value.coerceIn(0f, 1f) * 100f).roundToInt()
+    val live = buildList {
+        view.remoteSpeed?.let { add(stringResource(R.string.ui2_remote_live_speed, pct(it))) }
+        val liveMin = view.remoteDepthMin
+        val liveMax = view.remoteDepthMax
+        if (liveMin != null && liveMax != null) {
+            add(stringResource(R.string.ui2_remote_live_depth, pct(liveMin), pct(liveMax)))
         }
-
-        Spacer(Modifier.height(14.dp))
-        AdaptiveBar(
-            label = stringResource(R.string.adapt_progression),
-            percent = state.progressionPercent,
-            fillColor = OssmPrimary
-        )
-
-        Spacer(Modifier.height(10.dp))
-        AdaptiveBar(
-            label = stringResource(R.string.adapt_confidence),
-            percent = state.confidencePercent,
-            fillColor = OssmAccent,
-            valueColor = confidenceColor(state.confidencePercent)
-        )
-
-        Spacer(Modifier.height(14.dp))
-        val summary = state.learningSummary
-        AdaptiveStatRow(
-            label = stringResource(R.string.adapt_sessions),
-            value = "${summary.sessionsCompleted}"
-        )
-        AdaptiveStatRow(
-            label = stringResource(R.string.adapt_total_active),
-            value = formatDuration(summary.totalActiveMillis)
-        )
-        AdaptiveStatRow(
-            label = stringResource(R.string.adapt_distinct_days),
-            value = "${summary.distinctDays}"
-        )
-        AdaptiveStatRow(
-            label = stringResource(R.string.adapt_manual_adjustments),
-            value = "$manualAdjustments"
-        )
-        summary.topPatternKey?.let { topKey ->
-            AdaptiveStatRow(
-                label = stringResource(R.string.adapt_top_pattern),
-                value = KnownStrokeEnginePatterns.firstOrNull { it.key == topKey }?.name ?: topKey
-            )
-        }
+        view.remoteSensation?.let { add(stringResource(R.string.ui2_remote_live_sensation, signedSensationLabel(it))) }
+        patternName?.let { add(stringResource(R.string.ui2_remote_live_pattern, it)) }
+        view.remoteLivePercent?.let { add(stringResource(R.string.ui2_remote_live_position, it)) }
     }
-}
-
-@Composable
-private fun AdaptiveBar(
-    label: String,
-    percent: Int,
-    fillColor: Color,
-    valueColor: Color = OssmOnSurface
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            label,
-            color = OssmPrimaryLight,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 1.sp
-        )
-        Spacer(Modifier.weight(1f))
-        Text(
-            "$percent%",
-            color = valueColor,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.SemiBold
-        )
-    }
-    Spacer(Modifier.height(6.dp))
-    Box(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .height(6.dp)
-            .clip(RoundedCornerShape(3.dp))
-            .background(OssmOnSurface.copy(alpha = 0.12f))
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth(percent.coerceIn(0, 100) / 100f)
-                .height(6.dp)
-                .clip(RoundedCornerShape(3.dp))
-                .background(fillColor)
-        )
-    }
-}
-
-@Composable
-private fun AdaptiveStatRow(label: String, value: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween
+            .padding(bottom = if (compact) 6.dp else 8.dp)
+            .clip(shape)
+            .background(OssmSurfaceRaised)
+            .border(1.dp, accent.copy(alpha = 0.6f), shape)
+            .padding(horizontal = 10.dp, vertical = 6.dp)
+            .testTag("remote_session_banner"),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
         Text(
-            label,
-            color = OssmOnSurface.copy(alpha = 0.65f),
-            fontSize = 13.sp
-        )
-        Text(
-            value,
-            color = OssmOnSurface,
-            style = MaterialTheme.typography.bodyMedium
-        )
-    }
-    Spacer(Modifier.height(4.dp))
-}
-
-private fun confidenceColor(percent: Int): Color = when {
-    percent >= 60 -> OssmConnected
-    percent >= 30 -> OssmWarning
-    else -> OssmError
-}
-
-@Composable
-private fun AdaptiveSettingsCard(
-    settings: AdaptiveSettings,
-    running: Boolean,
-    enabled: Boolean,
-    onEnabledChange: (Boolean) -> Unit,
-    onPaceChange: (AdaptivePace) -> Unit,
-    onDiversityChange: (Float) -> Unit,
-    onStart: () -> Unit,
-    onStop: () -> Unit
-) {
-    GlassCard(modifier = Modifier.fillMaxWidth(), tint = OssmAccent) {
-        Text(
-            stringResource(R.string.adapt_settings_title),
-            color = OssmPrimaryLight,
+            stringResource(
+                R.string.ui2_remote_banner_limits,
+                pct(view.speedMax),
+                pct(view.depthMin),
+                pct(view.depthMax)
+            ) + " · " + stringResource(R.string.ui2_remote_banner_sensation_range, *remoteSensationBannerArgs(view)),
+            color = accent,
             fontSize = 12.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 1.5.sp
-        )
-        Spacer(Modifier.height(10.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    stringResource(R.string.adapt_enabled),
-                    color = OssmOnSurface,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    stringResource(R.string.adapt_enabled_hint),
-                    color = OssmOnSurface.copy(alpha = 0.6f),
-                    fontSize = 11.sp
-                )
-            }
-            Switch(
-                checked = settings.enabled,
-                onCheckedChange = onEnabledChange,
-                enabled = enabled,
-                modifier = Modifier.sizeIn(minWidth = 56.dp, minHeight = 56.dp),
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = OssmAccent,
-                    checkedTrackColor = OssmAccent.copy(alpha = 0.4f),
-                    uncheckedThumbColor = OssmOnSurface.copy(alpha = 0.5f),
-                    uncheckedTrackColor = OssmOnSurface.copy(alpha = 0.12f)
-                )
-            )
-        }
-        Spacer(Modifier.height(12.dp))
-        Text(
-            stringResource(R.string.adapt_pace),
-            color = OssmPrimaryLight,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 1.sp
-        )
-        Spacer(Modifier.height(6.dp))
-        PaceSelector(
-            selected = settings.pace,
-            enabled = enabled,
-            onPaceChange = onPaceChange
-        )
-        Spacer(Modifier.height(12.dp))
-        ControlSlider(
-            label = stringResource(R.string.adapt_diversity),
-            value = settings.diversity,
-            onValueChange = onDiversityChange,
-            onValueCommit = onDiversityChange,
-            enabled = enabled,
-            activeColor = OssmAccent,
-            displayValue = "${(settings.diversity * 100).toInt()}%"
-        )
-        Text(
-            stringResource(R.string.adapt_diversity_hint),
-            color = OssmOnSurface.copy(alpha = 0.6f),
-            fontSize = 11.sp
-        )
-        if (running) {
-            Spacer(Modifier.height(10.dp))
-            Text(
-                stringResource(R.string.adapt_running_hint),
-                color = OssmConnected,
-                fontSize = 12.sp
-            )
-        }
-        Spacer(Modifier.height(12.dp))
-        if (running) {
-            Button(
-                onClick = onStop,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 48.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = OssmWarning)
-            ) {
-                Text(
-                    stringResource(R.string.adapt_stop),
-                    textAlign = TextAlign.Center,
-                    lineHeight = 16.sp
-                )
-            }
-        } else {
-            Button(
-                onClick = onStart,
-                enabled = enabled && settings.enabled,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 48.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = OssmConnected)
-            ) {
-                Text(
-                    stringResource(R.string.adapt_start),
-                    textAlign = TextAlign.Center,
-                    lineHeight = 16.sp
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun PaceSelector(
-    selected: AdaptivePace,
-    enabled: Boolean,
-    onPaceChange: (AdaptivePace) -> Unit
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        PaceOption(
-            label = stringResource(R.string.adapt_pace_calm),
-            selected = selected == AdaptivePace.CALME,
-            enabled = enabled,
-            onClick = { onPaceChange(AdaptivePace.CALME) },
-            modifier = Modifier.weight(1f)
-        )
-        PaceOption(
-            label = stringResource(R.string.adapt_pace_moderate),
-            selected = selected == AdaptivePace.MODERE,
-            enabled = enabled,
-            onClick = { onPaceChange(AdaptivePace.MODERE) },
-            modifier = Modifier.weight(1f)
-        )
-        PaceOption(
-            label = stringResource(R.string.adapt_pace_dynamic),
-            selected = selected == AdaptivePace.DYNAMIQUE,
-            enabled = enabled,
-            onClick = { onPaceChange(AdaptivePace.DYNAMIQUE) },
-            modifier = Modifier.weight(1f)
-        )
-    }
-}
-
-@Composable
-private fun PaceOption(
-    label: String,
-    selected: Boolean,
-    enabled: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(10.dp))
-            .background(
-                when {
-                    !enabled -> OssmOnSurface.copy(alpha = 0.06f)
-                    selected -> OssmPrimary.copy(alpha = 0.28f)
-                    else -> OssmGlass
-                }
-            )
-            .border(
-                1.dp,
-                if (selected) OssmPrimary else OssmGlassBorder,
-                RoundedCornerShape(10.dp)
-            )
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(vertical = 10.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            label,
-            color = when {
-                !enabled -> OssmOnSurface.copy(alpha = 0.35f)
-                selected -> OssmPrimaryLight
-                else -> OssmOnSurface.copy(alpha = 0.7f)
-            },
-            fontSize = 12.sp,
+            lineHeight = 16.sp,
             fontWeight = FontWeight.SemiBold
         )
+        if (blocked) {
+            Text(
+                stringResource(R.string.ui2_remote_blocked_zero),
+                color = OssmWarning,
+                fontSize = 12.sp,
+                lineHeight = 16.sp
+            )
+        }
+        Text(
+            if (live.isEmpty()) {
+                stringResource(R.string.ui2_remote_live_waiting)
+            } else {
+                stringResource(R.string.ui2_remote_live_prefix, live.joinToString(" · "))
+            },
+            color = OssmOnSurface.copy(alpha = 0.85f),
+            fontSize = 12.sp,
+            lineHeight = 16.sp
+        )
+    }
+}
+
+/** Quiet period after a local slider edit before external state may overwrite the drafts. */
+internal const val CONTROL_DRAFT_QUIET_MS = 250L
+
+/**
+ * Tracks the last local slider edit (plain fields: written on every drag tick without
+ * triggering recomposition) and remote-session transitions for the ControlScreen draft sync.
+ */
+internal class ControlDraftEditClock(private val quietMs: Long = CONTROL_DRAFT_QUIET_MS) {
+    private var lastLocalEditAt = Long.MIN_VALUE
+    private var lastSessionActive: Boolean? = null
+
+    fun markLocalEdit(uptimeMillis: Long) {
+        lastLocalEditAt = uptimeMillis
+    }
+
+    /** Remaining wait before external values may replace the drafts (0 = apply now). */
+    fun remainingQuietMs(uptimeMillis: Long): Long {
+        if (lastLocalEditAt == Long.MIN_VALUE) return 0L
+        return (lastLocalEditAt + quietMs - uptimeMillis).coerceIn(0L, quietMs)
+    }
+
+    /** True when the remote-session flag changed since the last sync (apply immediately). */
+    fun consumeSessionChange(active: Boolean): Boolean {
+        val previous = lastSessionActive
+        lastSessionActive = active
+        return previous != null && previous != active
     }
 }

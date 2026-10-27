@@ -8,13 +8,18 @@ import androidx.core.content.FileProvider
 import java.io.File
 import java.io.InputStream
 
-private const val RECEIVED_APK_FILE_NAME = "received-ossm.apk"
-private const val RECEIVED_APK_STAGING_FILE_NAME = "received-ossm.apk.part"
+private const val RECEIVED_APK_FILE_PREFIX = "received-ossm-"
+private const val RECEIVED_APK_FILE_EXTENSION = ".apk"
+private const val RECEIVED_APK_STAGING_FILE_SUFFIX = "$RECEIVED_APK_FILE_EXTENSION.part"
+private const val RECEIVED_APK_CACHE_DIRECTORY = "updates"
 
 fun receiveAndInstallSharedApk(context: Context, sharedIntent: Intent): Intent? {
     val sourceUri = sharedApkUri(sharedIntent) ?: return null
     val source = context.contentResolver.openInputStream(sourceUri) ?: return null
-    val copiedApk = copyReceivedApkToCache(source, context.cacheDir)
+    val copiedApk = copyReceivedApkToCache(
+        source,
+        File(context.cacheDir, RECEIVED_APK_CACHE_DIRECTORY).apply { mkdirs() }
+    )
     val copiedApkUri = FileProvider.getUriForFile(
         context,
         "${context.packageName}.fileprovider",
@@ -38,12 +43,23 @@ internal fun sharedApkUri(intent: Intent): Uri? {
 }
 
 internal fun copyReceivedApkToCache(source: InputStream, cacheDir: File): File {
-    val staging = File(cacheDir, RECEIVED_APK_STAGING_FILE_NAME)
-    val destination = File(cacheDir, RECEIVED_APK_FILE_NAME)
-    source.use { input ->
-        staging.outputStream().use(input::copyTo)
+    val cacheDirectoryReady = cacheDir.isDirectory ||
+        (cacheDir.mkdirs() && cacheDir.isDirectory)
+    check(cacheDirectoryReady) { "Unable to create APK cache directory: $cacheDir" }
+
+    val staging = File.createTempFile(RECEIVED_APK_FILE_PREFIX, RECEIVED_APK_STAGING_FILE_SUFFIX, cacheDir)
+    val destination = File(
+        cacheDir,
+        "${staging.name.removeSuffix(RECEIVED_APK_STAGING_FILE_SUFFIX)}$RECEIVED_APK_FILE_EXTENSION"
+    )
+
+    try {
+        source.use { input ->
+            staging.outputStream().use(input::copyTo)
+        }
+        check(staging.renameTo(destination)) { "Unable to finalize received APK" }
+        return destination
+    } finally {
+        staging.delete()
     }
-    staging.copyTo(destination, overwrite = true)
-    staging.delete()
-    return destination
 }

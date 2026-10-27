@@ -26,7 +26,6 @@ sealed interface UpdaterStatus {
 @HiltViewModel
 class UpdaterViewModel @Inject constructor(
     private val repository: UpdateRepository,
-    private val periodicUpdateScheduler: PeriodicUpdateScheduler,
     @ApplicationContext private val context: android.content.Context
 ) : ViewModel() {
     private val status = MutableStateFlow<UpdaterStatus>(UpdaterStatus.Idle)
@@ -35,11 +34,6 @@ class UpdaterViewModel @Inject constructor(
         viewModelScope,
         kotlinx.coroutines.flow.SharingStarted.Eagerly,
         ""
-    )
-    val periodicCheckEnabled = repository.periodicCheckEnabled.stateIn(
-        viewModelScope,
-        kotlinx.coroutines.flow.SharingStarted.Eagerly,
-        false
     )
 
     fun checkOnStartup() = viewModelScope.launch {
@@ -50,11 +44,6 @@ class UpdaterViewModel @Inject constructor(
 
     fun saveManualUrl(url: String) = viewModelScope.launch {
         repository.saveManualUrl(url)
-    }
-
-    fun setPeriodicCheckEnabled(enabled: Boolean) = viewModelScope.launch {
-        repository.setPeriodicCheckEnabled(enabled)
-        periodicUpdateScheduler.sync(enabled)
     }
 
     fun download(manifest: UpdateManifest) = viewModelScope.launch {

@@ -15,11 +15,14 @@
 #include "config.hpp"
 #include "gpio.hpp"
 #include "ossm/OSSM.h"
+#include "ossm/state/actions.h"
 #include "pairing.hpp"
 #include "patterns.hpp"
 #include "rename.hpp"
 #include "services/communication/queue.h"
+#include "services/communication/ble_remote_control.h"
 #include "services/led.h"
+#include "services/stepper.h"
 #include "state.hpp"
 #include "wifi.hpp"
 
@@ -33,11 +36,94 @@ NimBLECharacteristic* pCommandCharacteristic = nullptr;
 NimBLECharacteristic* pResistanceTelemetryCharacteristic = nullptr;
 
 static resistance_protocol::Config resistanceConfig{};
+ble_remote_control::Lease bleRemoteControlLease{};
 
 static long lostConnectionTime = 0;
 static int speedOnLostConnection = 0;
 static const unsigned long RAMP_DURATION_MS =
     2000;  // Duration for speed ramp to zero
+
+namespace {
+
+void stopBleRemoteControlLease(const char* reason) {
+    bleRemoteControlLease.clear();
+    stopLiveSmoothOutOfBand();
+    if (ossm != nullptr) ossm->ble_click("set:speed:0");
+    ossmEmergencyStop();
+    if (ossm != nullptr) ossm->ble_click("go:menu");
+    ossmSetNotHomed();
+    ESP_LOGW(NIMBLE_TAG, "Remote-control lease stopped: %s", reason);
+}
+
+}
+
+bool bleRemoteControlCommandAllowed(uint16_t connectionHandle, uint32_t nowMs) {
+    if (bleRemoteControlLease.expired(nowMs)) {
+        stopBleRemoteControlLease("watchdog_timeout");
+        return false;
+    }
+    return !bleRemoteControlLease.active() ||
+           bleRemoteControlLease.isOwner(connectionHandle);
+}
+
+bool handleBleRemoteControlCommand(const std::string& command,
+                                   NimBLEConnInfo& connInfo,
+                                   NimBLECharacteristic* characteristic) {
+    const uint16_t connectionHandle = connInfo.getConnHandle();
+    const uint32_t nowMs = millis();
+    if (bleRemoteControlLease.expired(nowMs)) {
+        stopBleRemoteControlLease("watchdog_timeout");
+    }
+    if (command == "remote:claim") {
+        if (usbSerialClaimed()) {
+            characteristic->setValue("fail:usb-active");
+            return false;
+        }
+        const bool authenticated = connInfo.isBonded() && connInfo.isEncrypted();
+        if (!bleRemoteControlLease.claim(connectionHandle, authenticated, nowMs)) {
+            characteristic->setValue(authenticated ? "fail:remote-busy"
+                                                   : "fail:remote-auth-required");
+            return false;
+        }
+        characteristic->setValue("ok:remote:claimed");
+        return true;
+    }
+    if (command == "remote:heartbeat") {
+        if (!bleRemoteControlLease.heartbeat(connectionHandle, nowMs)) {
+            stopBleRemoteControlLease("invalid_heartbeat");
+            characteristic->setValue("fail:remote-lease-invalid");
+            return false;
+        }
+        characteristic->setValue("ok:remote:heartbeat");
+        return true;
+    }
+    if (command == "remote:release") {
+        if (!bleRemoteControlLease.release(connectionHandle)) {
+            characteristic->setValue("fail:remote-lease-invalid");
+            return false;
+        }
+        stopBleRemoteControlLease("released");
+        characteristic->setValue("ok:remote:released");
+        return true;
+    }
+    characteristic->setValue("fail:remote-command");
+    return false;
+}
+
+namespace {
+
+// Several phones may drive the machine at once: keep advertising while a slot is free.
+constexpr int kMaxBleClients = CONFIG_BT_NIMBLE_MAX_CONNECTIONS;
+
+void keepAdvertisingWhileSlotsFree(NimBLEServer* server) {
+    if (server == nullptr) return;
+    NimBLEAdvertising* advertising = NimBLEDevice::getAdvertising();
+    if (advertising == nullptr || advertising->isAdvertising()) return;
+    if (server->getConnectedCount() >= kMaxBleClients) return;
+    NimBLEDevice::startAdvertising();
+}
+
+}
 
 double easeInOutSine(double t) {
     return 0.5 * (1 + sin(3.1415926 * (t - 0.5)));
@@ -57,6 +143,9 @@ class ServerCallbacks : public NimBLEServerCallbacks {
         }
 
         lostConnectionTime = 0;
+
+        // Connectable advertising stops on connect; resume it so another phone can join.
+        keepAdvertisingWhileSlotsFree(pServer);
     }
 
     void onDisconnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo,
@@ -66,25 +155,29 @@ class ServerCallbacks : public NimBLEServerCallbacks {
         ESP_LOGI(NIMBLE_TAG, "Connection count: %d",
                  pServer->getConnectedCount());
 
+        if (bleRemoteControlLease.disconnected(connInfo.getConnHandle())) {
+            stopBleRemoteControlLease("disconnected");
+        }
+
         // Set BLE connection status to false when no connections remain
         if (ossm && pServer->getConnectedCount() == 0) {
             ossm->setBLEConnectionStatus(false);
             ossm->ble_click("go:menu");
         }
 
-        // Capture current speed when connection is lost
-        speedOnLostConnection = ossm->getSpeed();
-        ESP_LOGI(NIMBLE_TAG, "Speed on disconnect: %d", speedOnLostConnection);
-
-        // Restart advertising when client disconnects
         if (pServer->getConnectedCount() == 0) {
+            // Last phone gone: capture the speed for the safety ramp-down.
+            speedOnLostConnection = ossm->getSpeed();
+            ESP_LOGI(NIMBLE_TAG, "Speed on disconnect: %d",
+                     speedOnLostConnection);
             ESP_LOGI(NIMBLE_TAG,
                      "No connections remaining, restarting advertising");
             NimBLEDevice::setDeviceName(getDeviceName());
-            pServer->startAdvertising();
+            lostConnectionTime = millis();
         }
 
-        lostConnectionTime = millis();
+        // A slot just freed up: make sure the machine is visible again.
+        keepAdvertisingWhileSlotsFree(pServer);
     }
 
     void onMTUChange(uint16_t MTU, NimBLEConnInfo& connInfo) override {
@@ -108,6 +201,10 @@ class ResistanceConfigCallbacks : public NimBLECharacteristicCallbacks {
 class LiveSmoothCallbacks : public NimBLECharacteristicCallbacks {
     void onWrite(NimBLECharacteristic* characteristic,
                  NimBLEConnInfo& connInfo) override {
+        if (usbSerialClaimed()) return;
+        if (!bleRemoteControlCommandAllowed(connInfo.getConnHandle(), millis())) {
+            return;
+        }
         const std::string value = characteristic->getValue();
         live_smooth::Packet packet{};
         if (live_smooth::decode(
@@ -186,15 +283,13 @@ void nimbleLoop(void* pvParameters) {
     uint32_t lastResistanceTelemetryTime = 0;
     uint16_t resistanceTelemetrySequence = 0;
     while (true) {
-        // Check if we should be advertising (no connections)
+        if (bleRemoteControlLease.expired(millis())) {
+            stopBleRemoteControlLease("watchdog_timeout");
+        }
+        // Stay discoverable while a connection slot is free.
+        keepAdvertisingWhileSlotsFree(pServer);
+
         if (pServer->getConnectedCount() == 0) {
-            // If not advertising and no connections, restart advertising
-            if (!pServer->getAdvertising()) {
-                ESP_LOGI(NIMBLE_TAG,
-                         "No connections and not advertising, restarting "
-                         "advertising");
-                pServer->startAdvertising();
-            }
 
             if (lostConnectionTime > 0) {
                 // Skip ramp-down if speed was already zero when connection was

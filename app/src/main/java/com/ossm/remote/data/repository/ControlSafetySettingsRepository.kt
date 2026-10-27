@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -53,30 +54,52 @@ class ControlSafetySettingsRepository @Inject constructor(
         prefs[DEPTH_LIMIT_MAX] ?: 1f
     }
 
-    /** Mode « à l'écoute » : le micro biaise le mode aléatoire vers le haut. Désactivé par défaut. */
-    val listeningModeEnabled: Flow<Boolean> = context.controlSafetyDataStore.data.map { prefs ->
-        prefs[LISTENING_MODE_ENABLED] ?: false
-    }
+    /** Inversion du sens du mode Live (streaming). false = mapping inverse (100 - raw). */
+    val liveInvertEnabled: Flow<Boolean> = context.controlSafetyDataStore.data
+        .map { prefs ->
+            prefs[LIVE_INVERT_ENABLED] ?: false
+        }
 
-    /** Inversion du sens du mode Live (streaming). false = mapping direct (stream:0=home). */
-    val liveInvertEnabled: Flow<Boolean> = context.controlSafetyDataStore.data.map { prefs ->
-        prefs[LIVE_INVERT_ENABLED] ?: false
+    val precisionOverrides: Flow<Map<String, Boolean>> = context.controlSafetyDataStore.data.map { prefs ->
+        prefs.asMap().mapNotNull { (key, value) ->
+            if (key.name.startsWith(PRECISION_ENABLED_PREFIX) && value is Boolean) {
+                key.name.removePrefix(PRECISION_ENABLED_PREFIX) to value
+            } else {
+                null
+            }
+        }.toMap()
     }
 
     val liveAccelerationPercent: Flow<Int> = context.controlSafetyDataStore.data.map { prefs ->
         normalizeLiveAcceleration(prefs[LIVE_ACCELERATION_PERCENT] ?: DEFAULT_LIVE_ACCELERATION_PERCENT)
     }
 
-    val listeningCeiling: Flow<Float> = context.controlSafetyDataStore.data.map { prefs ->
-        prefs[LISTENING_SPEED_MAXIMUM_V2] ?: 1f
+    /** Naturel optional AI planner: disabled by default, no built-in address. */
+    val naturalAiEnabled: Flow<Boolean> = context.controlSafetyDataStore.data.map { prefs ->
+        prefs[NATURAL_AI_ENABLED] ?: false
     }
 
-    val listeningTargetSpeedEnabled: Flow<Boolean> = context.controlSafetyDataStore.data.map { prefs ->
-        prefs[LISTENING_TARGET_SPEED_ENABLED] ?: false
+    val naturalAiAddress: Flow<String> = context.controlSafetyDataStore.data.map { prefs ->
+        prefs[NATURAL_AI_ADDRESS] ?: ""
     }
 
-    val listeningTargetDepthEnabled: Flow<Boolean> = context.controlSafetyDataStore.data.map { prefs ->
-        prefs[LISTENING_TARGET_DEPTH_ENABLED] ?: false
+    /** "Passer par le relais de raisonnement (PC)": port 11435 + think:true. Off by default. */
+    val naturalAiReasoningRelay: Flow<Boolean> = context.controlSafetyDataStore.data.map { prefs ->
+        prefs[NATURAL_AI_REASONING_RELAY] ?: false
+    }
+
+    /** Voix depth range (2.3.28), fractions of the full stroke; intersected with the limits. */
+    val voiceDepthMin: Flow<Float> = context.controlSafetyDataStore.data.map { prefs ->
+        prefs[VOICE_DEPTH_MIN] ?: 0f
+    }
+
+    val voiceDepthMax: Flow<Float> = context.controlSafetyDataStore.data.map { prefs ->
+        prefs[VOICE_DEPTH_MAX] ?: 1f
+    }
+
+    /** 2.3.29 "STOP rapide par mot court" (Voix): ON by default (safety). */
+    val voiceShortWordStop: Flow<Boolean> = context.controlSafetyDataStore.data.map { prefs ->
+        prefs[VOICE_SHORT_WORD_STOP] ?: true
     }
 
     val settings: Flow<ControlSafetySettings> = combine(
@@ -115,9 +138,17 @@ class ControlSafetySettingsRepository @Inject constructor(
         }
     }
 
-    suspend fun setListeningModeEnabled(enabled: Boolean) {
+    suspend fun setVoiceDepthRange(min: Float, max: Float) {
+        val (low, high) = normalizeVoiceDepthRange(min, max)
         context.controlSafetyDataStore.edit { prefs ->
-            prefs[LISTENING_MODE_ENABLED] = enabled
+            prefs[VOICE_DEPTH_MIN] = low
+            prefs[VOICE_DEPTH_MAX] = high
+        }
+    }
+
+    suspend fun setVoiceShortWordStop(enabled: Boolean) {
+        context.controlSafetyDataStore.edit { prefs ->
+            prefs[VOICE_SHORT_WORD_STOP] = enabled
         }
     }
 
@@ -127,27 +158,33 @@ class ControlSafetySettingsRepository @Inject constructor(
         }
     }
 
+    suspend fun setPrecisionEnabled(patternKey: String, enabled: Boolean) {
+        context.controlSafetyDataStore.edit { prefs ->
+            prefs[booleanPreferencesKey(PRECISION_ENABLED_PREFIX + patternKey)] = enabled
+        }
+    }
+
     suspend fun setLiveAccelerationPercent(percent: Int) {
         context.controlSafetyDataStore.edit { prefs ->
             prefs[LIVE_ACCELERATION_PERCENT] = normalizeLiveAcceleration(percent)
         }
     }
 
-    suspend fun setListeningCeiling(value: Float) {
+    suspend fun setNaturalAiEnabled(enabled: Boolean) {
         context.controlSafetyDataStore.edit { prefs ->
-            prefs[LISTENING_SPEED_MAXIMUM_V2] = value.coerceIn(0f, 1f)
+            prefs[NATURAL_AI_ENABLED] = enabled
         }
     }
 
-    suspend fun setListeningTargetSpeedEnabled(enabled: Boolean) {
+    suspend fun setNaturalAiReasoningRelay(enabled: Boolean) {
         context.controlSafetyDataStore.edit { prefs ->
-            prefs[LISTENING_TARGET_SPEED_ENABLED] = enabled
+            prefs[NATURAL_AI_REASONING_RELAY] = enabled
         }
     }
 
-    suspend fun setListeningTargetDepthEnabled(enabled: Boolean) {
+    suspend fun setNaturalAiAddress(address: String) {
         context.controlSafetyDataStore.edit { prefs ->
-            prefs[LISTENING_TARGET_DEPTH_ENABLED] = enabled
+            prefs[NATURAL_AI_ADDRESS] = address.trim().take(200)
         }
     }
 
@@ -172,16 +209,23 @@ class ControlSafetySettingsRepository @Inject constructor(
         private val DEPTH_GUARD_THRESHOLD_PERCENT = intPreferencesKey("depth_abrupt_change_guard_threshold_percent")
         private val DEPTH_LIMIT_MIN = floatPreferencesKey("depth_limit_min")
         private val DEPTH_LIMIT_MAX = floatPreferencesKey("depth_limit_max")
-        private val LISTENING_MODE_ENABLED = booleanPreferencesKey("listening_mode_enabled")
         private val LIVE_INVERT_ENABLED = booleanPreferencesKey("live_invert_enabled")
+        private const val PRECISION_ENABLED_PREFIX = "control_precision_enabled_"
         private val LIVE_ACCELERATION_PERCENT = intPreferencesKey("live_acceleration_percent")
-        private val LISTENING_SPEED_MAXIMUM_V2 = floatPreferencesKey("listening_speed_maximum_v2")
-        private val LISTENING_TARGET_SPEED_ENABLED = booleanPreferencesKey("listening_target_speed_enabled")
-        private val LISTENING_TARGET_DEPTH_ENABLED = booleanPreferencesKey("listening_target_depth_enabled")
         private const val MIN_DEPTH_LIMIT_SPAN = 0.05f
+        private val VOICE_SHORT_WORD_STOP = booleanPreferencesKey("voice_short_word_stop")
+        private val VOICE_DEPTH_MIN = floatPreferencesKey("voice_depth_min")
+        private val VOICE_DEPTH_MAX = floatPreferencesKey("voice_depth_max")
+        private val NATURAL_AI_ENABLED = booleanPreferencesKey("natural_ai_enabled")
+        private val NATURAL_AI_ADDRESS = stringPreferencesKey("natural_ai_address")
+        private val NATURAL_AI_REASONING_RELAY = booleanPreferencesKey("natural_ai_reasoning_relay")
         const val DEFAULT_LIVE_ACCELERATION_PERCENT = 33
         const val MIN_LIVE_ACCELERATION_PERCENT = 10
         const val MAX_LIVE_ACCELERATION_PERCENT = 100
+
+        /** Stored Voix range: ordered, inside 0..1, at least the 5 % span (limits applied later). */
+        internal fun normalizeVoiceDepthRange(min: Float, max: Float): Pair<Float, Float> =
+            com.ossm.remote.voice.VoiceDepthRange.effective(min, max, 0f, 1f)
 
         internal fun normalizeLiveAcceleration(percent: Int): Int =
             percent.coerceIn(MIN_LIVE_ACCELERATION_PERCENT, MAX_LIVE_ACCELERATION_PERCENT)

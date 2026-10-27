@@ -63,6 +63,8 @@ void test_characterizes_existing_state_json_cardinality() {
         "{\\\"timestamp\\\":", ",\\\"state\\\":\\\"", ",\\\"speed\\\":",
         ",\\\"stroke\\\":",   ",\\\"sensation\\\":", ",\\\"depth\\\":",
         ",\\\"buffer\\\":",   ",\\\"pattern\\\":",   ",\\\"position\\\":",
+        ",\\\"remoteControlSafe\\\":true", ",\\\"watchdogMs\\\":",
+        ",\\\"homed\\\":", ",\\\"transport\\\":\\\"",
         ",\\\"sessionId\\\":\\\"",
     };
 

@@ -5,6 +5,8 @@ enum class LiveTargetProducer {
     FUNSCRIPT,
     VIDEO_SYNC,
     RANGE_WIZARD,
+    /** 2.3.29 Voix: timeline targets whose requested duration is honoured (speed-sized steps). */
+    VOICE,
 }
 
 data class StrokeEngineCommand(
