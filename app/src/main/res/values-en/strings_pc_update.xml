@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="pc_update_title">UPDATE FROM THE PC</string>
+    <string name="pc_update_hint">The PC publishes the latest APK from a folder (start the server on the PC). The app downloads it, verifies it, then Android asks you to confirm the install.</string>
+    <string name="pc_update_url_label">PC server address</string>
+    <string name="pc_update_url_hint">http://100.x.y.z:8091/</string>
+    <string name="pc_update_url_save">Save address</string>
+    <string name="pc_update_url_invalid">Invalid address. Example: http://100.65.88.40:8091/</string>
+    <string name="pc_update_install">Install the latest version from the PC</string>
+    <string name="pc_update_listen">Development mode: keep listening to the PC</string>
+    <string name="pc_update_listen_hint">Asks the PC every 15 s while the app is in memory; downloads and offers the install as soon as a newer version appears.</string>
+    <string name="pc_update_listening">Listening to the PC…</string>
+    <string name="pc_update_checking">Looking on the PC…</string>
+    <string name="pc_update_unreachable">PC unreachable or nothing published. Is the server running? Is Tailscale active on both devices?</string>
+    <string name="pc_update_current">Already up to date: the PC has nothing newer.</string>
+    <string name="pc_update_downloading">Downloading version %1$s from the PC…</string>
+    <string name="pc_update_rejected">Verification refused: the file is not an APK of this app signed the same way.</string>
+    <string name="pc_update_ready">Version %1$s ready. Android will ask you to confirm the install.</string>
+    <string name="pc_update_install_again">Open the installer</string>
+    <string name="pc_update_error">Unreadable answer from the PC or download failed.</string>
+    <string name="pc_update_channel">Update from the PC</string>
+    <string name="pc_update_notification_title">OSSM update ready</string>
+    <string name="pc_update_notification_text">Version %1$s: tap to install.</string>
+</resources>

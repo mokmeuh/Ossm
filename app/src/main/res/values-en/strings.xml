@@ -41,6 +41,7 @@
     <!-- Random mode (Teasing & Pounding) -->
     <string name="ctl_random_speed">Random speed</string>
     <string name="ctl_random_sensation">Random sensation</string>
+    <string name="ctl_max_sensation">Maximum sensation</string>
     <string name="ctl_random_depth">Random depth</string>
     <string name="ctl_random_preset_title">Edit %1$s %2$d</string>
     <string name="ctl_random_preset_hint">Define the exact range for this preset. A single tap saves the displayed values; a double tap applies them.</string>
@@ -216,6 +217,7 @@
 
     <!-- USB -->
     <string name="ctl_usb_active">USB-C active · OSSM Bluetooth disabled</string>
+    <string name="ctl_usb_recovering">USB lost, reconnecting…</string>
 
     <!-- Internet session -->
     <string name="remote_share">Share link</string>

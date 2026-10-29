@@ -41,6 +41,7 @@
     <!-- Mode aléatoire (Teasing & Pounding) -->
     <string name="ctl_random_speed">Vitesse aléatoire</string>
     <string name="ctl_random_sensation">Sensation aléatoire</string>
+    <string name="ctl_max_sensation">Sensation maximale</string>
     <string name="ctl_random_depth">Profondeur aléatoire</string>
     <string name="ctl_random_preset_title">Modifier %1$s %2$d</string>
     <string name="ctl_random_preset_hint">Définis la plage exacte de ce preset. Un clic sauvegarde les valeurs affichées; un double-clic les applique.</string>
@@ -217,6 +218,7 @@
 
     <!-- USB -->
     <string name="ctl_usb_active">USB-C actif · Bluetooth OSSM désactivé</string>
+    <string name="ctl_usb_recovering">USB perdu, reconnexion…</string>
 
     <!-- Session Internet -->
     <string name="remote_share">Partager le lien</string>

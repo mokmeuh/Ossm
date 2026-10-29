@@ -11,6 +11,13 @@ class OssmApplication : Application() {
     // Éager : la simple injection crée le tracker, qui démarre sa collecte (init).
     @Inject lateinit var sessionStatsTracker: SessionStatsTracker
 
+    // Éager : le récepteur USB doit exister avant tout branchement, même app en arrière-plan
+    // (sinon l'injection paresseuse n'enregistre le récepteur qu'à l'ouverture de l'écran).
+    @Inject lateinit var usbSerialTransport: com.ossm.remote.usb.UsbSerialTransport
+
+    // Éager : le mode « à l'écoute du PC » doit tourner dès le démarrage du processus.
+    @Inject lateinit var pcUpdateController: com.ossm.remote.updater.PcUpdateController
+
     override fun onCreate() {
         super.onCreate()
         registerActivityLifecycleCallbacks(AppForegroundTracker)

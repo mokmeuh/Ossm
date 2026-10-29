@@ -72,6 +72,7 @@ import kotlinx.coroutines.withContext
 class MainActivity : ComponentActivity() {
 
     @Inject lateinit var overlayPreferencesRepository: OverlayPreferencesRepository
+    @Inject lateinit var usbSerialTransport: com.ossm.remote.usb.UsbSerialTransport
 
     private val bleVm: BleViewModel by viewModels()
     private val controlVm: ControlViewModel by viewModels()
@@ -92,6 +93,8 @@ class MainActivity : ComponentActivity() {
         override fun onStart(owner: LifecycleOwner) {
             stopService(Intent(this@MainActivity, OverlayService::class.java))
             OverlayService.manuallyClosed = false
+            // A cable plugged in while the app was away is picked up without restarting the app.
+            usbSerialTransport.rescan()
         }
     }
 
@@ -152,6 +155,7 @@ class MainActivity : ComponentActivity() {
                     profilesVm = profilesVm,
                     updaterVm = updaterVm,
                     voiceAiVm = voiceAiVm,
+                    usbTransport = usbSerialTransport,
                     onControlVisibleChange = { controlScreenVisible = it },
                     onEnableBluetooth = {
                         if (!bleVm.isBluetoothEnabled()) {
@@ -166,13 +170,22 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
+        if (savedInstanceState == null) handleUsbAttachIntent(intent)
         handleSharedApk(intent)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        handleUsbAttachIntent(intent)
         handleSharedApk(intent)
+    }
+
+    /** The system opened the app because the OSSM USB-C cable was plugged in: arm one Live entry. */
+    private fun handleUsbAttachIntent(attachIntent: Intent) {
+        if (attachIntent.action != android.hardware.usb.UsbManager.ACTION_USB_DEVICE_ATTACHED) return
+        usbSerialTransport.noteAttach()
+        usbSerialTransport.rescan()
     }
 
     private fun handleSharedApk(sharedIntent: Intent) {
@@ -238,6 +251,7 @@ fun OssmApp(
     profilesVm: ProfilesViewModel,
     updaterVm: UpdaterViewModel,
     voiceAiVm: com.ossm.remote.viewmodel.VoiceAiViewModel,
+    usbTransport: com.ossm.remote.usb.UsbSerialTransport? = null,
     onControlVisibleChange: (Boolean) -> Unit = {},
     onEnableBluetooth: () -> Unit,
     onQuit: () -> Unit
@@ -251,7 +265,10 @@ fun OssmApp(
     // looks like a disconnection: stay on the current page instead of jumping back to Connexion.
     val flashVm: FirmwareFlashViewModel = hiltViewModel()
     val flashState by flashVm.state.collectAsState()
-    val flashHoldsNavigation = flashState !is FirmwareFlashState.Idle
+    val usbLinkState by (usbTransport?.linkState ?: remember { kotlinx.coroutines.flow.MutableStateFlow(com.ossm.remote.usb.UsbLinkState.Absent) }).collectAsState()
+    // USB recovering looks like a disconnection too: stay on the page instead of jumping to Connexion.
+    val usbRecovering = usbLinkState == com.ossm.remote.usb.UsbLinkState.Recovering
+    val flashHoldsNavigation = flashState !is FirmwareFlashState.Idle || usbRecovering
     val controlUiState by controlVm.uiState.collectAsState()
     val remoteSession by controlVm.remoteSessionView.collectAsState()
     val voiceAiState by voiceAiVm.state.collectAsState()
@@ -330,6 +347,16 @@ fun OssmApp(
             }
         }
         previousConnectionState = connectionState
+    }
+
+    // 2.3.43: OSSM plugged in by USB-C and ready -> Control page + Live (same entry as the manual
+    // choice: slow, verified, no touch target). Once per plug-in; waits for the machine.
+    LaunchedEffect(usbLinkState, machineState, connectionState) {
+        val machineReady = machineState.state != "unknown" && machineState.isReady
+        if (usbTransport?.consumeLiveAutoEntry(machineReady) == true) {
+            pagerState.scrollToPage(controlPageIndex)
+            controlVm.enterLiveFromUsb()
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -576,6 +603,20 @@ fun OssmApp(
                 onDiagnostic = diagnosticsVm::recordCamera,
             )
         }
+    }
+    if (usbRecovering) {
+        Text(
+            text = stringResource(R.string.ctl_usb_recovering),
+            color = OssmOnSurface,
+            fontSize = 13.sp,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(top = 4.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(OssmSurface)
+                .padding(horizontal = 12.dp, vertical = 6.dp)
+        )
     }
     }
 

@@ -29,7 +29,8 @@ enum class RandomTarget {
     SPEED,
     DEPTH_MIN,
     DEPTH_MAX,
-    SENSATION
+    SENSATION,
+    SENSATION_MAX
 }
 
 enum class RandomPresetTarget {
@@ -122,6 +123,8 @@ data class ControlUiState(
     val randDepthMin: Boolean = false,
     val randDepthMax: Boolean = false,
     val randSensation: Boolean = false,
+    // "Max" (Teasing Pounding only): top of the sensation range on advance, bottom on retract.
+    val maxSensation: Boolean = false,
     // Bounds of the random sensation (0..1, 0.5 = neutral), set by the two range bars.
     val randomSensationMin: Float = 0.45f,
     val randomSensationMax: Float = 0.55f,
@@ -226,7 +229,11 @@ data class ControlUiState(
 
     /** Au moins une case du mode aléatoire est active. */
     val anyRandomActive: Boolean
-        get() = randSpeed || randDepthMin || randDepthMax || randSensation
+        get() = randSpeed || randDepthMin || randDepthMax || randSensation || maxSensation
+
+    /** Sensation follows the stroke turnarounds (random draw or Max extremes). */
+    val sensationTurnActive: Boolean
+        get() = randSensation || maxSensation
 }
 
 /**
@@ -244,6 +251,8 @@ class ControlViewModel @Inject constructor(
     val remoteSessionView: StateFlow<RemoteSessionView> = controlSessionStore.remoteSessionView
 
     fun activatePattern(patternKey: String) = controlSessionStore.activatePattern(patternKey)
+
+    fun enterLiveFromUsb() = controlSessionStore.enterLiveFromUsb()
 
     fun requestSpeedChange(value: Float) = controlSessionStore.requestSpeedChange(value)
 

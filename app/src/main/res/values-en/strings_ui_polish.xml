@@ -4,6 +4,7 @@
     <string name="ui2_preset_saved_speed_short">Spd %1$d%%</string>
     <string name="ui2_preset_cd_saved">%1$d%% to %2$d%%, saved speed %3$d%%</string>
     <string name="ui2_random_short">Random</string>
+    <string name="ui2_max_short">Max</string>
 
     <!-- Status banner (Control) -->
     <string name="ui2_status_disconnected_title">OSSM not connected</string>

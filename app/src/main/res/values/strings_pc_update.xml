@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="pc_update_title">MISE À JOUR DEPUIS LE PC</string>
+    <string name="pc_update_hint">Le PC publie le dernier APK d’un dossier (serveur à allumer sur le PC). L’appli le télécharge, le vérifie, puis Android demande la confirmation d’installation.</string>
+    <string name="pc_update_url_label">Adresse du serveur PC</string>
+    <string name="pc_update_url_hint">http://100.x.y.z:8091/</string>
+    <string name="pc_update_url_save">Enregistrer l’adresse</string>
+    <string name="pc_update_url_invalid">Adresse invalide. Exemple : http://100.65.88.40:8091/</string>
+    <string name="pc_update_install">Installer la dernière version du PC</string>
+    <string name="pc_update_listen">Mode développement : rester à l’écoute du PC</string>
+    <string name="pc_update_listen_hint">Interroge le PC toutes les 15 s tant que l’appli est en mémoire ; télécharge et propose l’installation dès qu’une version plus récente apparaît.</string>
+    <string name="pc_update_listening">À l’écoute du PC…</string>
+    <string name="pc_update_checking">Recherche sur le PC…</string>
+    <string name="pc_update_unreachable">PC injoignable ou aucune version publiée. Le serveur est-il allumé ? Tailscale est-il actif sur les deux appareils ?</string>
+    <string name="pc_update_current">Déjà à jour : le PC n’a rien de plus récent.</string>
+    <string name="pc_update_downloading">Téléchargement de la version %1$s depuis le PC…</string>
+    <string name="pc_update_rejected">Vérification refusée : le fichier n’est pas un APK de cette appli signé de la même façon.</string>
+    <string name="pc_update_ready">Version %1$s prête. Android va demander la confirmation d’installation.</string>
+    <string name="pc_update_install_again">Ouvrir l’installation</string>
+    <string name="pc_update_error">Réponse du PC illisible ou téléchargement échoué.</string>
+    <string name="pc_update_channel">Mise à jour depuis le PC</string>
+    <string name="pc_update_notification_title">Mise à jour OSSM prête</string>
+    <string name="pc_update_notification_text">Version %1$s : touchez pour installer.</string>
+</resources>

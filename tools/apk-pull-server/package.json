@@ -1,0 +1,12 @@
+{
+  "name": "apk-pull-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Serveur PC OSSM : publie le plus recent APK d'un dossier pour que l'app vienne le chercher.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "engines": { "node": ">=18" }
+}

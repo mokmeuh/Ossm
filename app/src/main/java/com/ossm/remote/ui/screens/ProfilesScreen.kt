@@ -289,6 +289,7 @@ private fun UpdaterCard(
             }
         }
         LocalOtaSection()
+        PcUpdateSection()
         Text(
             stringResource(R.string.update_ota_title),
             color = OssmOnSurface,

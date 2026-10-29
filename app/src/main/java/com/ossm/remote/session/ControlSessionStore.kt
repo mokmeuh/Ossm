@@ -924,6 +924,23 @@ class ControlSessionStore @Inject constructor(
      * ici sous le même nom : en entrant dans un mode la vitesse est FORCÉE à 0 (la
      * machine ne bouge jamais toute seule) et les tickers du mode précédent sont arrêtés.
      */
+    private var usbLiveEntryJob: Job? = null
+
+    /**
+     * 2.3.43: OSSM plugged in by USB-C and ready: same Live entry as the manual choice (slow,
+     * state-verified entry, no touch target, STOP stays first). Waits for the machine; a new
+     * request replaces the previous one. Nothing else moves by itself.
+     */
+    fun enterLiveFromUsb() {
+        usbLiveEntryJob?.cancel()
+        usbLiveEntryJob = storeScope.launch {
+            val ready = withTimeoutOrNull(15_000) { bleManager.postSetupReady.first { it } }
+            if (ready != true) return@launch
+            if (bleManager.connectionState.value !is BleConnectionState.Connected) return@launch
+            activatePattern(KnownStreamingPattern.key)
+        }
+    }
+
     fun activatePattern(patternKey: String) {
         val pattern = _uiState.value.availablePatterns.firstOrNull { it.key == patternKey } ?: return
         val previousPosition = _uiState.value.streamPositionPercent
@@ -960,6 +977,7 @@ class ControlSessionStore @Inject constructor(
             it.copy(
                 randSpeed = false, randDepthMin = false, randDepthMax = false,
                 randSensation = false,
+                maxSensation = false,
                 randomSpeedCurrent = null,
                 randomDepthMinCurrent = null,
                 randomDepthMaxCurrent = null,
@@ -1690,13 +1708,13 @@ class ControlSessionStore @Inject constructor(
                 RandomTarget.SPEED -> st.copy(randSpeed = enabled)
                 RandomTarget.DEPTH_MIN -> st.copy(randDepthMin = enabled)
                 RandomTarget.DEPTH_MAX -> st.copy(randDepthMax = enabled)
-                RandomTarget.SENSATION -> st.copy(randSensation = enabled)
+                RandomTarget.SENSATION, RandomTarget.SENSATION_MAX -> st.withSensationToggle(target, enabled)
             }
             updated.copy(
                 randomSpeedCurrent = updated.randomSpeedCurrent?.takeIf { updated.randSpeed },
                 randomDepthMinCurrent = updated.randomDepthMinCurrent?.takeIf { updated.randDepthMin },
                 randomDepthMaxCurrent = updated.randomDepthMaxCurrent?.takeIf { updated.randDepthMax },
-                randomSensationCurrent = updated.randomSensationCurrent?.takeIf { updated.randSensation }
+                randomSensationCurrent = updated.randomSensationCurrent?.takeIf { updated.sensationTurnActive }
             )
         }
         if (target == RandomTarget.SENSATION && enabled) {
@@ -1707,8 +1725,18 @@ class ControlSessionStore @Inject constructor(
                     randomSensationMax = RANDOM_SENSATION_START_MAX
                 )
             }
+            sensationRangeUserSet = false
             sensationPhaseAdvance = true
-            randWalkSensation = pickRandomSensation(advance = true, s = _uiState.value)
+            randWalkSensation = pickTurnSensation(advance = true, s = _uiState.value)
+        }
+        if (target == RandomTarget.SENSATION_MAX && enabled) {
+            // Without a range set by the user, Max uses the whole 0..1 scale.
+            if (!sensationRangeUserSet) {
+                _uiState.update { it.copy(randomSensationMin = 0f, randomSensationMax = 1f) }
+            }
+            // Before the first turnaround is detected, start on the advance extreme.
+            sensationPhaseAdvance = true
+            randWalkSensation = pickTurnSensation(advance = true, s = _uiState.value)
         }
         updateTeasingRandomTicker()
     }
@@ -1911,7 +1939,7 @@ class ControlSessionStore @Inject constructor(
         randWalkSpeed = st.speed
         randWalkMin = st.depthMin
         randWalkMax = st.depthMax
-        randWalkSensation = if (st.randSensation) pickRandomSensation(advance = true, s = st) else st.sensation
+        randWalkSensation = if (st.sensationTurnActive) pickTurnSensation(advance = true, s = st) else st.sensation
         // Reset des blocs de vitesse (nouveau cliquet).
         speedBlockEndMs = 0L
         currentBlockSpeed = st.speed
@@ -1987,7 +2015,7 @@ class ControlSessionStore @Inject constructor(
 
                 // Sensation : la valeur est choisie aux retournements de l'actuateur par
                 // [sensationTurnJob] ; ce pas ne fait que la renvoyer avec vitesse/profondeur.
-                val sensation = if (s.randSensation) randWalkSensation else s.sensation
+                val sensation = if (s.sensationTurnActive) randWalkSensation else s.sensation
                 lastRandomStrokeCommand = StrokeEngineCommand(
                     speed = speed,
                     depthMin = rMin,
@@ -2000,7 +2028,7 @@ class ControlSessionStore @Inject constructor(
                         randomSpeedCurrent = speed.takeIf { s.randSpeed },
                         randomDepthMinCurrent = rMin.takeIf { s.randDepthMin },
                         randomDepthMaxCurrent = rMax.takeIf { s.randDepthMax },
-                        randomSensationCurrent = sensation.takeIf { s.randSensation }
+                        randomSensationCurrent = sensation.takeIf { s.sensationTurnActive }
                     )
                 }
 
@@ -2021,10 +2049,12 @@ class ControlSessionStore @Inject constructor(
     fun setRandomSensationRange(min: Float, max: Float) {
         val lo = minOf(min, max).coerceIn(0f, 1f)
         val hi = maxOf(min, max).coerceIn(0f, 1f)
+        sensationRangeUserSet = true
         _uiState.update { it.copy(randomSensationMin = lo, randomSensationMax = hi) }
-        // Keep the value in use inside the new bounds right away.
-        if (_uiState.value.randSensation && randWalkSensation !in lo..hi) {
-            applyTurnSensation(pickRandomSensation(sensationPhaseAdvance, _uiState.value))
+        // Keep the value in use inside the new bounds right away (Max always sits on a bound).
+        val st = _uiState.value
+        if (st.sensationTurnActive && (st.maxSensation || randWalkSensation !in lo..hi)) {
+            applyTurnSensation(pickTurnSensation(sensationPhaseAdvance, st))
         }
     }
 
@@ -2037,10 +2067,12 @@ class ControlSessionStore @Inject constructor(
     @Volatile
     private var sensationPhaseAdvance = true
     private var lastRandomStrokeCommand: StrokeEngineCommand? = null
+    // True once the user moved the sensation range bars (Max then uses that range, else 0..1).
+    private var sensationRangeUserSet = false
 
     private fun updateSensationTurnJob() {
         val st = _uiState.value
-        val wanted = st.randSensation && teasingRandomJob?.isActive == true
+        val wanted = st.sensationTurnActive && teasingRandomJob?.isActive == true
         if (!wanted) {
             sensationTurnJob?.cancel(); sensationTurnJob = null
             return
@@ -2055,7 +2087,7 @@ class ControlSessionStore @Inject constructor(
             var lastTurnMs = android.os.SystemClock.elapsedRealtime()
             while (isActive) {
                 val s = _uiState.value
-                if (!s.randSensation || teasingRandomJob?.isActive != true) break
+                if (!s.sensationTurnActive || teasingRandomJob?.isActive != true) break
                 val now = android.os.SystemClock.elapsedRealtime()
                 var turnTo: Boolean? = null
                 val position = bleManager.machineState.value.positionMm?.takeIf { it.isFinite() }
@@ -2104,8 +2136,8 @@ class ControlSessionStore @Inject constructor(
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main.immediate) {
                         val current = _uiState.value
                         // Re-checked on the main thread: STOP/disable may have happened meanwhile.
-                        if (current.randSensation && teasingRandomJob?.isActive == true) {
-                            applyTurnSensation(pickRandomSensation(turn, current))
+                        if (current.sensationTurnActive && teasingRandomJob?.isActive == true) {
+                            applyTurnSensation(pickTurnSensation(turn, current))
                         }
                     }
                 }
@@ -2116,7 +2148,7 @@ class ControlSessionStore @Inject constructor(
 
     private fun applyTurnSensation(value: Float) {
         randWalkSensation = value
-        _uiState.update { it.copy(randomSensationCurrent = value.takeIf { _ -> it.randSensation }) }
+        _uiState.update { it.copy(randomSensationCurrent = value.takeIf { _ -> it.sensationTurnActive }) }
         lastRandomStrokeCommand?.let { last ->
             val command = last.copy(sensation = value)
             lastRandomStrokeCommand = command
@@ -2127,6 +2159,21 @@ class ControlSessionStore @Inject constructor(
     private fun estimatedHalfStrokeMs(s: ControlUiState): Long {
         val speedPercent = (((s.randomSpeedCurrent ?: s.speed) * 100f).toInt()).coerceIn(1, 100)
         return progressiveStrokeMs(speedPercent) / 2
+    }
+
+    /** Max: range extreme for the phase (inside the remote envelope); otherwise a random draw. */
+    private fun pickTurnSensation(advance: Boolean, s: ControlUiState): Float {
+        if (!s.maxSensation) return pickRandomSensation(advance, s)
+        if (remoteHostLimits == null) {
+            return sensationExtreme(advance, s.randomSensationMin, s.randomSensationMax)
+        }
+        val env = effectiveRemoteMotionLimits() ?: return SENSATION_NEUTRAL_VALUE
+        return env.clampSensation(
+            sensationExtreme(
+                advance, s.randomSensationMin, s.randomSensationMax,
+                env.sensationMinimum, env.sensationMaximum
+            )
+        )
     }
 
     /** Advance side = above neutral (fast advance), retract side = below (fast retract). */
@@ -4421,6 +4468,7 @@ class ControlSessionStore @Inject constructor(
         // Court + petits pas = promenade fluide sans grands écarts.
         private const val TEASE_RANDOM_MIN_MS = 700L
         // Random sensation synced on the actuator turnarounds.
+        private const val SENSATION_NEUTRAL_VALUE = 0.5f
         private const val SENSATION_TURN_HYSTERESIS_MM = 2f
         private const val SENSATION_TURN_POLL_MS = 30L
         private const val SENSATION_TURN_TIMEOUT_FACTOR = 1.25f

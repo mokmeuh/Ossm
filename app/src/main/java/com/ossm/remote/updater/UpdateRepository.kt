@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -26,6 +27,12 @@ sealed interface UpdateCheckResult {
     data object ServerUnavailable : UpdateCheckResult
 }
 
+sealed interface PcManifestResult {
+    data class Found(val manifest: UpdateManifest) : PcManifestResult
+    data object Invalid : PcManifestResult
+    data object Unreachable : PcManifestResult
+}
+
 @Singleton
 class UpdateRepository @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -37,6 +44,26 @@ class UpdateRepository @Inject constructor(
 
     suspend fun saveManualUrl(url: String) {
         dataStore.edit { prefs -> prefs[MANUAL_URL] = normalizeManifestUrl(url).orEmpty() }
+    }
+
+    val pcServerUrl: Flow<String> = dataStore.data.map { prefs ->
+        normalizePcServerUrl(prefs[PC_SERVER_URL].orEmpty()).orEmpty()
+    }
+
+    val pcListening: Flow<Boolean> = dataStore.data.map { prefs -> prefs[PC_LISTENING] ?: false }
+
+    suspend fun savePcServerUrl(url: String) {
+        dataStore.edit { prefs -> prefs[PC_SERVER_URL] = normalizePcServerUrl(url).orEmpty() }
+    }
+
+    suspend fun savePcListening(enabled: Boolean) {
+        dataStore.edit { prefs -> prefs[PC_LISTENING] = enabled }
+    }
+
+    /** Short timeout, no state change: the PC server is usually off, so failure is the normal case. */
+    suspend fun fetchPcManifest(manifestUrl: String): PcManifestResult = withContext(Dispatchers.IO) {
+        val json = fetchText(manifestUrl, PC_TIMEOUT_MILLIS) ?: return@withContext PcManifestResult.Unreachable
+        UpdateManifestParser.parse(json, manifestUrl)?.let(PcManifestResult::Found) ?: PcManifestResult.Invalid
     }
 
     suspend fun shouldCheckOnStartup(nowMillis: Long = System.currentTimeMillis()): Boolean =
@@ -62,7 +89,7 @@ class UpdateRepository @Inject constructor(
         val destination = File(context.cacheDir, "ossm-update.apk")
         val staging = File(context.cacheDir, "ossm-update.apk.part")
         staging.delete()
-        val connection = openConnection(manifest.apkUrl) ?: return@withContext null
+        val connection = openConnection(manifest.apkUrl, DOWNLOAD_TIMEOUT_MILLIS) ?: return@withContext null
         try {
             connection.inputStream.use { input ->
                 staging.outputStream().use { output -> input.copyTo(output) }
@@ -79,7 +106,7 @@ class UpdateRepository @Inject constructor(
         }
     }
 
-    private fun fetchText(url: String): String? = openConnection(url)?.let { connection ->
+    private fun fetchText(url: String, timeoutMillis: Int = NETWORK_TIMEOUT_MILLIS): String? = openConnection(url, timeoutMillis)?.let { connection ->
         try {
             connection.inputStream.bufferedReader().use { it.readText() }
         } catch (_: Exception) {
@@ -89,10 +116,10 @@ class UpdateRepository @Inject constructor(
         }
     }
 
-    private fun openConnection(url: String): HttpURLConnection? = try {
+    private fun openConnection(url: String, timeoutMillis: Int = NETWORK_TIMEOUT_MILLIS): HttpURLConnection? = try {
         (URL(url).openConnection() as HttpURLConnection).apply {
-            connectTimeout = NETWORK_TIMEOUT_MILLIS
-            readTimeout = NETWORK_TIMEOUT_MILLIS
+            connectTimeout = timeoutMillis
+            readTimeout = timeoutMillis
             instanceFollowRedirects = false
             requestMethod = "GET"
             if (responseCode !in 200..299) throw IllegalStateException("HTTP $responseCode")
@@ -116,6 +143,11 @@ class UpdateRepository @Inject constructor(
 
     private companion object {
         const val NETWORK_TIMEOUT_MILLIS = 5_000
+        // Connect + read: a PC server that does not answer within ~2 s is off, give up silently.
+        const val PC_TIMEOUT_MILLIS = 1_000
+        const val DOWNLOAD_TIMEOUT_MILLIS = 30_000
+        val PC_SERVER_URL = stringPreferencesKey("pc_server_url")
+        val PC_LISTENING = booleanPreferencesKey("pc_listening")
         const val CHECK_INTERVAL_MILLIS = 12 * 60 * 60 * 1_000L
         val MANUAL_URL = stringPreferencesKey("manual_manifest_url")
         val LAST_CHECK_MILLIS = longPreferencesKey("last_update_check_millis")

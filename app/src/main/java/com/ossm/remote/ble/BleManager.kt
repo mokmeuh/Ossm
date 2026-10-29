@@ -333,6 +333,25 @@ class BleManager @Inject constructor(
                 if (ready) activateUsbControl() else deactivateUsbControl()
             }
         }
+        scope.launch {
+            usbSerialTransport.logs.collect { line ->
+                val level = when (line.severity) {
+                    com.ossm.remote.usb.UsbLogSeverity.ERROR -> LogLevel.ERROR
+                    com.ossm.remote.usb.UsbLogSeverity.WARNING -> LogLevel.WARNING
+                    else -> LogLevel.INFO
+                }
+                log(level, "USB", line.message)
+            }
+        }
+        scope.launch {
+            var wasPresent = false
+            usbSerialTransport.linkState.collect { state ->
+                val present = state != com.ossm.remote.usb.UsbLinkState.Absent
+                // The cable was pulled for good: Bluetooth may take over again (never before).
+                if (wasPresent && !present) scheduleKnownDeviceReconnect(RECONNECT_AFTER_DROP_DELAY_MS)
+                wasPresent = present
+            }
+        }
         scheduleKnownDeviceReconnect(RECONNECT_AFTER_RELAUNCH_DELAY_MS)
     }
 
@@ -370,12 +389,18 @@ class BleManager @Inject constructor(
         _machineState.value = MachineState()
         _firmwareRemoteLeaseReadiness.value = FirmwareRemoteLeaseReadiness()
         _connectionState.value = BleConnectionState.Disconnected
-        log(LogLevel.WARNING, "USB", "USB-C retiré — contrôle désarmé")
+        log(LogLevel.WARNING, "USB", "USB perdu, reconnexion… — contrôle désarmé, rien ne reprend seul")
+        // Bluetooth only takes over once the cable is really gone (guard in
+        // scheduleKnownDeviceReconnect); while USB recovers both radios must not compete.
         scheduleKnownDeviceReconnect(RECONNECT_AFTER_DROP_DELAY_MS)
     }
 
     fun startScan() {
         if (usbSerialTransport.ready.value) return
+        if (usbSerialTransport.blocksBleFallback(userRequested = true)) {
+            log(LogLevel.WARNING, "SCAN", "Scan BLE refusé : câble USB présent, reconnexion USB en cours")
+            return
+        }
         if (!hasPermissions()) {
             log(LogLevel.ERROR, "SCAN", "Permissions BLE manquantes")
             return
@@ -522,6 +547,10 @@ class BleManager @Inject constructor(
     }
 
     fun connect(address: String) {
+        if (usbSerialTransport.blocksBleFallback(userRequested = true)) {
+            log(LogLevel.WARNING, "CONNECT", "Connexion BLE refusée : câble USB présent, reconnexion USB en cours")
+            return
+        }
         if (!hasConnectPermission()) {
             log(LogLevel.ERROR, "CONNECT", "Permission Bluetooth connexion manquante")
             return
@@ -647,6 +676,28 @@ class BleManager @Inject constructor(
         if (!manualDisconnectRequested) scheduleKnownDeviceReconnect(RECONNECT_AFTER_DROP_DELAY_MS)
     }
 
+    @Volatile private var serviceDiscoveryRetries = 0
+
+    /**
+     * Clears Android's cached GATT services for this device and discovers again, at most
+     * [MAX_SERVICE_DISCOVERY_RETRIES] times per connection. Returns true when a retry was started.
+     */
+    private fun retryServiceDiscovery(gatt: BluetoothGatt, reason: String): Boolean {
+        if (serviceDiscoveryRetries >= MAX_SERVICE_DISCOVERY_RETRIES) return false
+        serviceDiscoveryRetries++
+        log(
+            LogLevel.WARNING,
+            "GATT",
+            "Services OSSM introuvables ($reason) — cache GATT vidé, nouvel essai $serviceDiscoveryRetries/$MAX_SERVICE_DISCOVERY_RETRIES",
+        )
+        runCatching { gatt.javaClass.getMethod("refresh").invoke(gatt) }
+        scope.launch {
+            delay(SERVICE_DISCOVERY_RETRY_DELAY_MS)
+            if (this@BleManager.gatt === gatt) gatt.discoverServices()
+        }
+        return true
+    }
+
     private val gattCallback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
             if (gatt !== this@BleManager.gatt) {
@@ -658,6 +709,7 @@ class BleManager @Inject constructor(
             when {
                 newState == BluetoothProfile.STATE_CONNECTED && status == BluetoothGatt.GATT_SUCCESS -> {
                     log(LogLevel.INFO, "GATT", "Connecté à $deviceName, découverte services...")
+                    serviceDiscoveryRetries = 0
                     gatt.discoverServices()
                 }
                 newState == BluetoothProfile.STATE_DISCONNECTED -> {
@@ -721,6 +773,7 @@ class BleManager @Inject constructor(
 
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
             if (status != BluetoothGatt.GATT_SUCCESS) {
+                if (retryServiceDiscovery(gatt, "découverte en échec (status=$status)")) return
                 log(LogLevel.ERROR, "GATT", "Découverte services échouée: $status")
                 _connectionState.value = BleConnectionState.Error("Services non trouvés")
                 return
@@ -759,6 +812,11 @@ class BleManager @Inject constructor(
             }
 
             if (commandCharacteristic == null) {
+                // Android keeps a GATT services cache per device. Right after an app update or a
+                // reboot, the first discovery on an automatic reconnect can return an empty or
+                // partial list; a manual connection a moment later works. Refresh and retry
+                // before reporting the device as incompatible.
+                if (retryServiceDiscovery(gatt, "aucune caractéristique d'écriture")) return
                 log(LogLevel.ERROR, "GATT", "Aucune caractéristique d'écriture trouvée")
                 _connectionState.value = BleConnectionState.Error("Périphérique incompatible")
                 return
@@ -2255,6 +2313,10 @@ class BleManager @Inject constructor(
         reconnectJob?.cancel()
         reconnectJob = scope.launch {
             delay(delayMs)
+            if (usbSerialTransport.blocksBleFallback(userRequested = false)) {
+                log(LogLevel.INFO, "USB", "Reconnexion BLE suspendue : câble USB présent")
+                return@launch
+            }
             val knownAddress = readKnownDeviceAddress()
             if (knownAddress.isNullOrBlank()) return@launch
             val action = chooseKnownDeviceReconnectAction(
@@ -2339,6 +2401,8 @@ class BleManager @Inject constructor(
         private const val GATT_WRITE_NO_RESPONSE_GAP_MS = 20L
         private const val RECONNECT_AFTER_RELAUNCH_DELAY_MS = 750L
         private const val RECONNECT_AFTER_DROP_DELAY_MS = 500L
+        private const val MAX_SERVICE_DISCOVERY_RETRIES = 2
+        private const val SERVICE_DISCOVERY_RETRY_DELAY_MS = 400L
         private const val BLE_PREFERENCES = "ossm_ble_connection"
         private const val KNOWN_DEVICE_ADDRESS = "known_ossm_address"
         // Détection de perte de connexion silencieuse (ping RSSI périodique).

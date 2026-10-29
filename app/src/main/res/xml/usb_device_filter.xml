@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- OSSM USB-C bridge: vendor 0x10C4 = 4292, product 0xEA60 = 60000. -->
+    <usb-device vendor-id="4292" product-id="60000" />
+</resources>

@@ -981,7 +981,7 @@ fun ControlScreen(
                                 remoteSession = remoteSession,
                                 gestureCancellationKey = uiState.liveGestureEpoch,
                                 randomCurrent = uiState.randomSensationCurrent,
-                                randomRange = if (isRandomCapable && uiState.randSensation) {
+                                randomRange = if (isRandomCapable && uiState.sensationTurnActive) {
                                     uiState.randomSensationMin..uiState.randomSensationMax
                                 } else null,
                                 onRandomRangeChange = onSensationRandomRangeChange,
@@ -994,6 +994,15 @@ fun ControlScreen(
                                             onCheckedChange = { onRandomToggle(RandomTarget.SENSATION, it) },
                                             visibleLabel = stringResource(R.string.ui2_random_short)
                                         )
+                                        if (shouldShowMaxSensationToggle(activePattern)) {
+                                            RandomToggle(
+                                                label = stringResource(R.string.ctl_max_sensation),
+                                                checked = uiState.maxSensation,
+                                                enabled = slidersEnabled,
+                                                onCheckedChange = { onRandomToggle(RandomTarget.SENSATION_MAX, it) },
+                                                visibleLabel = stringResource(R.string.ui2_max_short)
+                                            )
+                                        }
                                     }
                                 } else null,
                                 onValueChange = { value ->
@@ -1629,6 +1638,10 @@ private fun PatternPickerOverlay(
 
 internal fun shouldShowSensationSlider(pattern: OssmPattern): Boolean =
     pattern.mode == PatternControlMode.STROKE_ENGINE && pattern.key != "simpleStroke"
+
+/** The "Max" sensation option exists only for Teasing Pounding. */
+internal fun shouldShowMaxSensationToggle(pattern: OssmPattern): Boolean =
+    pattern.key == "teasingPounding" && shouldShowSensationSlider(pattern)
 
 internal fun controlHeaderTitle(pattern: OssmPattern?): String = pattern?.name.orEmpty()
 
