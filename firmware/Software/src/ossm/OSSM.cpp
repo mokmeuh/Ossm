@@ -12,6 +12,7 @@
 #include "services/communication/queue.h"
 #include "services/encoder.h"
 #include "services/stepper.h"
+#include "structs/PatternInfo.h"
 
 namespace sml = boost::sml;
 using namespace sml;
@@ -99,7 +100,8 @@ void OSSM::ble_click(String commandString) {
             settings.buffer = command.value;
             break;
         case Commands::setPattern:
-            settings.pattern = static_cast<StrokePatterns>(command.value % 7);
+            settings.pattern = static_cast<StrokePatterns>(
+                pattern_info::wrapIndex(command.value));
             break;
         case Commands::streamPosition:
             // Position (0-100)
@@ -152,6 +154,8 @@ String OSSM::getStateFingerprint() {
 // │   sensation  : integer  — cast from float                         │
 // │   depth      : integer  — cast from float                         │
 // │   pattern    : integer  — StrokePatterns enum ordinal             │
+// │ Extra fields for the phone (ignored by the Dashboard): patternName,│
+// │   patternCount, protocol (see structs/PatternInfo.h).              │
 // │   position   : number   — stepper position in mm (float)          │
 // │   sessionId  : UUID     — regenerated each time a play mode starts  │
 // │                                                                    │
@@ -179,6 +183,9 @@ String OSSM::getCurrentState() {
            ",\"depth\":" + String((int)settings.depth) +
            ",\"buffer\":" + String((int)settings.buffer) +
            ",\"pattern\":" + String(static_cast<int>(settings.pattern)) +
+           ",\"patternName\":\"" + String(pattern_info::nameOf(settings.pattern)) +
+           "\",\"patternCount\":" + String(pattern_info::kCount) +
+           ",\"protocol\":" + String(pattern_info::kStateProtocolVersion) +
            ",\"position\":" + String(positionMm, 2) +
            ",\"remoteControlSafe\":true"
            ",\"watchdogMs\":" +
