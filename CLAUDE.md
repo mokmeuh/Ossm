@@ -28,7 +28,8 @@ Build Android sous Windows : `local.properties` contient `sdk.dir=/home/mikki/An
 .\gradlew.bat installDebug            # package com.ossm.remote.debug
 ```
 - Un seul build Gradle à la fois.
-- `build_install.bat` choisit l'appareil via `adb_target.ps1` (USB puis Wi-Fi). `install.bat` pointe vers un APK figé en 2.3.10 : ne pas s'y fier.
+- `C:\Users\mikki\Tools\adb-menu\adb-menu.cmd` (menu universel, hors dépôt) : choisit le dossier du projet, détecte la compilation, le serveur de mise à jour, l'installation ADB (facultative) et l'incrément de version. Il bascule `local.properties` vers le SDK Windows le temps du build puis le restaure. Adresses adb récentes dans `%LOCALAPPDATA%\adb-menu\`.
+- Mise à jour sans ADB : `tools/apk-pull-server` publie le plus récent APK d'un dossier (port 8091, Tailscale + loopback, arrêt automatique après 10 min ou 2 appareils servis) ; l'app le vérifie à chaque ouverture (Réglages > Mise à jour depuis le PC).
 - Téléphones : S25 Ultra (`SM-S938W`, appareil de validation) et Moto G, en ADB Wi-Fi/Tailscale. Toujours passer `-s <serial>` quand plusieurs sont connectés. Ne pas affirmer un comportement BLE/machine sans test sur l'appareil.
 
 ```powershell
