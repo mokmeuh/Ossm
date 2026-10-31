@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Redesign : modes Naturel et Voix (etapes de l'IA, etats, titres de blocs). -->
+    <string name="modes_natural_step1">Étape 1 sur 2 · Modèle sur le PC</string>
+    <string name="modes_natural_step2">Étape 2 sur 2 · Planification par l\'IA</string>
+    <string name="modes_natural_step2_locked">Disponible une fois le modèle chargé (étape 1).</string>
+    <string name="modes_natural_step2_auto">Vous pouvez la choisir dès maintenant : la connexion se fera automatiquement à la fin du chargement.</string>
+    <string name="modes_state_todo">À faire</string>
+    <string name="modes_state_running">En cours</string>
+    <string name="modes_state_done">Terminée</string>
+    <string name="modes_state_failed">Échec</string>
+    <string name="modes_state_waiting">En attente</string>
+    <string name="modes_state_active">Activée</string>
+    <string name="modes_voice_heard_title">Dernière écoute</string>
+    <string name="modes_voice_mic_paused">Micro en pause</string>
+    <string name="modes_voice_step_current">Étape en cours</string>
+    <string name="modes_natural_speed_label">Vitesse</string>
+    <string name="modes_natural_range_label">Plage</string>
+    <string name="modes_percent">%1$d%%</string>
+    <string name="modes_percent_range">%1$d–%2$d%%</string>
+</resources>

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Redesign: Natural and Voice modes (AI steps, states, block titles). -->
+    <string name="modes_natural_step1">Step 1 of 2 · Model on the PC</string>
+    <string name="modes_natural_step2">Step 2 of 2 · AI planning</string>
+    <string name="modes_natural_step2_locked">Available once the model is loaded (step 1).</string>
+    <string name="modes_natural_step2_auto">You can choose it now: it connects automatically when loading finishes.</string>
+    <string name="modes_state_todo">To do</string>
+    <string name="modes_state_running">In progress</string>
+    <string name="modes_state_done">Done</string>
+    <string name="modes_state_failed">Failed</string>
+    <string name="modes_state_waiting">Waiting</string>
+    <string name="modes_state_active">On</string>
+    <string name="modes_voice_heard_title">Last heard</string>
+    <string name="modes_voice_mic_paused">Microphone paused</string>
+    <string name="modes_voice_step_current">Current step</string>
+    <string name="modes_natural_speed_label">Speed</string>
+    <string name="modes_natural_range_label">Range</string>
+    <string name="modes_percent">%1$d%%</string>
+    <string name="modes_percent_range">%1$d–%2$d%%</string>
+</resources>

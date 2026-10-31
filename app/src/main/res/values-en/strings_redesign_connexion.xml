@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Redesign: connection, diagnostics, statistics, camera sharing. -->
+    <string name="conn_app_title">OSSM Remote</string>
+    <string name="conn_badge_ossm">OSSM</string>
+
+    <!-- Link: icon + word, never colour alone. -->
+    <string name="conn_link_usb">USB</string>
+    <string name="conn_link_bluetooth">Bluetooth</string>
+    <string name="conn_link_offline">Offline</string>
+    <string name="conn_link_connecting">Connecting…</string>
+    <string name="conn_link_scanning">Searching…</string>
+    <string name="conn_link_error">Error</string>
+    <string name="conn_link_emergency">Emergency stop</string>
+    <string name="conn_link_cd">Link: %1$s</string>
+
+    <!-- Device list. -->
+    <string name="conn_device_connect_action">Connect to this device</string>
+    <string name="conn_device_rssi">%1$d dBm</string>
+    <string name="conn_device_signal_strong">Strong signal</string>
+    <string name="conn_device_signal_medium">Medium signal</string>
+    <string name="conn_device_signal_weak">Weak signal</string>
+
+    <!-- Diagnostics log (also used by the camera journal). -->
+    <string name="conn_log_level_debug">Debug</string>
+    <string name="conn_log_level_info">Info</string>
+    <string name="conn_log_level_warning">Warning</string>
+    <string name="conn_log_level_error">Error</string>
+    <string name="conn_diag_copied">Log copied.</string>
+    <string name="conn_diag_empty">No log entries.</string>
+
+    <!-- Statistics. -->
+    <string name="conn_stat_usage_title">Time in use</string>
+    <string name="conn_stat_detail_title">Session details</string>
+    <string name="conn_stat_chart_summary">Active days: %1$d of %2$d · peak %3$s (%4$s)</string>
+    <string name="conn_stat_chart_empty">No activity in this period</string>
+    <string name="conn_stat_chart_cd">Daily usage histogram, from %1$s to %2$s. %3$s</string>
+
+    <!-- Pairing QR code (fallback when the content cannot be encoded). -->
+    <string name="conn_qr_unavailable">QR code unavailable</string>
+</resources>

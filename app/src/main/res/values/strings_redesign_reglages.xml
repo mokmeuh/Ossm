@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Redesign : Réglages (sections repliables, mises à jour, firmware). -->
+    <string name="rg_fold_expanded">Déplié</string>
+    <string name="rg_fold_collapsed">Replié</string>
+    <string name="rg_fold_action_expand">Déplier</string>
+    <string name="rg_fold_action_collapse">Replier</string>
+    <string name="rg_ota_receiving">En écoute : prêt à recevoir</string>
+    <string name="rg_ota_group_receive">Recevoir une mise à jour</string>
+    <string name="rg_ota_group_send">Envoyer une mise à jour</string>
+    <string name="rg_overlay_switch">Activer l\'overlay</string>
+</resources>

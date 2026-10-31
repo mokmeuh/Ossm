@@ -3,54 +3,65 @@ package com.ossm.remote.ui.screens
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.font.FontFamily
-import com.ossm.remote.ui.theme.OssmBackground
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.ossm.remote.R
-import com.ossm.remote.ui.components.GlassCard
-import com.ossm.remote.ui.theme.OssmConnected
-import com.ossm.remote.ui.theme.OssmError
+import com.ossm.remote.ui.components.OssmButton
+import com.ossm.remote.ui.components.OssmButtonKind
+import com.ossm.remote.ui.components.OssmStatusLine
+import com.ossm.remote.ui.components.OssmTone
+import com.ossm.remote.ui.theme.OssmBackground
+import com.ossm.remote.ui.theme.OssmCaption
+import com.ossm.remote.ui.theme.OssmDimens
 import com.ossm.remote.ui.theme.OssmOnSurface
 import com.ossm.remote.ui.theme.OssmOnSurfaceMuted
 import com.ossm.remote.ui.theme.OssmPrimary
-import com.ossm.remote.ui.theme.OssmPrimaryLight
+import com.ossm.remote.ui.theme.OssmSurfaceHigh
+import com.ossm.remote.ui.theme.OssmSurfaceRaised
+import com.ossm.remote.ui.theme.OssmValue
 import com.ossm.remote.usb.FirmwareFlashState
 import com.ossm.remote.usb.FirmwareFlashViewModel
 import com.ossm.remote.usb.FlashFailure
 
-/** Réglages card: writes the machine firmware over USB (OTG cable), from the phone. */
+/** Hauteur maximale du journal du flash avant défilement interne. */
+private val LogMaxHeight = 200.dp
+
+/**
+ * Réglages card: writes the machine firmware over USB (OTG cable), from the phone.
+ *
+ * Carte repliable, fermée par défaut. Elle reste ouverte tant qu'un flash est en cours ou que son
+ * résultat n'est pas acquitté (OK) : progression, erreur et journal ne sont jamais cachés.
+ */
 @Composable
 internal fun FirmwareFlashCard() {
     val viewModel: FirmwareFlashViewModel = hiltViewModel()
@@ -63,7 +74,7 @@ internal fun FirmwareFlashCard() {
     val busy = state is FirmwareFlashState.Preparing ||
         state is FirmwareFlashState.Erasing ||
         state is FirmwareFlashState.Writing
-    val buttonModifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+    var open by rememberSaveable { mutableStateOf(false) }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) viewModel.prepareFile(uri)
@@ -76,53 +87,53 @@ internal fun FirmwareFlashCard() {
         onDispose { view.keepScreenOn = false }
     }
 
-    GlassCard(modifier = Modifier.fillMaxWidth(), padding = 16.dp) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.Usb, null, tint = OssmPrimaryLight, modifier = Modifier.size(24.dp))
-            Spacer(Modifier.width(8.dp))
-            Text(
-                stringResource(R.string.fw_title),
-                color = OssmOnSurface,
-                fontWeight = FontWeight.Bold,
-                fontSize = 14.sp
-            )
-        }
-        Text(stringResource(R.string.fw_hint), color = OssmOnSurfaceMuted, fontSize = 12.sp)
+    SettingsFoldCard(
+        title = stringResource(R.string.fw_title),
+        expanded = open,
+        onExpandedChange = { open = it },
+        icon = Icons.Default.Usb,
+        forceExpanded = state !is FirmwareFlashState.Idle
+    ) {
+        Text(stringResource(R.string.fw_hint), style = OssmCaption, color = OssmOnSurfaceMuted)
 
         when (val current = state) {
             FirmwareFlashState.Idle -> Unit
             FirmwareFlashState.Preparing -> {
-                Text(stringResource(R.string.fw_state_preparing), color = OssmOnSurfaceMuted, fontSize = 12.sp)
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = OssmPrimary)
+                OssmStatusLine(text = stringResource(R.string.fw_state_preparing))
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = OssmPrimary,
+                    trackColor = OssmSurfaceHigh
+                )
             }
             FirmwareFlashState.Erasing -> {
-                Text(stringResource(R.string.fw_state_erasing), color = OssmOnSurfaceMuted, fontSize = 12.sp)
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = OssmPrimary)
+                OssmStatusLine(text = stringResource(R.string.fw_state_erasing))
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = OssmPrimary,
+                    trackColor = OssmSurfaceHigh
+                )
             }
             is FirmwareFlashState.Writing -> {
                 Text(
                     stringResource(R.string.fw_state_writing, current.percent),
-                    color = OssmOnSurface,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold
+                    style = OssmValue,
+                    color = OssmOnSurface
                 )
                 LinearProgressIndicator(
                     progress = { current.percent / 100f },
                     modifier = Modifier.fillMaxWidth(),
-                    color = OssmPrimary
+                    color = OssmPrimary,
+                    trackColor = OssmSurfaceHigh
                 )
             }
             FirmwareFlashState.Complete -> {
-                Text(stringResource(R.string.fw_state_complete), color = OssmConnected, fontSize = 13.sp)
-                TextButton(onClick = viewModel::reset, modifier = Modifier.align(Alignment.End)) {
-                    Text(stringResource(R.string.fw_ok), color = OssmPrimaryLight)
-                }
+                OssmStatusLine(text = stringResource(R.string.fw_state_complete), tone = OssmTone.Ok)
+                AcknowledgeRow(onClick = viewModel::reset)
             }
             is FirmwareFlashState.Failed -> {
-                Text(failureMessage(current), color = OssmError, fontSize = 13.sp)
-                TextButton(onClick = viewModel::reset, modifier = Modifier.align(Alignment.End)) {
-                    Text(stringResource(R.string.fw_ok), color = OssmPrimaryLight)
-                }
+                OssmStatusLine(text = failureMessage(current), tone = OssmTone.Error)
+                AcknowledgeRow(onClick = viewModel::reset)
             }
         }
 
@@ -130,54 +141,81 @@ internal fun FirmwareFlashCard() {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     stringResource(R.string.fw_logs_title),
+                    style = MaterialTheme.typography.labelLarge,
                     color = OssmOnSurface,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 12.sp,
                     modifier = Modifier.weight(1f)
                 )
-                TextButton(onClick = { clipboard.setText(AnnotatedString(logs.joinToString("\n"))) }) {
-                    Text(stringResource(R.string.fw_logs_copy), color = OssmPrimaryLight)
-                }
+                OssmButton(
+                    text = stringResource(R.string.fw_logs_copy),
+                    onClick = { clipboard.setText(AnnotatedString(logs.joinToString("\n"))) },
+                    kind = OssmButtonKind.Text
+                )
             }
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 200.dp)
-                    .background(OssmBackground)
-                    .padding(8.dp)
+                    .heightIn(max = LogMaxHeight)
+                    .background(OssmBackground, RoundedCornerShape(OssmDimens.FieldRadius))
+                    .padding(OssmDimens.Space8)
                     .verticalScroll(logScroll)
             ) {
                 Text(
                     logs.joinToString("\n"),
                     color = OssmOnSurfaceMuted,
-                    fontSize = 10.sp,
-                    fontFamily = FontFamily.Monospace,
-                    lineHeight = 14.sp
+                    style = OssmCaption.copy(fontFamily = FontFamily.Monospace)
                 )
             }
         }
 
         if (!busy) {
-            Button(onClick = viewModel::prepareBundled, modifier = buttonModifier) {
-                Text(stringResource(R.string.fw_flash_bundled))
-            }
-            TextButton(onClick = { picker.launch(arrayOf("*/*")) }, modifier = buttonModifier) {
-                Text(stringResource(R.string.fw_flash_file), color = OssmPrimaryLight)
-            }
+            OssmButton(
+                text = stringResource(R.string.fw_flash_bundled),
+                onClick = viewModel::prepareBundled,
+                modifier = Modifier.fillMaxWidth()
+            )
+            OssmButton(
+                text = stringResource(R.string.fw_flash_file),
+                onClick = { picker.launch(arrayOf("*/*")) },
+                kind = OssmButtonKind.Secondary,
+                modifier = Modifier.fillMaxWidth()
+            )
         }
     }
 
+    // Confirmation obligatoire avant tout flash ; toucher à côté annule.
     pending?.let { firmware ->
         AlertDialog(
             onDismissRequest = viewModel::cancel,
-            title = { Text(stringResource(R.string.fw_confirm_title)) },
-            text = { Text(stringResource(R.string.fw_confirm_body, firmware.label, firmware.sizeKb)) },
+            containerColor = OssmSurfaceRaised,
+            title = { Text(stringResource(R.string.fw_confirm_title), color = OssmOnSurface) },
+            text = {
+                Text(
+                    stringResource(R.string.fw_confirm_body, firmware.label, firmware.sizeKb),
+                    color = OssmOnSurfaceMuted
+                )
+            },
             confirmButton = {
-                TextButton(onClick = viewModel::confirm) { Text(stringResource(R.string.fw_confirm_ok)) }
+                OssmButton(text = stringResource(R.string.fw_confirm_ok), onClick = viewModel::confirm)
             },
             dismissButton = {
-                TextButton(onClick = viewModel::cancel) { Text(stringResource(R.string.fw_cancel)) }
+                OssmButton(
+                    text = stringResource(R.string.fw_cancel),
+                    onClick = viewModel::cancel,
+                    kind = OssmButtonKind.Text
+                )
             }
+        )
+    }
+}
+
+/** Bouton « OK » aligné à droite qui acquitte le résultat du flash. */
+@Composable
+private fun AcknowledgeRow(onClick: () -> Unit) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+        OssmButton(
+            text = stringResource(R.string.fw_ok),
+            onClick = onClick,
+            kind = OssmButtonKind.Secondary
         )
     }
 }

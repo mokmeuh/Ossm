@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Redesign: Settings (collapsible sections, updates, firmware). -->
+    <string name="rg_fold_expanded">Expanded</string>
+    <string name="rg_fold_collapsed">Collapsed</string>
+    <string name="rg_fold_action_expand">Expand</string>
+    <string name="rg_fold_action_collapse">Collapse</string>
+    <string name="rg_ota_receiving">Listening: ready to receive</string>
+    <string name="rg_ota_group_receive">Receive an update</string>
+    <string name="rg_ota_group_send">Send an update</string>
+    <string name="rg_overlay_switch">Enable overlay</string>
+</resources>

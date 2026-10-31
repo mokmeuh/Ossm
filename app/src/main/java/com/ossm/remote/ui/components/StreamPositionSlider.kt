@@ -29,7 +29,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
@@ -45,13 +44,18 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ossm.remote.R
-import com.ossm.remote.ui.theme.OssmAccent
-import com.ossm.remote.ui.theme.OssmSurfaceRaised
+import com.ossm.remote.ui.theme.OssmCaption
+import com.ossm.remote.ui.theme.OssmDepth
+import com.ossm.remote.ui.theme.OssmDimens
+import com.ossm.remote.ui.theme.OssmDisplayValue
+import com.ossm.remote.ui.theme.OssmGlassBorder
 import com.ossm.remote.ui.theme.OssmOnSurface
 import com.ossm.remote.ui.theme.OssmOnSurfaceMuted
 import com.ossm.remote.ui.theme.OssmOutline
-import com.ossm.remote.ui.theme.OssmPrimary
-import com.ossm.remote.ui.theme.OssmPrimaryLight
+import com.ossm.remote.ui.theme.OssmSurface
+import com.ossm.remote.ui.theme.OssmSurfaceHigh
+import com.ossm.remote.ui.theme.OssmSurfaceRaised
+import com.ossm.remote.ui.theme.OssmTextFaint
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
@@ -107,6 +111,7 @@ fun StreamPositionSlider(
         gestureActive = false
     }
 
+    val panelShape = RoundedCornerShape(OssmDimens.CardRadius)
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -120,23 +125,19 @@ fun StreamPositionSlider(
                     Modifier.height(if (compact) 180.dp else 240.dp)
                 }
             )
-            .clip(RoundedCornerShape(20.dp))
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        OssmPrimary.copy(alpha = if (enabled) 0.16f else 0.06f),
-                        OssmAccent.copy(alpha = if (enabled) 0.10f else 0.04f),
-                        OssmSurfaceRaised
-                    )
-                )
-            )
+            // Panneau « instrument » : surface relevée unie, filet de contour, sans dégradé.
+            .clip(panelShape)
+            .background(OssmSurfaceRaised)
             .border(
-                1.dp,
-                if (enabled) OssmOutline else OssmOutline.copy(alpha = 0.4f),
-                RoundedCornerShape(20.dp)
+                OssmDimens.BorderWidth,
+                if (enabled) OssmOutline else OssmGlassBorder,
+                panelShape
             )
-            .padding(horizontal = if (compact) 12.dp else 16.dp, vertical = if (compact) 8.dp else 14.dp),
-        verticalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 8.dp),
+            .padding(
+                horizontal = if (compact) OssmDimens.Space12 else OssmDimens.Space16,
+                vertical = if (compact) OssmDimens.Space8 else OssmDimens.Space12
+            ),
+        verticalArrangement = Arrangement.spacedBy(if (compact) OssmDimens.Space4 else OssmDimens.Space8),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Row(
@@ -146,22 +147,25 @@ fun StreamPositionSlider(
         ) {
             Text(
                 stringResource(liveEndpointLabels().top),
-                color = OssmPrimaryLight,
-                fontSize = 12.sp,
+                color = if (enabled) OssmDepth else OssmTextFaint,
+                style = OssmCaption,
                 fontWeight = FontWeight.Bold
             )
             Text(
                 "${draft.roundToInt()}%",
-                color = if (enabled) OssmOnSurface else OssmOnSurface.copy(alpha = 0.35f),
-                fontSize = if (compact) 20.sp else 24.sp,
-                fontWeight = FontWeight.ExtraBold
+                color = if (enabled) OssmOnSurface else OssmTextFaint,
+                style = if (compact) {
+                    OssmDisplayValue.copy(fontSize = 24.sp, lineHeight = 28.sp)
+                } else {
+                    OssmDisplayValue
+                }
             )
         }
 
         LivePositionTrack(
             valuePercent = draft,
             enabled = enabled,
-            activeColor = OssmAccent,
+            activeColor = OssmDepth,
             onValueChange = {
                 draft = it.coerceIn(0f, 100f)
                 gestureActive = true
@@ -188,7 +192,7 @@ fun StreamPositionSlider(
         Text(
             stringResource(liveEndpointLabels().bottom),
             color = OssmOnSurfaceMuted,
-            fontSize = 12.sp,
+            style = OssmCaption,
             fontWeight = FontWeight.Bold
         )
     }
@@ -347,14 +351,23 @@ private fun LivePositionTrack(
             val trackLeft = horizontalInset
             val trackWidth = (size.width - horizontalInset * 2f).coerceAtLeast(0f)
             val trackRadius = 18.dp.toPx()
+            // Fond de piste sombre cerné d'un filet `outline` (contraste 4:1).
             drawRoundRect(
-                color = activeColor.copy(alpha = if (enabled) 0.24f else 0.10f),
+                color = if (enabled) OssmSurfaceHigh else OssmSurface,
                 topLeft = androidx.compose.ui.geometry.Offset(trackLeft, geometry.top),
                 size = androidx.compose.ui.geometry.Size(trackWidth, geometry.height),
                 cornerRadius = androidx.compose.ui.geometry.CornerRadius(trackRadius)
             )
             drawRoundRect(
-                color = activeColor.copy(alpha = if (enabled) 0.62f else 0.18f),
+                color = if (enabled) OssmOutline else OssmGlassBorder,
+                topLeft = androidx.compose.ui.geometry.Offset(trackLeft, geometry.top),
+                size = androidx.compose.ui.geometry.Size(trackWidth, geometry.height),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(trackRadius),
+                style = Stroke(width = 1.dp.toPx())
+            )
+            // Remplissage sous la barre : le chariot occupe cette part de la course.
+            drawRoundRect(
+                color = activeColor.copy(alpha = if (enabled) 0.45f else 0.18f),
                 topLeft = androidx.compose.ui.geometry.Offset(trackLeft, geometry.thumbY),
                 size = androidx.compose.ui.geometry.Size(trackWidth, geometry.bottom - geometry.thumbY),
                 cornerRadius = androidx.compose.ui.geometry.CornerRadius(trackRadius)
@@ -367,7 +380,7 @@ private fun LivePositionTrack(
                 cornerRadius = androidx.compose.ui.geometry.CornerRadius(thumbHeight / 2f)
             )
             drawRoundRect(
-                color = OssmOnSurface.copy(alpha = if (enabled) 0.7f else 0.2f),
+                color = OssmOnSurface.copy(alpha = if (enabled) 0.9f else 0.25f),
                 topLeft = androidx.compose.ui.geometry.Offset(trackLeft, geometry.thumbY - thumbHeight / 2f),
                 size = androidx.compose.ui.geometry.Size(trackWidth, thumbHeight),
                 cornerRadius = androidx.compose.ui.geometry.CornerRadius(thumbHeight / 2f),
@@ -379,9 +392,9 @@ private fun LivePositionTrack(
             color = if (visibleRange == 0f..100f) {
                 OssmOnSurfaceMuted
             } else {
-                OssmAccent
+                activeColor
             },
-            fontSize = 11.sp,
+            style = OssmCaption,
             fontWeight = if (visibleRange == 0f..100f) FontWeight.Normal else FontWeight.Bold,
             maxLines = 1
         )

@@ -2,6 +2,7 @@ package com.ossm.remote.ui.components
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -12,7 +13,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -26,21 +30,30 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ossm.remote.R
+import com.ossm.remote.ui.theme.OssmDimens
+import com.ossm.remote.ui.theme.OssmGlassBorder
+import com.ossm.remote.ui.theme.OssmOutline
+import com.ossm.remote.ui.theme.OssmSurfaceRaised
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -66,9 +79,13 @@ fun RangeBarControl(
     stepFraction: Float = 0.01f,
     valueText: (Float) -> String = { "${(it * 100f).roundToInt()}%" },
     gestureCancellationKey: Long = 0L,
-    bipolar: BipolarStyle? = null
+    bipolar: BipolarStyle? = null,
+    /** Mot ajouté à l'état lu par TalkBack (ex. « limité »). Sans effet visuel ni sur le geste. */
+    stateSuffix: String? = null
 ) {
     val metrics = LocalControlSliderMetrics.current
+    // Couleur du canal : la sensation (plage signée) porte la sienne.
+    val channelColor = bipolar?.channelColor ?: activeColor
     var selectedIsEnd by remember { mutableStateOf(true) }
     val decrease = stringResource(R.string.control_slider_decrease, label)
     val increase = stringResource(R.string.control_slider_increase, label)
@@ -82,14 +99,14 @@ fun RangeBarControl(
     Row(
         modifier = modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
+        horizontalArrangement = Arrangement.spacedBy(metrics.controlGap)
     ) {
-        RangeStepButton("−", decrease, enabled, activeColor) { step(-1) }
+        RangeStepButton(Icons.Filled.Remove, decrease, enabled, channelColor) { step(-1) }
         RangeBarSlider(
             start = start,
             end = end,
             enabled = enabled,
-            activeColor = activeColor,
+            activeColor = channelColor,
             label = label,
             selectedIsEnd = selectedIsEnd,
             onSelectEnd = { selectedIsEnd = it },
@@ -100,15 +117,16 @@ fun RangeBarControl(
             snapValue = snapValue,
             valueText = valueText,
             gestureCancellationKey = gestureCancellationKey,
-            bipolar = bipolar
+            bipolar = bipolar,
+            stateSuffix = stateSuffix
         )
-        RangeStepButton("+", increase, enabled, activeColor) { step(1) }
+        RangeStepButton(Icons.Filled.Add, increase, enabled, channelColor) { step(1) }
     }
 }
 
 @Composable
 private fun RangeStepButton(
-    symbol: String,
+    icon: ImageVector,
     description: String,
     enabled: Boolean,
     activeColor: Color,
@@ -119,7 +137,13 @@ private fun RangeStepButton(
         modifier = Modifier
             .size(metrics.buttonSize)
             .clip(CircleShape)
-            .background(activeColor.copy(alpha = if (enabled) 0.18f else 0.06f))
+            // Bouton rond secondaire : fond relevé et filet de contour, glyphe à la couleur du canal.
+            .background(OssmSurfaceRaised)
+            .border(
+                width = OssmDimens.BorderWidth,
+                color = if (enabled) OssmOutline else OssmGlassBorder,
+                shape = CircleShape
+            )
             .clearAndSetSemantics {
                 contentDescription = description
                 role = Role.Button
@@ -128,11 +152,11 @@ private fun RangeStepButton(
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            symbol,
-            color = if (enabled) activeColor else activeColor.copy(alpha = 0.3f),
-            fontSize = metrics.symbolSize,
-            fontWeight = FontWeight.Bold
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = if (enabled) activeColor else activeColor.copy(alpha = 0.4f),
+            modifier = Modifier.size(metrics.buttonSize * 0.45f)
         )
     }
 }
@@ -153,7 +177,9 @@ fun RangeBarSlider(
     snapValue: Float? = null,
     valueText: (Float) -> String = { "${(it * 100f).roundToInt()}%" },
     gestureCancellationKey: Long = 0L,
-    bipolar: BipolarStyle? = null
+    bipolar: BipolarStyle? = null,
+    /** Mot ajouté à l'état lu par TalkBack (ex. « limité »). Sans effet visuel ni sur le geste. */
+    stateSuffix: String? = null
 ) {
     val metrics = LocalControlSliderMetrics.current
     val haptics = LocalHapticFeedback.current
@@ -162,9 +188,22 @@ fun RangeBarSlider(
     val onCommit = rememberUpdatedState(onRangeCommit)
     val onSelect = rememberUpdatedState(onSelectEnd)
     val latestSnap = rememberUpdatedState(snapValue)
+    val latestSelectedIsEnd = rememberUpdatedState(selectedIsEnd)
     var draft by remember { mutableStateOf<ClosedFloatingPointRange<Float>?>(null) }
     val shown = draft ?: (start..end)
-    val stateText = "${valueText(shown.start)} – ${valueText(shown.endInclusive)}"
+    // Couleur du canal : la sensation (plage signée) porte la sienne.
+    val channelColor = bipolar?.channelColor ?: activeColor
+    // TalkBack : valeurs des deux bornes, borne réglée par setProgress et par les boutons −/+.
+    val selectedBoundName = stringResource(if (selectedIsEnd) R.string.sld_bound_high else R.string.sld_bound_low)
+    val baseStateText = stringResource(
+        R.string.sld_range_state,
+        valueText(shown.start),
+        valueText(shown.endInclusive),
+        selectedBoundName
+    )
+    val stateText = if (stateSuffix != null) "$baseStateText, $stateSuffix" else baseStateText
+    val selectLowLabel = stringResource(R.string.sld_select_low)
+    val selectHighLabel = stringResource(R.string.sld_select_high)
 
     Canvas(
         modifier = modifier
@@ -173,7 +212,39 @@ fun RangeBarSlider(
             .semantics {
                 contentDescription = label
                 stateDescription = stateText
+                // La borne sélectionnée est celle que setProgress déplace.
+                progressBarRangeInfo = ProgressBarRangeInfo(
+                    ((if (selectedIsEnd) end else start) * 100f).coerceIn(0f, 100f),
+                    0f..100f
+                )
                 if (!enabled) disabled()
+                if (enabled) {
+                    // Mêmes rappels que le glissé : on propose la plage puis on la valide, comme
+                    // un doigt qui se déplace puis se relève.
+                    setProgress { target ->
+                        val fraction = (target / 100f).coerceIn(0f, 1f)
+                        val range = latestRange.value
+                        val next = if (latestSelectedIsEnd.value) {
+                            range.start..fraction.coerceAtLeast(range.start)
+                        } else {
+                            fraction.coerceAtMost(range.endInclusive)..range.endInclusive
+                        }
+                        onChange.value(next.start, next.endInclusive)
+                        onCommit.value(next.start, next.endInclusive)
+                        true
+                    }
+                    // Choix de la borne à régler (équivalent d'un appui sur la barre concernée).
+                    customActions = listOf(
+                        CustomAccessibilityAction(selectLowLabel) {
+                            onSelect.value(false)
+                            true
+                        },
+                        CustomAccessibilityAction(selectHighLabel) {
+                            onSelect.value(true)
+                            true
+                        }
+                    )
+                }
             }
             .pointerInput(enabled, metrics, gestureCancellationKey) {
                 if (!enabled) return@pointerInput
@@ -254,18 +325,13 @@ fun RangeBarSlider(
         val trackHeight = metrics.trackHeight.toPx()
         val radius = trackHeight / 2f
         fun xOf(fraction: Float) = inset + trackWidth * fraction.coerceIn(0f, 1f)
-        drawRoundRect(
-            color = activeColor.copy(alpha = if (enabled) 0.28f else 0.16f),
-            topLeft = Offset(inset, centerY - radius),
-            size = Size(trackWidth, trackHeight),
-            cornerRadius = CornerRadius(radius)
-        )
+        drawSliderTrack(inset, centerY, trackWidth, trackHeight, enabled)
         val activeStart = xOf(shown.start)
         val activeEnd = xOf(shown.endInclusive)
         val alpha = if (enabled) 1f else 0.4f
         if (bipolar == null) {
             drawRoundRect(
-                color = activeColor.copy(alpha = alpha),
+                color = channelColor.copy(alpha = alpha),
                 topLeft = Offset(activeStart, centerY - radius),
                 size = Size((activeEnd - activeStart).coerceAtLeast(0f), trackHeight),
                 cornerRadius = CornerRadius(radius)
@@ -287,7 +353,7 @@ fun RangeBarSlider(
                 size = Size(activeEnd - posStart, trackHeight),
                 cornerRadius = CornerRadius(radius)
             )
-            val tickHalf = metrics.thumbHeight.toPx() * 0.28f
+            val tickHalf = metrics.thumbHeight.toPx() * 0.36f
             drawLine(
                 color = bipolar.centerTickColor.copy(alpha = alpha),
                 start = Offset(centerX, centerY - tickHalf),
@@ -295,35 +361,38 @@ fun RangeBarSlider(
                 strokeWidth = 2.dp.toPx()
             )
         }
-        // Discreet halo on the bar the -/+ buttons move.
-        drawCircle(
-            color = activeColor.copy(alpha = 0.22f),
-            radius = metrics.thumbHeight.toPx() * 0.34f,
-            center = Offset(if (selectedIsEnd) activeEnd else activeStart, centerY)
-        )
         markers.forEach { marker ->
             val x = xOf(marker.fraction)
             drawLine(
                 color = marker.color.copy(alpha = if (enabled) 0.95f else 0.4f),
-                start = Offset(x, centerY - metrics.thumbHeight.toPx() * 0.4f),
-                end = Offset(x, centerY + metrics.thumbHeight.toPx() * 0.4f),
+                start = Offset(x, centerY - metrics.thumbHeight.toPx() * 0.45f),
+                end = Offset(x, centerY + metrics.thumbHeight.toPx() * 0.45f),
                 strokeWidth = 3.dp.toPx()
             )
         }
-        val thumbWidth = metrics.thumbWidth.toPx()
-        val thumbHeight = metrics.thumbHeight.toPx()
-        listOf(shown.start to activeStart, shown.endInclusive to activeEnd).forEach { (value, x) ->
+        // Deux poignées rondes de 28 dp. Celle que les boutons −/+ déplacent est pleine, entourée
+        // d'un halo et dessinée par-dessus ; l'autre est creuse (petit point de couleur) : la
+        // différence tient à la forme, pas seulement à la teinte.
+        val thumbRadius = metrics.thumbWidth.toPx() / 2f
+        val thumbs = listOf(
+            Triple(false, shown.start, activeStart),
+            Triple(true, shown.endInclusive, activeEnd)
+        ).sortedBy { (isEnd, _, _) -> isEnd == selectedIsEnd }
+        thumbs.forEach { (isEnd, value, x) ->
             val barColor = when {
-                bipolar == null -> activeColor
+                bipolar == null -> channelColor
                 value * 100f > bipolar.centerPercent + 0.05f -> bipolar.positiveColor
                 value * 100f < bipolar.centerPercent - 0.05f -> bipolar.negativeColor
-                else -> activeColor
+                else -> channelColor
             }
-            drawRoundRect(
-                color = barColor.copy(alpha = if (enabled) 1f else 0.35f),
-                topLeft = Offset(x - thumbWidth / 2f, centerY - thumbHeight / 2f),
-                size = Size(thumbWidth, thumbHeight),
-                cornerRadius = CornerRadius(thumbWidth / 2f)
+            val selected = isEnd == selectedIsEnd
+            drawSliderThumb(
+                center = Offset(x, centerY),
+                radiusPx = thumbRadius,
+                color = barColor,
+                alpha = alpha,
+                filled = selected,
+                haloColor = if (selected) channelColor else null
             )
         }
     }

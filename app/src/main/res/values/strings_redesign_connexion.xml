@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Redesign : connexion, diagnostic, statistiques, partage caméra. -->
+    <string name="conn_app_title">OSSM Remote</string>
+    <string name="conn_badge_ossm">OSSM</string>
+
+    <!-- Liaison : icône + mot, jamais la couleur seule. -->
+    <string name="conn_link_usb">USB</string>
+    <string name="conn_link_bluetooth">Bluetooth</string>
+    <string name="conn_link_offline">Hors ligne</string>
+    <string name="conn_link_connecting">Connexion…</string>
+    <string name="conn_link_scanning">Recherche…</string>
+    <string name="conn_link_error">Erreur</string>
+    <string name="conn_link_emergency">Arrêt d\'urgence</string>
+    <string name="conn_link_cd">Liaison : %1$s</string>
+
+    <!-- Liste d'appareils. -->
+    <string name="conn_device_connect_action">Se connecter à cet appareil</string>
+    <string name="conn_device_rssi">%1$d dBm</string>
+    <string name="conn_device_signal_strong">Signal fort</string>
+    <string name="conn_device_signal_medium">Signal moyen</string>
+    <string name="conn_device_signal_weak">Signal faible</string>
+
+    <!-- Journal de diagnostic (aussi utilisé par le journal de la caméra). -->
+    <string name="conn_log_level_debug">Debug</string>
+    <string name="conn_log_level_info">Info</string>
+    <string name="conn_log_level_warning">Alerte</string>
+    <string name="conn_log_level_error">Erreur</string>
+    <string name="conn_diag_copied">Journal copié.</string>
+    <string name="conn_diag_empty">Aucune entrée dans le journal.</string>
+
+    <!-- Statistiques. -->
+    <string name="conn_stat_usage_title">Durée d\'utilisation</string>
+    <string name="conn_stat_detail_title">Détail des sessions</string>
+    <string name="conn_stat_chart_summary">Jours actifs : %1$d sur %2$d · pic %3$s (%4$s)</string>
+    <string name="conn_stat_chart_empty">Aucune activité sur la période</string>
+    <string name="conn_stat_chart_cd">Histogramme de l\'utilisation par jour, du %1$s au %2$s. %3$s</string>
+
+    <!-- QR code de jumelage (repli si le contenu ne peut pas être encodé). -->
+    <string name="conn_qr_unavailable">QR code indisponible</string>
+</resources>

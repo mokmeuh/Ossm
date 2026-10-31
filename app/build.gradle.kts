@@ -21,6 +21,14 @@ tasks.register<Copy>("assembleNamedDebugApk") {
     rename { "OSSM-Remote-v$debugVersionName-debug.apk" }
 }
 
+tasks.register<Copy>("assembleNamedRedesignApk") {
+    dependsOn("assembleRedesign")
+    val redesignVersionName = android.defaultConfig.versionName ?: "dev"
+    from(layout.buildDirectory.file("outputs/apk/redesign/app-redesign.apk"))
+    into(layout.buildDirectory.dir("outputs/named-apk"))
+    rename { "OSSM-Redesign-v$redesignVersionName.apk" }
+}
+
 android {
     namespace = "com.ossm.remote"
     compileSdk = 35
@@ -31,8 +39,8 @@ android {
         applicationId = "com.ossm.remote"
         minSdk = 26
         targetSdk = 35
-        versionCode = 194
-        versionName = "2.3.46"
+        versionCode = 196
+        versionName = "2.3.48"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Voix 2.3.27: the on-device models (sherpa-onnx, LiteRT-LM) only target the S25 Ultra.
         ndk {
@@ -47,6 +55,14 @@ android {
             applicationIdSuffix = ".debug"
             isDebuggable = true
             isMinifyEnabled = false
+        }
+        // Variante de comparaison du redesign : s'installe à côté de l'appli actuelle
+        // (com.ossm.remote.redesign), avec son propre nom et sa propre icône.
+        create("redesign") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".redesign"
+            matchingFallbacks += "debug"
+            resValue("string", "app_name", "OSSM Redesign")
         }
         release {
             isMinifyEnabled = true

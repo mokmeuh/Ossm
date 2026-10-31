@@ -2,6 +2,7 @@ package com.ossm.remote.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -20,19 +21,28 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.BluetoothDisabled
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.DragHandle
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
@@ -83,6 +93,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -91,13 +102,19 @@ import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.isTraversalGroup
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.traversalIndex
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -134,7 +151,11 @@ import com.ossm.remote.ui.components.LiveAnchorPad
 import com.ossm.remote.ui.components.LiveLimitIcon
 import com.ossm.remote.ui.components.LiveLimitSide
 import com.ossm.remote.ui.components.LiveLimitsState
-import com.ossm.remote.ui.components.PatternButton
+import com.ossm.remote.ui.components.OssmButton
+import com.ossm.remote.ui.components.OssmButtonKind
+import com.ossm.remote.ui.components.OssmStatusLine
+import com.ossm.remote.ui.components.OssmSwitchRow
+import com.ossm.remote.ui.components.OssmTone
 import com.ossm.remote.ui.components.PrecisionScalarSlider
 import com.ossm.remote.ui.components.ProgressiveSpeedBar
 import com.ossm.remote.ui.components.StopBar
@@ -143,8 +164,16 @@ import com.ossm.remote.ui.components.StopButton
 import com.ossm.remote.ui.components.StreamPositionSlider
 import com.ossm.remote.ui.theme.OssmAccent
 import com.ossm.remote.ui.theme.OssmBackground
+import com.ossm.remote.ui.theme.OssmCaption
 import com.ossm.remote.ui.theme.OssmConnected
+import com.ossm.remote.ui.theme.OssmDepth
+import com.ossm.remote.ui.theme.OssmDimens
+import com.ossm.remote.ui.theme.OssmDisplayValue
 import com.ossm.remote.ui.theme.OssmError
+import com.ossm.remote.ui.theme.OssmSectionTitle
+import com.ossm.remote.ui.theme.OssmSensation
+import com.ossm.remote.ui.theme.OssmSurfaceHigh
+import com.ossm.remote.ui.theme.OssmValue
 import com.ossm.remote.ui.theme.OssmGlass
 import com.ossm.remote.ui.theme.OssmGlassBorder
 import com.ossm.remote.ui.theme.OssmOnSurface
@@ -159,8 +188,10 @@ import com.ossm.remote.remote.RemoteSessionView
 import kotlin.math.roundToInt
 import com.ossm.remote.ui.theme.OssmPrimaryLight
 import com.ossm.remote.ui.theme.OssmSecondary
+import com.ossm.remote.ui.modes.LocalModeContext
+import com.ossm.remote.ui.modes.ModeContext
+import com.ossm.remote.ui.modes.ModeRegistry
 import com.ossm.remote.ui.theme.OssmWarning
-import com.ossm.remote.ui.theme.PatternColors
 import com.ossm.remote.viewmodel.ControlUiState
 import com.ossm.remote.viewmodel.GuardedControl
 import com.ossm.remote.viewmodel.LiveRecordingState
@@ -345,13 +376,25 @@ fun ControlScreen(
         machineError = machineState.isError
     )
     val settingsScrollState = rememberScrollState()
+    val activeModeDescriptor = ModeRegistry.of(uiState.activePattern)
+    val modeContext = remember(activeModeDescriptor, connected, slidersEnabled, remoteSession.active) {
+        ModeContext(
+            mode = activeModeDescriptor,
+            connected = connected,
+            interactive = slidersEnabled,
+            remoteLimited = remoteSession.active
+        )
+    }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(OssmBackground)
     ) {
-        CompositionLocalProvider(LocalControlPrecisionEnabled provides precisionEnabled) {
+        CompositionLocalProvider(
+            LocalControlPrecisionEnabled provides precisionEnabled,
+            LocalModeContext provides modeContext
+        ) {
         CompactControlScaffold(
             showActionRail = showActionRail,
             bare = liveBareScreen,
@@ -361,8 +404,6 @@ fun ControlScreen(
                     showStop = showStopBar,
                     showPause = actionVisibility.showPause,
                     showRotation = !liveBareScreen,
-                    statusKind = null,
-                    machineState = machineState,
                     isPaused = uiState.isPaused,
                     pauseEnabled = connected
                         && uiState.activePattern?.mode != PatternControlMode.STREAMING
@@ -373,16 +414,15 @@ fun ControlScreen(
                 )
             }
         ) { compactLandscape ->
-            // The status is never inserted in the STOP line: a one-row banner under the STOP
-            // bar in portrait; in landscape, where there is no height to spare, a pill in the
-            // card header instead.
-            if (statusKind != null && !compactLandscape) {
-                ControlStatusLine(
-                    kind = statusKind,
-                    machineState = machineState,
-                    boxed = true,
-                    singleLine = true
-                )
+            // Etat de la machine et connexion toujours en haut : une ligne sous le bord de
+            // l'ecran en portrait ; en paysage (pas de hauteur a perdre), une pastille dans
+            // l'en-tete de la carte. Rien n'est insere dans la ligne STOP.
+            if (!compactLandscape) {
+                if (statusKind != null) {
+                    ControlStatusLine(kind = statusKind, machineState = machineState)
+                } else if (!liveBareScreen) {
+                    ControlReadyLine(machineState = machineState)
+                }
             }
 
             // Voix shares the STREAMING entry but has its own scrollable panel (no touch pad).
@@ -393,40 +433,53 @@ fun ControlScreen(
             GlassCard(
                 modifier = Modifier
                     .fillMaxWidth()
-                    // The card always takes the whole height between STOP and the bottom bar.
+                    // The card always takes the whole height between the status line and the STOP rail.
                     .weight(1f)
                     .testTag("control_card"),
-                padding = if (liveBareScreen) 6.dp else if (compactLandscape) 12.dp else 16.dp
+                padding = if (liveBareScreen) {
+                    OssmDimens.Space4
+                } else if (compactLandscape) {
+                    OssmDimens.Space12
+                } else {
+                    OssmDimens.Space16
+                }
             ) {
+                // En-tete : acces a tous les modes, titre/puces du mode actif, outils du mode.
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        .padding(bottom = OssmDimens.Space8),
+                    horizontalArrangement = Arrangement.spacedBy(OssmDimens.Space8),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    PatternOpenerButton(
-                        onClick = { patternPickerOpen = true },
-                        modifier = Modifier
-                    )
+                    PatternOpenerButton(onClick = { patternPickerOpen = true })
+                    // Le nom du mode actif s'affiche a cote du bouton ; aucune rangee a faire defiler.
+                    // Un tap sur le nom ouvre le meme selecteur que le bouton.
                     Text(
                         controlHeaderTitle(activePattern),
                         color = OssmOnSurface,
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
                         textAlign = TextAlign.Start,
                         maxLines = 1,
                         softWrap = false,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier
                             .weight(1f)
-                            .padding(horizontal = 4.dp)
+                            .heightIn(min = OssmDimens.TouchTarget)
+                            .clickable(role = Role.Button) { patternPickerOpen = true }
+                            .wrapContentHeight(Alignment.CenterVertically)
+                            .padding(horizontal = OssmDimens.Space4)
+                            .testTag("control_pattern_title")
                     )
-                    if (compactLandscape && statusKind != null) {
-                        ControlStatusPill(kind = statusKind, machineState = machineState)
+                    if (compactLandscape) {
+                        if (statusKind != null) {
+                            ControlStatusPill(kind = statusKind, machineState = machineState)
+                        } else if (!liveBareScreen) {
+                            ControlReadyPill()
+                        }
                     }
                     if (activePattern != null) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(OssmDimens.Space8)) {
                             if (liveControlActive) {
                                 LiveLimitButton(
                                     side = LiveLimitSide.UPPER,
@@ -449,20 +502,12 @@ fun ControlScreen(
                             }
                             SettingsGearButton(onInfoClick = { showInfoDialog = true })
                             if (connected && actionVisibility.showSave) {
-                                IconButton(
+                                ControlIconButton(
                                     onClick = { showSaveDialog = true },
-                                    modifier = Modifier
-                                        .size(48.dp)
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(OssmSurfaceRaised)
-                                        .border(1.dp, OssmOutline, RoundedCornerShape(12.dp))
-                                ) {
-                                    Icon(
-                                        Icons.Default.Save,
-                                        stringResource(R.string.ctl_save),
-                                        tint = OssmPrimaryLight
-                                    )
-                                }
+                                    contentDescription = stringResource(R.string.ctl_save),
+                                    icon = Icons.Default.Save,
+                                    tag = "control_save"
+                                )
                             }
                         }
                     }
@@ -494,26 +539,32 @@ fun ControlScreen(
                 ) {
                 val bodyViewport = maxHeight
                 val bodyBounded = constraints.hasBoundedHeight
-                // Slider modes never scroll: the controls are sized to the card. Short cards
+                // Slider modes are sized to the card and do not scroll when they fit. Short cards
                 // (landscape) put each slider on one line so all of them stay visible and the
-                // tracks get nearly the whole card width.
+                // tracks get nearly the whole card width. Si le contenu depasse malgre tout
+                // (petit ecran portrait, police agrandie, cases empilees), la colonne defile
+                // en secours plutot que de rogner une commande.
+                val spread = spreadControls && bodyBounded
                 val sliderMetrics = when {
-                    !spreadControls || !bodyBounded -> RegularControlSliderMetrics
-                    compactLandscape || bodyViewport < 400.dp -> InlineControlSliderMetrics
-                    bodyViewport >= 560.dp -> LargeControlSliderMetrics
+                    !spread -> RegularControlSliderMetrics
+                    compactLandscape -> InlineControlSliderMetrics
+                    bodyViewport >= LargeBodyHeight -> LargeControlSliderMetrics
                     else -> RegularControlSliderMetrics
                 }
                 CompositionLocalProvider(LocalControlSliderMetrics provides sliderMetrics) {
                 Column(
                     modifier = when {
                         liveControlActive -> Modifier.fillMaxSize()
-                        spreadControls && bodyBounded -> Modifier.fillMaxSize()
+                        // Hauteur minimale = le corps (curseurs repartis) ; au-dela, defilement de secours.
+                        spread -> Modifier
+                            .fillMaxSize()
+                            .verticalScroll(settingsScrollState)
                         scrollBody -> Modifier
                             .fillMaxWidth()
                             .verticalScroll(settingsScrollState)
                         else -> Modifier.fillMaxWidth()
                     },
-                    verticalArrangement = if (spreadControls) Arrangement.SpaceEvenly else Arrangement.Top
+                    verticalArrangement = if (spread) Arrangement.SpaceEvenly else Arrangement.Top
                 ) {
                 // SAFETY: entering or leaving a remote session recreates the controls, which
                 // cancels any drag/hold in progress WITHOUT committing it. A gesture started on
@@ -529,20 +580,19 @@ fun ControlScreen(
                             else
                                 stringResource(R.string.ctl_wizard_step2),
                             color = OssmOnSurface,
-                            fontSize = 13.sp,
-                            modifier = Modifier.padding(bottom = 10.dp)
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(bottom = OssmDimens.Space12)
                         )
                         if (!uiState.streamingReady) {
-                            Text(
-                                buildString {
+                            OssmStatusLine(
+                                text = buildString {
                                     append(stringResource(R.string.ctl_wizard_preparing, machineState.state.toString()))
                                     if (machineState.isPreflight) {
                                         append("\n" + stringResource(R.string.ctl_knob_to_zero))
                                     }
                                 },
-                                color = OssmWarning.copy(alpha = 0.9f),
-                                fontSize = 11.sp,
-                                modifier = Modifier.padding(bottom = 10.dp)
+                                tone = OssmTone.Warn,
+                                modifier = Modifier.padding(bottom = OssmDimens.Space12)
                             )
                         }
                         StreamPositionSlider(
@@ -557,61 +607,50 @@ fun ControlScreen(
                             compact = compactLandscape,
                             fillAvailable = false
                         )
-                        Spacer(Modifier.height(12.dp))
+                        Spacer(Modifier.height(OssmDimens.Space12))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            horizontalArrangement = Arrangement.spacedBy(OssmDimens.Space12)
                         ) {
-                            Button(
+                            OssmButton(
+                                text = if (wiz.step == 1) {
+                                    stringResource(R.string.ctl_wizard_set_depth)
+                                } else {
+                                    stringResource(R.string.ctl_wizard_set_retract)
+                                },
                                 onClick = onRangeWizardCapture,
-                                enabled = slidersEnabled && uiState.streamingReady,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .heightIn(min = 48.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = OssmConnected)
-                            ) {
-                                Text(
-                                    if (wiz.step == 1) stringResource(R.string.ctl_wizard_set_depth) else stringResource(R.string.ctl_wizard_set_retract),
-                                    textAlign = TextAlign.Center,
-                                    lineHeight = 16.sp
-                                )
-                            }
-                            Button(
+                                modifier = Modifier.weight(1f),
+                                kind = OssmButtonKind.Primary,
+                                enabled = slidersEnabled && uiState.streamingReady
+                            )
+                            OssmButton(
+                                text = stringResource(R.string.ctl_cancel),
                                 onClick = onRangeWizardCancel,
-                                enabled = connected,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .heightIn(min = 48.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = OssmWarning)
-                            ) {
-                                Text(
-                                    stringResource(R.string.ctl_cancel),
-                                    textAlign = TextAlign.Center,
-                                    lineHeight = 16.sp
-                                )
-                            }
+                                modifier = Modifier.weight(1f),
+                                kind = OssmButtonKind.Secondary,
+                                enabled = connected
+                            )
                         }
                         if (wiz.step == 2 && wiz.capturedMax != null) {
-                            Spacer(Modifier.height(8.dp))
-                            Text(
-                                stringResource(R.string.ctl_wizard_depth_set, (wiz.capturedMax * 100).toInt()),
-                                color = OssmConnected,
-                                fontSize = 12.sp
+                            Spacer(Modifier.height(OssmDimens.Space8))
+                            OssmStatusLine(
+                                text = stringResource(R.string.ctl_wizard_depth_set, (wiz.capturedMax * 100).toInt()),
+                                tone = OssmTone.Ok
                             )
                         }
                     }
                     activePattern == null -> {
                         Text(
                             stringResource(R.string.ctl_select_pattern_to_start),
-                            color = OssmOnSurface.copy(alpha = 0.7f),
-                            fontSize = 13.sp
+                            color = OssmOnSurfaceMuted,
+                            style = MaterialTheme.typography.bodyLarge
                         )
                     }
                     activePattern.mode == PatternControlMode.LAUNCH_ONLY -> {
                         Text(
                             stringResource(R.string.ctl_launch_only_hint),
-                            color = OssmOnSurface.copy(alpha = 0.7f),
-                            fontSize = 13.sp
+                            color = OssmOnSurfaceMuted,
+                            style = MaterialTheme.typography.bodyLarge
                         )
                     }
                     activePattern.isVoicePattern() -> {
@@ -626,8 +665,8 @@ fun ControlScreen(
                     }
                     activePattern.mode == PatternControlMode.STREAMING -> {
                         if (!uiState.streamingReady) {
-                            Text(
-                                buildString {
+                            OssmStatusLine(
+                                text = buildString {
                                     append(stringResource(R.string.ctl_live_preparing))
                                     append("\n" + stringResource(R.string.ctl_machine_state, machineState.state.toString()))
                                     machineState.stroke?.let { append("  stroke=$it") }
@@ -637,9 +676,8 @@ fun ControlScreen(
                                         append("\n" + stringResource(R.string.ctl_knob_to_zero_mode))
                                     }
                                 },
-                                color = OssmWarning.copy(alpha = 0.9f),
-                                fontSize = 11.sp,
-                                modifier = Modifier.padding(bottom = 10.dp)
+                                tone = OssmTone.Warn,
+                                modifier = Modifier.padding(bottom = OssmDimens.Space12)
                             )
                         }
                         LiveAnchorPad(
@@ -662,9 +700,10 @@ fun ControlScreen(
                             currentValue = uiState.speed,
                             maxValue = if (remoteSession.active) remoteSession.speedMax else uiState.progressiveMaxSpeed,
                             enabled = slidersEnabled,
-                            onMaxChange = onProgressiveMaxCommit
+                            onMaxChange = onProgressiveMaxCommit,
+                            limited = remoteSession.active
                         )
-                        Spacer(Modifier.height(12.dp))
+                        Spacer(Modifier.height(OssmDimens.Space12))
                         DepthRangeEditor(
                             minValue = depthRangeDraft.start,
                             maxValue = depthRangeDraft.endInclusive,
@@ -672,6 +711,7 @@ fun ControlScreen(
                             positionFraction = positionFraction,
                             randomMinValue = uiState.randomDepthMinCurrent,
                             randomMaxValue = uiState.randomDepthMaxCurrent,
+                            limited = remoteSession.active,
                             onRangeChange = { min, max ->
                                 depthRangeDraft = min..max
                                 draftEditClock.markLocalEdit(android.os.SystemClock.uptimeMillis())
@@ -683,7 +723,7 @@ fun ControlScreen(
                                 onDepthRangeCommit(min, max)
                             }
                         )
-                        Spacer(Modifier.height(8.dp))
+                        Spacer(Modifier.height(OssmDimens.Space8))
                         CenteredSensationSlider(
                             value = sensationDraft,
                             enabled = slidersEnabled,
@@ -701,35 +741,15 @@ fun ControlScreen(
                                 dispatchSensationCommit(value)
                             }
                         )
-                        Spacer(Modifier.height(12.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            androidx.compose.material3.Checkbox(
-                                checked = uiState.chaosAtMax,
-                                onCheckedChange = { onChaosToggle(it) },
-                                enabled = connected,
-                                modifier = Modifier.sizeIn(minWidth = 56.dp, minHeight = 56.dp),
-                                colors = androidx.compose.material3.CheckboxDefaults.colors(
-                                    checkedColor = OssmAccent,
-                                    uncheckedColor = OssmOnSurface.copy(alpha = 0.5f)
-                                )
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Column {
-                                Text(
-                                    stringResource(R.string.ctl_chaos_title),
-                                    color = OssmOnSurface,
-                                    fontSize = 14.sp
-                                )
-                                Text(
-                                    stringResource(R.string.ctl_chaos_hint),
-                                    color = OssmOnSurface.copy(alpha = 0.6f),
-                                    fontSize = 11.sp
-                                )
-                            }
-                        }
+                        Spacer(Modifier.height(OssmDimens.Space8))
+                        // Toute la rangee est cliquable (et plus seulement la case).
+                        OssmSwitchRow(
+                            label = stringResource(R.string.ctl_chaos_title),
+                            checked = uiState.chaosAtMax,
+                            onCheckedChange = { onChaosToggle(it) },
+                            supporting = stringResource(R.string.ctl_chaos_hint),
+                            enabled = connected
+                        )
                     }
                     activePattern.mode == PatternControlMode.NATURAL -> {
                         NaturalControlPanel(
@@ -746,6 +766,7 @@ fun ControlScreen(
                                     positionFraction = positionFraction,
                                     randomMinValue = uiState.naturalDepthMinCurrent,
                                     randomMaxValue = uiState.naturalDepthMaxCurrent,
+                                    limited = remoteSession.active,
                                     onRangeChange = { min, max ->
                                         depthRangeDraft = min..max
                                         draftEditClock.markLocalEdit(android.os.SystemClock.uptimeMillis())
@@ -763,19 +784,13 @@ fun ControlScreen(
                     activePattern.mode == PatternControlMode.AUTO_RANDOM -> {
                         Text(
                             stringResource(R.string.ctl_auto_intro),
-                            color = OssmOnSurface.copy(alpha = 0.7f),
-                            fontSize = 12.sp,
-                            modifier = Modifier.padding(bottom = 10.dp)
+                            color = OssmOnSurfaceMuted,
+                            style = OssmCaption,
+                            modifier = Modifier.padding(bottom = OssmDimens.Space12)
                         )
-                        Text(
-                            stringResource(R.string.ctl_auto_modes_header),
-                            color = OssmPrimaryLight,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.sp
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SectionLabel(stringResource(R.string.ctl_auto_modes_header))
+                        Spacer(Modifier.height(OssmDimens.Space8))
+                        Column(verticalArrangement = Arrangement.spacedBy(OssmDimens.Space8)) {
                             AutoRandomMixablePatterns.forEach { pattern ->
                                 AutoRandomPatternRow(
                                     label = pattern.name,
@@ -784,15 +799,9 @@ fun ControlScreen(
                                 )
                             }
                         }
-                        Spacer(Modifier.height(14.dp))
-                        Text(
-                            stringResource(R.string.ctl_auto_speed_header),
-                            color = OssmPrimaryLight,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.sp
-                        )
-                        Spacer(Modifier.height(6.dp))
+                        Spacer(Modifier.height(OssmDimens.Space16))
+                        SectionLabel(stringResource(R.string.ctl_auto_speed_header))
+                        Spacer(Modifier.height(OssmDimens.Space8))
                         ControlSlider(
                             label = stringResource(R.string.ctl_auto_speed_ceiling),
                             value = if (remoteSession.active) remoteSession.speedMax else uiState.autoMaxSpeed,
@@ -800,29 +809,30 @@ fun ControlScreen(
                             onValueCommit = onAutoMaxSpeedChange,
                             enabled = slidersEnabled,
                             activeColor = OssmPrimary,
-                            gestureCancellationKey = uiState.liveGestureEpoch
+                            gestureCancellationKey = uiState.liveGestureEpoch,
+                            limited = remoteSession.active
                         )
-                        Spacer(Modifier.height(12.dp))
+                        Spacer(Modifier.height(OssmDimens.Space12))
                         ControlSlider(
                             label = stringResource(R.string.ctl_auto_intensity_cap),
                             value = uiState.autoIntensityCap,
                             onValueChange = onAutoIntensityCapChange,
                             onValueCommit = onAutoIntensityCapChange,
                             enabled = slidersEnabled,
-                            activeColor = OssmAccent,
+                            activeColor = OssmWarning,
                             gestureCancellationKey = uiState.liveGestureEpoch
                         )
-                        Spacer(Modifier.height(12.dp))
+                        Spacer(Modifier.height(OssmDimens.Space12))
                         ControlSlider(
                             label = stringResource(R.string.ctl_auto_randomness),
                             value = uiState.autoRandomness,
                             onValueChange = onAutoRandomnessChange,
                             onValueCommit = onAutoRandomnessChange,
                             enabled = slidersEnabled,
-                            activeColor = OssmWarning,
+                            activeColor = OssmSensation,
                             gestureCancellationKey = uiState.liveGestureEpoch
                         )
-                        Spacer(Modifier.height(12.dp))
+                        Spacer(Modifier.height(OssmDimens.Space12))
                         DepthRangeEditor(
                             minValue = depthRangeDraft.start,
                             maxValue = depthRangeDraft.endInclusive,
@@ -830,6 +840,7 @@ fun ControlScreen(
                             positionFraction = positionFraction,
                             randomMinValue = uiState.randomDepthMinCurrent,
                             randomMaxValue = uiState.randomDepthMaxCurrent,
+                            limited = remoteSession.active,
                             onRangeChange = { min, max ->
                                 depthRangeDraft = min..max
                                 draftEditClock.markLocalEdit(android.os.SystemClock.uptimeMillis())
@@ -841,7 +852,7 @@ fun ControlScreen(
                                 onDepthRangeCommit(min, max)
                             }
                         )
-                        Spacer(Modifier.height(12.dp))
+                        Spacer(Modifier.height(OssmDimens.Space12))
                         if (uiState.autoRunning) {
                             GlassCard(
                                 modifier = Modifier.fillMaxWidth(),
@@ -850,13 +861,13 @@ fun ControlScreen(
                                 Text(
                                     stringResource(R.string.ctl_auto_intensity_value, (uiState.autoIntensity * 100).toInt()),
                                     color = OssmConnected,
-                                    fontWeight = FontWeight.Bold
+                                    style = OssmDisplayValue
                                 )
-                                Spacer(Modifier.height(4.dp))
+                                Spacer(Modifier.height(OssmDimens.Space4))
                                 Text(
                                     stringResource(R.string.ctl_auto_running_hint),
-                                    color = OssmOnSurface.copy(alpha = 0.75f),
-                                    fontSize = 12.sp
+                                    color = OssmOnSurfaceMuted,
+                                    style = OssmCaption
                                 )
                             }
                         } else {
@@ -866,43 +877,29 @@ fun ControlScreen(
                                 onValueChange = onAutoInitialIntensityChange,
                                 onValueCommit = onAutoInitialIntensityChange,
                                 enabled = slidersEnabled,
-                                activeColor = OssmConnected,
+                                activeColor = OssmPrimary,
                                 gestureCancellationKey = uiState.liveGestureEpoch
                             )
                         }
-                        Spacer(Modifier.height(12.dp))
+                        Spacer(Modifier.height(OssmDimens.Space12))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            horizontalArrangement = Arrangement.spacedBy(OssmDimens.Space12)
                         ) {
-                            Button(
+                            OssmButton(
+                                text = stringResource(R.string.ctlrd_start),
                                 onClick = onAutoRequestStart,
-                                enabled = slidersEnabled && !uiState.autoRunning && uiState.autoSelectedKeys.isNotEmpty(),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .heightIn(min = 48.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = OssmConnected)
-                            ) {
-                                Text(
-                                    stringResource(R.string.ctl_start),
-                                    textAlign = TextAlign.Center,
-                                    lineHeight = 16.sp
-                                )
-                            }
-                            Button(
+                                modifier = Modifier.weight(1f),
+                                kind = OssmButtonKind.Primary,
+                                enabled = slidersEnabled && !uiState.autoRunning && uiState.autoSelectedKeys.isNotEmpty()
+                            )
+                            OssmButton(
+                                text = stringResource(R.string.ctlrd_stop_mix),
                                 onClick = onAutoStop,
-                                enabled = connected && uiState.autoRunning,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .heightIn(min = 48.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = OssmWarning)
-                            ) {
-                                Text(
-                                    stringResource(R.string.ctl_stop_mix),
-                                    textAlign = TextAlign.Center,
-                                    lineHeight = 16.sp
-                                )
-                            }
+                                modifier = Modifier.weight(1f),
+                                kind = OssmButtonKind.Secondary,
+                                enabled = connected && uiState.autoRunning
+                            )
                         }
                     }
                     else -> {
@@ -930,6 +927,7 @@ fun ControlScreen(
                             currentMarker = uiState.randomSpeedCurrent,
                             displayValue = "${((uiState.randomSpeedCurrent ?: speedDraft) * 100).toInt()}%",
                             displayValueColor = if (uiState.randomSpeedCurrent != null) OssmError else null,
+                            limited = remoteSession.active,
                             headerAccessory = if (isRandomCapable) {
                                 {
                                     RandomToggle(
@@ -942,7 +940,7 @@ fun ControlScreen(
                                 }
                             } else null
                         )
-                        Spacer(Modifier.height(6.dp))
+                        Spacer(Modifier.height(OssmDimens.Space4))
                         DepthRangeEditor(
                             minValue = depthRangeDraft.start,
                             maxValue = depthRangeDraft.endInclusive,
@@ -950,6 +948,7 @@ fun ControlScreen(
                             positionFraction = positionFraction,
                             randomMinValue = uiState.randomDepthMinCurrent,
                             randomMaxValue = uiState.randomDepthMaxCurrent,
+                            limited = remoteSession.active,
                             headerAccessory = if (isRandomCapable) {
                                 {
                                     RandomToggle(
@@ -973,7 +972,7 @@ fun ControlScreen(
                             }
                         )
                         if (shouldShowSensationSlider(activePattern)) {
-                            Spacer(Modifier.height(6.dp))
+                            Spacer(Modifier.height(OssmDimens.Space4))
                             CenteredSensationSlider(
                                 value = sensationDraft,
                                 enabled = slidersEnabled,
@@ -987,34 +986,37 @@ fun ControlScreen(
                                 onRandomRangeChange = onSensationRandomRangeChange,
                                 headerAccessory = if (isRandomCapable) {
                                     {
-                                        RandomToggle(
-                                            label = stringResource(R.string.ctl_random_sensation),
-                                            checked = uiState.randSensation,
-                                            enabled = slidersEnabled,
-                                            onCheckedChange = { onRandomToggle(RandomTarget.SENSATION, it) },
-                                            visibleLabel = stringResource(R.string.ui2_random_short)
-                                        )
-                                        if (shouldShowMaxSensationToggle(activePattern)) {
+                                        // En paysage les deux cases s'empilent : la colonne du libelle est etroite.
+                                        ToggleGroup {
                                             RandomToggle(
-                                                label = stringResource(R.string.ctl_max_sensation),
-                                                checked = uiState.maxSensation,
+                                                label = stringResource(R.string.ctl_random_sensation),
+                                                checked = uiState.randSensation,
                                                 enabled = slidersEnabled,
-                                                onCheckedChange = { onRandomToggle(RandomTarget.SENSATION_MAX, it) },
-                                                visibleLabel = stringResource(R.string.ui2_max_short)
+                                                onCheckedChange = { onRandomToggle(RandomTarget.SENSATION, it) },
+                                                visibleLabel = stringResource(R.string.ui2_random_short)
                                             )
+                                            if (shouldShowMaxSensationToggle(activePattern)) {
+                                                RandomToggle(
+                                                    label = stringResource(R.string.ctl_max_sensation),
+                                                    checked = uiState.maxSensation,
+                                                    enabled = slidersEnabled,
+                                                    onCheckedChange = { onRandomToggle(RandomTarget.SENSATION_MAX, it) },
+                                                    visibleLabel = stringResource(R.string.ui2_max_short)
+                                                )
+                                            }
                                         }
                                     }
                                 } else null,
                                 onValueChange = { value ->
-                                sensationDraft = value
-                                draftEditClock.markLocalEdit(android.os.SystemClock.uptimeMillis())
-                                dispatchSensationLive(value)
-                            },
+                                    sensationDraft = value
+                                    draftEditClock.markLocalEdit(android.os.SystemClock.uptimeMillis())
+                                    dispatchSensationLive(value)
+                                },
                                 onValueCommit = { value ->
-                                sensationDraft = value
-                                draftEditClock.markLocalEdit(android.os.SystemClock.uptimeMillis())
-                                dispatchSensationCommit(value)
-                            }
+                                    sensationDraft = value
+                                    draftEditClock.markLocalEdit(android.os.SystemClock.uptimeMillis())
+                                    dispatchSensationCommit(value)
+                                }
                             )
                         }
                     }
@@ -1031,6 +1033,7 @@ fun ControlScreen(
         if (patternPickerOpen) {
             PatternPickerOverlay(
                 uiState = uiState,
+                railVisible = showActionRail,
                 onPattern = { key ->
                     onPattern(key)
                     patternPickerOpen = false
@@ -1135,6 +1138,11 @@ fun ControlScreen(
     }
 }
 
+/**
+ * Gabarit de l'ecran de controle. Portrait : contenu (statut + carte) en haut, rail STOP /
+ * pause / verrou de rotation fixe en bas, a portee du pouce. Paysage : rail en colonne a
+ * gauche. Le STOP est lu en premier par les lecteurs d'ecran quelle que soit sa place.
+ */
 @Composable
 internal fun CompactControlScaffold(
     modifier: Modifier = Modifier,
@@ -1153,13 +1161,18 @@ internal fun CompactControlScaffold(
             Row(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(start = 4.dp, end = 8.dp, top = 2.dp, bottom = 2.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    .padding(
+                        start = OssmDimens.Space4,
+                        end = OssmDimens.Space8,
+                        top = OssmDimens.Space4,
+                        bottom = OssmDimens.Space4
+                    ),
+                horizontalArrangement = Arrangement.spacedBy(OssmDimens.Space8)
             ) {
-                // Rail just as wide as the round STOP, so the card starts right after it.
+                // Rail just as wide as the STOP, so the card starts right after it.
                 Box(
                     modifier = Modifier
-                        .width(StopBarHeight + 8.dp)
+                        .width(OssmDimens.StopHeight + OssmDimens.Space8)
                         .fillMaxHeight(),
                     contentAlignment = Alignment.Center
                 ) {
@@ -1169,7 +1182,7 @@ internal fun CompactControlScaffold(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight(),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(OssmDimens.Space8),
                     content = { content(true) }
                 )
             }
@@ -1178,30 +1191,48 @@ internal fun CompactControlScaffold(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(
-                        horizontal = if (bare) 4.dp else if (landscape) 8.dp else 16.dp,
-                        vertical = if (bare) 4.dp else if (landscape) 6.dp else 8.dp
-                    ),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontal = if (bare) OssmDimens.Space4 else if (landscape) OssmDimens.Space8 else OssmDimens.ScreenGutter,
+                        vertical = if (bare) OssmDimens.Space4 else OssmDimens.Space8
+                    )
+                    .semantics { isTraversalGroup = true },
+                verticalArrangement = Arrangement.spacedBy(OssmDimens.Space8)
             ) {
+                content(landscape)
                 if (showActionRail) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(ActionRailHeight),
+                            .height(ActionRailHeight)
+                            // Place en bas mais lu en premier (STOP atteignable d'emblee).
+                            .semantics {
+                                isTraversalGroup = true
+                                traversalIndex = -1f
+                            },
                         contentAlignment = Alignment.Center
                     ) {
                         actionRail(false)
                     }
                 }
-                content(landscape)
             }
         }
     }
 }
 
-// 2.3.28: portrait rail = compact STOP bar (56dp) + pause on the same line.
-private val ActionRailHeight = StopBarHeight
-private val StopButtonSize = 88.dp
+// Rail portrait = barre STOP (64 dp) + pause + verrou de rotation sur la meme ligne.
+private val ActionRailHeight = OssmDimens.StopHeight
+
+// Corps d'un mode a curseurs : a partir de cette hauteur, les curseurs passent en grande taille.
+private val LargeBodyHeight = 560.dp
+
+private val ControlIconSize = 24.dp
+private val StatusIconSize = 20.dp
+private val StatusPillMaxWidth = 200.dp
+private val ActiveBorderWidth = 2.dp
+private val ChipCheckSize = 18.dp
+private val ToggleBoxWidth = 40.dp
+
+/** Hauteur d'une rangee de reglage (case, interrupteur, ligne de dialogue). */
+private val SettingsRowMinHeight = 56.dp
 
 internal enum class ControlStatusKind { USB, DISCONNECTED, CALIBRATING, ERROR }
 
@@ -1218,162 +1249,156 @@ internal fun controlStatusKind(
     else -> null
 }
 
-/**
- * Compact connection/machine status. [boxed] draws it as a one-row tinted banner (landscape,
- * Live); otherwise it is bare content meant to sit inside the portrait action rail.
- */
+/** Couleur du statut : vert = lien actif, ambre = prudence (commandes bloquees), rouge = erreur. */
+private fun controlStatusTint(kind: ControlStatusKind): Color = when (kind) {
+    ControlStatusKind.USB -> OssmConnected
+    ControlStatusKind.DISCONNECTED -> OssmWarning
+    ControlStatusKind.CALIBRATING -> OssmWarning
+    ControlStatusKind.ERROR -> OssmError
+}
+
+/** Chaque statut a aussi une icone et un texte : la couleur ne porte jamais l'information seule. */
+private fun controlStatusIcon(kind: ControlStatusKind): ImageVector = when (kind) {
+    ControlStatusKind.USB -> Icons.Default.Usb
+    ControlStatusKind.DISCONNECTED -> Icons.Default.BluetoothDisabled
+    ControlStatusKind.CALIBRATING -> Icons.Default.Info
+    ControlStatusKind.ERROR -> Icons.Default.Warning
+}
+
+@Composable
+private fun controlStatusText(
+    kind: ControlStatusKind,
+    machineState: MachineState,
+    withHint: Boolean
+): String = when (kind) {
+    ControlStatusKind.DISCONNECTED ->
+        if (withHint) {
+            stringResource(R.string.ui2_status_disconnected_title) + " · " +
+                stringResource(R.string.ui2_status_disconnected_hint)
+        } else {
+            stringResource(R.string.ui2_status_disconnected_title)
+        }
+    ControlStatusKind.USB -> stringResource(R.string.ctl_usb_active)
+    ControlStatusKind.CALIBRATING -> stringResource(R.string.ui2_status_calibrating, machineState.displayLabel)
+    ControlStatusKind.ERROR -> machineState.displayLabel
+}
+
+/** Bandeau d'etat d'une ligne (portrait) : icone + texte sur fond de controle. */
+@Composable
+private fun ControlStatusBanner(
+    icon: ImageVector,
+    tint: Color,
+    text: String,
+    tag: String,
+    modifier: Modifier = Modifier
+) {
+    val shape = RoundedCornerShape(OssmDimens.ControlRadius)
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(OssmSurfaceRaised)
+            .border(OssmDimens.BorderWidth, tint.copy(alpha = 0.6f), shape)
+            .padding(horizontal = OssmDimens.Space12, vertical = OssmDimens.Space8)
+            .semantics(mergeDescendants = true) {},
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(OssmDimens.Space8)
+    ) {
+        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(StatusIconSize))
+        Text(
+            text,
+            color = tint,
+            style = MaterialTheme.typography.labelMedium,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .weight(1f, fill = false)
+                .testTag(tag)
+        )
+    }
+}
+
+/** Pastille d'etat d'une ligne (paysage) : ne prend aucune hauteur propre dans la carte. */
+@Composable
+private fun StatusPill(
+    icon: ImageVector,
+    tint: Color,
+    label: String,
+    tag: String
+) {
+    val shape = RoundedCornerShape(50)
+    Row(
+        modifier = Modifier
+            .widthIn(max = StatusPillMaxWidth)
+            .clip(shape)
+            .background(OssmSurfaceRaised)
+            .border(OssmDimens.BorderWidth, tint.copy(alpha = 0.6f), shape)
+            .padding(horizontal = OssmDimens.Space12, vertical = OssmDimens.Space8)
+            .semantics(mergeDescendants = true) {}
+            .testTag(tag),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(OssmDimens.Space8)
+    ) {
+        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(StatusIconSize))
+        Text(
+            label,
+            color = tint,
+            style = MaterialTheme.typography.labelMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+/** Statut anormal (USB, deconnecte, calibration, erreur), ligne du haut en portrait. */
 @Composable
 private fun ControlStatusLine(
     kind: ControlStatusKind,
     machineState: MachineState,
-    modifier: Modifier = Modifier,
-    boxed: Boolean = false,
-    singleLine: Boolean = false
+    modifier: Modifier = Modifier
 ) {
-    val tint = when (kind) {
-        ControlStatusKind.USB -> OssmConnected
-        ControlStatusKind.DISCONNECTED -> OssmWarning
-        ControlStatusKind.CALIBRATING -> OssmAccent
-        ControlStatusKind.ERROR -> OssmError
-    }
-    val icon = when (kind) {
-        ControlStatusKind.USB -> Icons.Default.CheckCircle
-        ControlStatusKind.DISCONNECTED -> Icons.Default.BluetoothDisabled
-        ControlStatusKind.CALIBRATING -> Icons.Default.Info
-        ControlStatusKind.ERROR -> Icons.Default.Warning
-    }
-    val shape = RoundedCornerShape(12.dp)
-    val rowModifier = modifier
-        .then(
-            if (boxed) {
-                Modifier
-                    .fillMaxWidth()
-                    .clip(shape)
-                    .background(tint.copy(alpha = 0.12f))
-                    .border(1.dp, tint.copy(alpha = 0.4f), shape)
-                    .padding(horizontal = 12.dp, vertical = if (singleLine) 6.dp else 8.dp)
-            } else {
-                Modifier
-            }
-        )
-        .semantics(mergeDescendants = true) {}
-    Row(
-        modifier = rowModifier,
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(if (singleLine) 20.dp else 24.dp))
-        if (singleLine) {
-            val text = when (kind) {
-                ControlStatusKind.DISCONNECTED ->
-                    stringResource(R.string.ui2_status_disconnected_title) + " · " +
-                        stringResource(R.string.ui2_status_disconnected_hint)
-                ControlStatusKind.USB -> stringResource(R.string.ctl_usb_active)
-                ControlStatusKind.CALIBRATING -> stringResource(R.string.ui2_status_calibrating, machineState.displayLabel)
-                ControlStatusKind.ERROR -> machineState.displayLabel
-            }
-            Text(
-                text,
-                color = tint,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false).testTag("control_status_line")
-            )
-        } else Column(modifier = Modifier.weight(1f, fill = false)) {
-            when (kind) {
-                ControlStatusKind.DISCONNECTED -> {
-                    Text(
-                        stringResource(R.string.ui2_status_disconnected_title),
-                        color = tint,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        stringResource(R.string.ui2_status_disconnected_hint),
-                        color = OssmOnSurfaceMuted,
-                        fontSize = 12.sp,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                ControlStatusKind.USB -> Text(
-                    stringResource(R.string.ctl_usb_active),
-                    color = tint,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 3
-                )
-                ControlStatusKind.CALIBRATING -> Text(
-                    stringResource(R.string.ui2_status_calibrating, machineState.displayLabel),
-                    color = tint,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 3
-                )
-                ControlStatusKind.ERROR -> Text(
-                    machineState.displayLabel,
-                    color = tint,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 3
-                )
-            }
-        }
-    }
+    ControlStatusBanner(
+        icon = controlStatusIcon(kind),
+        tint = controlStatusTint(kind),
+        text = controlStatusText(kind, machineState, withHint = true),
+        tag = "control_status_line",
+        modifier = modifier
+    )
 }
 
-/** One-row status pill for the landscape card header; takes no vertical space of its own. */
+/** Statut anormal en paysage : pastille dans l'en-tete de la carte. */
 @Composable
 private fun ControlStatusPill(
     kind: ControlStatusKind,
     machineState: MachineState
 ) {
-    val tint = when (kind) {
-        ControlStatusKind.USB -> OssmConnected
-        ControlStatusKind.DISCONNECTED -> OssmWarning
-        ControlStatusKind.CALIBRATING -> OssmAccent
-        ControlStatusKind.ERROR -> OssmError
-    }
-    val icon = when (kind) {
-        ControlStatusKind.USB -> Icons.Default.CheckCircle
-        ControlStatusKind.DISCONNECTED -> Icons.Default.BluetoothDisabled
-        ControlStatusKind.CALIBRATING -> Icons.Default.Info
-        ControlStatusKind.ERROR -> Icons.Default.Warning
-    }
-    val label = when (kind) {
-        ControlStatusKind.DISCONNECTED -> stringResource(R.string.ui2_status_disconnected_title)
-        ControlStatusKind.USB -> stringResource(R.string.ctl_usb_active)
-        ControlStatusKind.CALIBRATING ->
-            stringResource(R.string.ui2_status_calibrating, machineState.displayLabel)
-        ControlStatusKind.ERROR -> machineState.displayLabel
-    }
-    val shape = RoundedCornerShape(50)
-    Row(
-        modifier = Modifier
-            .widthIn(max = 240.dp)
-            .clip(shape)
-            .background(tint.copy(alpha = 0.14f))
-            .border(1.dp, tint.copy(alpha = 0.45f), shape)
-            .padding(horizontal = 10.dp, vertical = 6.dp)
-            .semantics(mergeDescendants = true) {}
-            .testTag("control_status_pill"),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
-        Text(
-            label,
-            color = tint,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
+    StatusPill(
+        icon = controlStatusIcon(kind),
+        tint = controlStatusTint(kind),
+        label = controlStatusText(kind, machineState, withHint = false),
+        tag = "control_status_pill"
+    )
+}
+
+/** Machine connectee en Bluetooth et prete : on l'affiche aussi, pour que l'etat soit toujours lisible. */
+@Composable
+private fun ControlReadyLine(machineState: MachineState) {
+    ControlStatusBanner(
+        icon = Icons.Default.Bluetooth,
+        tint = OssmConnected,
+        text = stringResource(R.string.ctlrd_status_ready, machineState.displayLabel),
+        tag = "control_status_ready"
+    )
+}
+
+@Composable
+private fun ControlReadyPill() {
+    StatusPill(
+        icon = Icons.Default.Bluetooth,
+        tint = OssmConnected,
+        label = stringResource(R.string.ctlrd_status_ready_short),
+        tag = "control_status_ready"
+    )
 }
 
 @Composable
@@ -1382,8 +1407,6 @@ private fun CompactActionRail(
     showStop: Boolean,
     showPause: Boolean,
     showRotation: Boolean,
-    statusKind: ControlStatusKind?,
-    machineState: MachineState,
     isPaused: Boolean,
     pauseEnabled: Boolean,
     onStop: () -> Unit,
@@ -1395,7 +1418,7 @@ private fun CompactActionRail(
     if (landscape) {
         Column(
             modifier = Modifier.fillMaxHeight(),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(OssmDimens.Space8),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             if (showStop) {
@@ -1403,7 +1426,7 @@ private fun CompactActionRail(
                     onClick = onStop,
                     vertical = true,
                     modifier = Modifier
-                        .width(StopBarHeight)
+                        .width(OssmDimens.StopHeight)
                         .weight(1f)
                         .testTag("control_stop")
                 )
@@ -1416,17 +1439,19 @@ private fun CompactActionRail(
                     enabled = pauseEnabled,
                     onPause = onPause,
                     onResume = onResume,
-                    size = StopBarHeight
+                    size = OssmDimens.StopHeight
                 )
             }
-            if (showRotation) RotationLockButton(width = StopBarHeight, height = 44.dp)
+            if (showRotation) {
+                RotationLockButton(width = OssmDimens.StopHeight, height = OssmDimens.TouchTarget)
+            }
         }
     } else {
-        // 2.3.28: one compact line: wide STOP bar (first in TalkBack order), pause/play 56dp.
-        // The status banner is drawn under this line, never inside it.
+        // One line: wide STOP bar (64 dp, never smaller), pause/play, rotation lock, with at
+        // least 12 dp between the STOP and its neighbours to avoid a mis-tap.
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(OssmDimens.Space12),
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (showStop) {
@@ -1434,7 +1459,7 @@ private fun CompactActionRail(
                     onClick = onStop,
                     modifier = Modifier
                         .weight(1f)
-                        .height(StopBarHeight)
+                        .height(OssmDimens.StopHeight)
                         .testTag("control_stop")
                 )
             } else {
@@ -1446,10 +1471,12 @@ private fun CompactActionRail(
                     enabled = pauseEnabled,
                     onPause = onPause,
                     onResume = onResume,
-                    size = StopBarHeight
+                    size = OssmDimens.StopHeight
                 )
             }
-            if (showRotation) RotationLockButton(width = 44.dp, height = StopBarHeight)
+            if (showRotation) {
+                RotationLockButton(width = OssmDimens.TouchTarget, height = OssmDimens.StopHeight)
+            }
         }
     }
 }
@@ -1476,14 +1503,20 @@ private fun RotationLockButton(width: Dp, height: Dp) {
     val description = stringResource(
         if (locked) R.string.ctl_rotation_unlock else R.string.ctl_rotation_lock
     )
-    val shape = RoundedCornerShape(14.dp)
+    val shape = RoundedCornerShape(OssmDimens.ControlRadius)
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
             .size(width = width, height = height)
+            .testTag("control_rotation_lock")
             .clip(shape)
-            .background(if (locked) OssmPrimary.copy(alpha = 0.28f) else OssmSurfaceRaised)
-            .border(1.dp, if (locked) OssmPrimary else OssmOutline, shape)
+            .background(if (locked) OssmSurfaceHigh else OssmSurfaceRaised)
+            // Verrouille : contour turquoise epais ET icone differente (jamais la couleur seule).
+            .border(
+                if (locked) ActiveBorderWidth else OssmDimens.BorderWidth,
+                if (locked) OssmPrimary else OssmOutline,
+                shape
+            )
             .toggleable(value = locked, role = Role.Switch) { lock ->
                 activity?.requestedOrientation = if (lock) {
                     android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LOCKED
@@ -1497,8 +1530,39 @@ private fun RotationLockButton(width: Dp, height: Dp) {
         Icon(
             imageVector = if (locked) Icons.Default.ScreenLockRotation else Icons.Default.ScreenRotation,
             contentDescription = null,
-            tint = if (locked) OssmPrimaryLight else OssmOnSurfaceMuted,
-            modifier = Modifier.size(24.dp)
+            tint = if (locked) OssmPrimary else OssmOnSurfaceMuted,
+            modifier = Modifier.size(ControlIconSize)
+        )
+    }
+}
+
+/** Bouton-icone carre de 48 dp de l'en-tete de la carte (mode, reglages, enregistrer). */
+@Composable
+private fun ControlIconButton(
+    onClick: () -> Unit,
+    contentDescription: String,
+    icon: ImageVector,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    tint: Color = OssmOnSurface,
+    tag: String? = null
+) {
+    val shape = RoundedCornerShape(OssmDimens.ControlRadius)
+    IconButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier
+            .then(if (tag != null) Modifier.testTag(tag) else Modifier)
+            .size(OssmDimens.TouchTarget)
+            .clip(shape)
+            .background(OssmSurfaceRaised)
+            .border(OssmDimens.BorderWidth, OssmOutline, shape)
+    ) {
+        Icon(
+            icon,
+            contentDescription = contentDescription,
+            tint = tint,
+            modifier = Modifier.size(ControlIconSize)
         )
     }
 }
@@ -1508,26 +1572,107 @@ private fun PatternOpenerButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    IconButton(
+    ControlIconButton(
         onClick = onClick,
+        contentDescription = stringResource(R.string.ctl_patterns_open),
+        icon = Icons.Default.TouchApp,
+        modifier = modifier,
+        tag = "control_pattern_open"
+    )
+}
+
+/** Titre de section (majuscules espacees), annonce comme un titre par les lecteurs d'ecran. */
+@Composable
+private fun SectionLabel(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text.uppercase(),
+        color = OssmOnSurfaceMuted,
+        style = OssmSectionTitle,
+        modifier = modifier.semantics { heading() }
+    )
+}
+
+/**
+ * Regroupe les cases d'un en-tete de curseur. En paysage la colonne du libelle ne fait que
+ * 118 dp : les cases (48 dp de haut chacune) s'y empilent au lieu de se serrer sur une ligne.
+ */
+@Composable
+private fun ToggleGroup(content: @Composable () -> Unit) {
+    if (LocalControlSliderMetrics.current.inlineHeader) {
+        Column { content() }
+    } else {
+        content()
+    }
+}
+
+/** Puce de mode (grille du selecteur) : cible >= 48 dp, etat actif lu par TalkBack. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun PatternChip(
+    label: String,
+    isActive: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    onLongClick: (() -> Unit)? = null,
+    large: Boolean = false,
+    summary: String? = null
+) {
+    val shape = RoundedCornerShape(OssmDimens.ControlRadius)
+    Row(
         modifier = modifier
-            .size(48.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(OssmSurfaceRaised)
-            .border(1.dp, OssmOutline, RoundedCornerShape(12.dp))
+            .heightIn(min = OssmDimens.TouchTarget)
+            .clip(shape)
+            .background(if (isActive) OssmSurfaceHigh else OssmSurfaceRaised)
+            .border(
+                if (isActive) ActiveBorderWidth else OssmDimens.BorderWidth,
+                if (isActive) OssmPrimary else OssmOutline,
+                shape
+            )
+            .combinedClickable(
+                role = Role.RadioButton,
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
+            .semantics { selected = isActive }
+            .padding(horizontal = OssmDimens.Space12),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(
-            Icons.Default.TouchApp,
-            contentDescription = stringResource(R.string.ctl_patterns_open),
-            tint = OssmPrimaryLight,
-            modifier = Modifier.size(22.dp)
-        )
+        if (isActive) {
+            Icon(
+                Icons.Default.Check,
+                contentDescription = null,
+                tint = OssmPrimary,
+                modifier = Modifier.size(ChipCheckSize)
+            )
+            Spacer(Modifier.width(OssmDimens.Space8))
+        }
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                label,
+                color = OssmOnSurface,
+                style = if (large) MaterialTheme.typography.titleMedium else MaterialTheme.typography.labelLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (summary != null) {
+                Text(
+                    summary,
+                    color = OssmOnSurfaceMuted,
+                    style = OssmCaption,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
     }
 }
 
 @Composable
 private fun PatternPickerOverlay(
     uiState: ControlUiState,
+    railVisible: Boolean,
     onPattern: (String) -> Unit,
     onReorder: () -> Unit,
     onDismiss: () -> Unit,
@@ -1535,16 +1680,25 @@ private fun PatternPickerOverlay(
 ) {
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val landscape = maxWidth > maxHeight
+        // L'overlay ne recouvre jamais le rail STOP : colonne de gauche en paysage, bande du bas en portrait.
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(
-                    start = if (landscape) 112.dp else 12.dp,
-                    top = if (landscape) 8.dp else 100.dp,
-                    end = 12.dp,
-                    bottom = 8.dp
+                    start = if (landscape) {
+                        if (railVisible) OssmDimens.StopHeight + OssmDimens.Space24 else OssmDimens.Space8
+                    } else {
+                        OssmDimens.Space12
+                    },
+                    top = if (landscape) OssmDimens.Space8 else PatternOverlayTop,
+                    end = OssmDimens.Space12,
+                    bottom = if (!landscape && railVisible) {
+                        OssmDimens.StopHeight + OssmDimens.Space16
+                    } else {
+                        OssmDimens.Space8
+                    }
                 )
-                .clip(RoundedCornerShape(20.dp))
+                .clip(RoundedCornerShape(OssmDimens.CardRadius))
                 .background(OssmBackground)
         ) {
         GlassCard(modifier = Modifier.fillMaxSize()) {
@@ -1555,35 +1709,35 @@ private fun PatternPickerOverlay(
             ) {
                 Column(Modifier.weight(1f)) {
                     Text(
-                        stringResource(R.string.ctl_patterns),
+                        stringResource(R.string.ctlrd_patterns_title),
                         color = OssmOnSurface,
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        modifier = Modifier.semantics { heading() }
                     )
                     Text(
-                        stringResource(R.string.ctl_patterns_hint),
+                        stringResource(R.string.ctlrd_patterns_hint),
                         color = OssmOnSurfaceMuted,
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
                 IconButton(
                     onClick = onDismiss,
-                    modifier = Modifier.size(48.dp)
+                    modifier = Modifier.size(OssmDimens.TouchTarget)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Close,
                         contentDescription = stringResource(R.string.ctl_patterns_collapse),
-                        tint = OssmPrimaryLight
+                        tint = OssmOnSurface
                     )
                 }
             }
 
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(OssmDimens.Space12))
             if (uiState.availablePatterns.isEmpty()) {
                 Text(
                     stringResource(R.string.ctl_no_patterns),
-                    color = OssmOnSurface.copy(alpha = 0.7f),
-                    fontSize = 13.sp
+                    color = OssmOnSurfaceMuted,
+                    style = MaterialTheme.typography.bodyMedium
                 )
             } else {
                 val ordered = uiState.orderedPatterns
@@ -1595,9 +1749,9 @@ private fun PatternPickerOverlay(
                         .fillMaxWidth()
                         .weight(1f)
                 ) {
-                val gap = 8.dp
-                val rowHeight = if (rows.isEmpty()) 52.dp else {
-                    ((maxHeight - gap * (rows.size - 1)) / rows.size).coerceIn(52.dp, 120.dp)
+                val gap = OssmDimens.Space8
+                val rowHeight = if (rows.isEmpty()) PatternRowMinHeight else {
+                    ((maxHeight - gap * (rows.size - 1)) / rows.size).coerceIn(PatternRowMinHeight, PatternRowMaxHeight)
                 }
                 Column(
                     modifier = Modifier
@@ -1611,15 +1765,17 @@ private fun PatternPickerOverlay(
                             horizontalArrangement = Arrangement.spacedBy(gap)
                         ) {
                             rowPatterns.forEach { pattern ->
-                                val index = ordered.indexOf(pattern)
-                                PatternButton(
+                                PatternChip(
                                     label = pattern.name,
-                                    color = PatternColors[index % PatternColors.size],
                                     isActive = uiState.activePatternKey == pattern.key,
                                     onClick = { onPattern(pattern.key) },
                                     onLongClick = onReorder,
-                                    enabled = true,
-                                    fontSize = if (rowHeight >= 72.dp) 16.sp else 13.sp,
+                                    large = rowHeight >= PatternRowLargeText,
+                                    summary = if (rowHeight >= PatternRowSummaryHeight) {
+                                        ModeRegistry.of(pattern)?.let { stringResource(it.summaryRes) }
+                                    } else {
+                                        null
+                                    },
                                     modifier = Modifier
                                         .weight(1f)
                                         .height(rowHeight)
@@ -1635,6 +1791,14 @@ private fun PatternPickerOverlay(
         }
     }
 }
+
+// Selecteur de modes : marge haute (sous la ligne d'etat) et hauteurs de cellule.
+private val PatternOverlayTop = 56.dp
+private val PatternRowMinHeight = 52.dp
+private val PatternRowMaxHeight = 120.dp
+private val PatternRowLargeText = 72.dp
+// Sous cette hauteur la phrase d'explication du mode est masquee plutot que tronquee.
+private val PatternRowSummaryHeight = 96.dp
 
 internal fun shouldShowSensationSlider(pattern: OssmPattern): Boolean =
     pattern.mode == PatternControlMode.STROKE_ENGINE && pattern.key != "simpleStroke"
@@ -1755,7 +1919,7 @@ private fun CenteredSensationSlider(
                     start = randomRange.start,
                     end = randomRange.endInclusive,
                     enabled = enabled,
-                    activeColor = OssmAccent,
+                    activeColor = OssmSensation,
                     label = stringResource(R.string.ctl_random_sensation),
                     onRangeChange = onRandomRangeChange,
                     onRangeCommit = onRandomRangeChange,
@@ -1776,7 +1940,7 @@ private fun CenteredSensationSlider(
             onValueChange = onValueChange,
             onValueCommit = onValueCommit,
             enabled = enabled,
-            activeColor = OssmAccent,
+            activeColor = OssmSensation,
             displayValue = when {
                 randomCurrent != null -> signedSensationLabel(randomCurrent)
                 inSession -> sensationIntensityLabel(PhoneHostMotionLimits.sensationIntensityOf(value))
@@ -1791,24 +1955,26 @@ private fun CenteredSensationSlider(
             gestureCancellationKey = gestureCancellationKey,
             // Invisible detent on neutral: dragging close to 0 lands exactly on 0.
             snapValue = 0.5f,
-            bipolar = BipolarStyle()
+            bipolar = BipolarStyle(),
+            // En session, le curseur regle le plafond d'intensite : cadenas + « limité ».
+            limited = inSession
         )
         if (metrics.showScaleLegends) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 4.dp),
+                .padding(horizontal = OssmDimens.Space4),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text("−100", color = OssmOnSurfaceMuted, fontSize = 11.sp)
-            Text(stringResource(R.string.ctl_sensation_neutral), color = OssmOnSurfaceMuted, fontSize = 11.sp)
-            Text("+100", color = OssmOnSurfaceMuted, fontSize = 11.sp)
+            Text(stringResource(R.string.ctlrd_scale_min), color = OssmOnSurfaceMuted, style = OssmCaption)
+            Text(stringResource(R.string.ctl_sensation_neutral), color = OssmOnSurfaceMuted, style = OssmCaption)
+            Text(stringResource(R.string.ctlrd_scale_max), color = OssmOnSurfaceMuted, style = OssmCaption)
         }
         sensationLegendRes(patternKey)?.let { legend ->
             Text(
                 stringResource(legend),
                 color = OssmOnSurfaceMuted,
-                fontSize = 11.sp,
+                style = OssmCaption,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -1816,6 +1982,7 @@ private fun CenteredSensationSlider(
         } // scale legends
     }
 }
+
 @Composable
 private fun LiveLimitButton(
     side: LiveLimitSide,
@@ -1832,27 +1999,43 @@ private fun LiveLimitButton(
         }
     )
     val tint = when {
-        moving -> OssmAccent
-        locked -> OssmPrimaryLight
-        else -> OssmOnSurface.copy(alpha = 0.8f)
+        moving -> OssmDepth
+        locked -> OssmPrimary
+        else -> OssmOnSurface
     }
+    val shape = RoundedCornerShape(OssmDimens.ControlRadius)
     IconButton(
         enabled = enabled,
         onClick = { limits.toggle(side) },
         modifier = Modifier
-            .size(48.dp)
-            .clip(RoundedCornerShape(10.dp))
-            .background(if (moving) OssmAccent.copy(alpha = 0.22f) else OssmSurfaceRaised)
+            .size(OssmDimens.TouchTarget)
+            .clip(shape)
+            .background(if (moving || locked) OssmSurfaceHigh else OssmSurfaceRaised)
             .border(
-                if (moving || locked) 2.dp else 1.dp,
-                if (moving) OssmAccent else if (locked) OssmPrimaryLight else OssmOutline,
-                RoundedCornerShape(10.dp)
+                if (moving || locked) ActiveBorderWidth else OssmDimens.BorderWidth,
+                if (moving) OssmDepth else if (locked) OssmPrimary else OssmOutline,
+                shape
             )
             .semantics { contentDescription = description }
     ) {
-        LiveLimitIcon(side = side, color = if (enabled) tint else tint.copy(alpha = 0.3f))
+        // L'etat se lit aussi par un cadenas : ouvert = la ligne suit le doigt, ferme = verrouillee.
+        Box(modifier = Modifier.size(ControlIconSize)) {
+            LiveLimitIcon(side = side, color = if (enabled) tint else tint.copy(alpha = 0.3f))
+            if (moving || locked) {
+                Icon(
+                    imageVector = if (locked) Icons.Default.Lock else Icons.Default.LockOpen,
+                    contentDescription = null,
+                    tint = if (enabled) tint else tint.copy(alpha = 0.3f),
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .size(LimitBadgeSize)
+                )
+            }
+        }
     }
 }
+
+private val LimitBadgeSize = 12.dp
 
 @Composable
 private fun LiveRecordButton(
@@ -1862,64 +2045,81 @@ private fun LiveRecordButton(
 ) {
     val description = stringResource(liveRecordContentDescription(state))
     val active = state != LiveRecordingState.IDLE
+    val shape = RoundedCornerShape(OssmDimens.ControlRadius)
+    val glyph = OssmError.copy(
+        alpha = if (enabled) {
+            if (active) 1f else 0.72f
+        } else {
+            0.25f
+        }
+    )
     IconButton(
         enabled = enabled,
         onClick = onClick,
         modifier = Modifier
-            .size(48.dp)
-            .clip(RoundedCornerShape(10.dp))
+            .size(OssmDimens.TouchTarget)
+            .clip(shape)
             .background(OssmSurfaceRaised)
             .border(
-                1.dp,
+                if (active) ActiveBorderWidth else OssmDimens.BorderWidth,
                 if (active) OssmError else OssmOutline,
-                RoundedCornerShape(10.dp)
+                shape
             )
             .semantics { contentDescription = description }
     ) {
-        Box(
-            modifier = Modifier
-                .size(if (state == LiveRecordingState.RECORDING) 18.dp else 14.dp)
-                .clip(CircleShape)
-                .background(
-                    OssmError.copy(
-                        alpha = if (enabled) {
-                            if (active) 1f else 0.72f
-                        } else {
-                            0.25f
-                        }
-                    )
+        // Une forme par etat : point = enregistrer, anneau = pret, gros point = REC,
+        // triangle = rejouer, carre = arreter la boucle.
+        when (state) {
+            LiveRecordingState.RECORDED ->
+                Icon(Icons.Default.PlayArrow, contentDescription = null, tint = glyph, modifier = Modifier.size(ControlIconSize))
+            LiveRecordingState.PLAYING ->
+                Icon(Icons.Default.Stop, contentDescription = null, tint = glyph, modifier = Modifier.size(ControlIconSize))
+            LiveRecordingState.ARMED ->
+                Box(
+                    modifier = Modifier
+                        .size(RecDotSize)
+                        .clip(CircleShape)
+                        .border(ActiveBorderWidth, glyph, CircleShape)
                 )
-        )
+            LiveRecordingState.RECORDING ->
+                Box(
+                    modifier = Modifier
+                        .size(RecDotLargeSize)
+                        .clip(CircleShape)
+                        .background(glyph)
+                )
+            LiveRecordingState.IDLE ->
+                Box(
+                    modifier = Modifier
+                        .size(RecDotSize)
+                        .clip(CircleShape)
+                        .background(glyph)
+                )
+        }
     }
 }
 
+private val RecDotSize = 16.dp
+private val RecDotLargeSize = 20.dp
+
 private fun liveRecordContentDescription(state: LiveRecordingState): Int = when (state) {
     LiveRecordingState.IDLE -> R.string.ctl_rec_idle
-    LiveRecordingState.ARMED -> R.string.ctl_rec_armed
+    LiveRecordingState.ARMED -> R.string.ctlrd_rec_armed
     LiveRecordingState.RECORDING -> R.string.ctl_rec_recording
     LiveRecordingState.RECORDED -> R.string.ctl_rec_recorded
-    LiveRecordingState.PLAYING -> R.string.ctl_rec_playing
+    LiveRecordingState.PLAYING -> R.string.ctlrd_rec_playing
 }
 
 @Composable
 private fun SettingsGearButton(
     onInfoClick: () -> Unit
 ) {
-    IconButton(
+    ControlIconButton(
         onClick = onInfoClick,
-        modifier = Modifier
-            .size(48.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(OssmSurfaceRaised)
-            .border(1.dp, OssmOutline, RoundedCornerShape(12.dp))
-    ) {
-        Icon(
-            Icons.Default.Settings,
-            contentDescription = stringResource(R.string.ctl_control_settings),
-            tint = OssmPrimaryLight,
-            modifier = Modifier.size(22.dp)
-        )
-    }
+        contentDescription = stringResource(R.string.ctl_control_settings),
+        icon = Icons.Default.Settings,
+        tag = "control_settings"
+    )
 }
 
 @Composable
@@ -1928,20 +2128,24 @@ private fun PausePlayButton(
     enabled: Boolean,
     onPause: () -> Unit,
     onResume: () -> Unit,
-    size: Dp = 64.dp
+    size: Dp = OssmDimens.StopHeight
 ) {
+    // Ambre = en marche (on peut mettre en pause), vert = en pause (on peut reprendre) ;
+    // la forme de l'icone (pause / lecture) porte aussi l'etat.
     val activeColor = if (isPaused) OssmConnected else OssmWarning
     Box(
         contentAlignment = Alignment.Center,
-        modifier = Modifier.size(size)
+        modifier = Modifier
+            .size(size)
+            .testTag("control_pause")
     ) {
         Box(
             contentAlignment = Alignment.Center,
             modifier = Modifier
-                .size(size - 4.dp)
+                .size(size - OssmDimens.Space8)
                 .clip(CircleShape)
                 .background(if (enabled) activeColor else OssmSurfaceRaised)
-                .border(1.dp, if (enabled) activeColor else OssmOutline, CircleShape)
+                .border(OssmDimens.BorderWidth, if (enabled) activeColor else OssmOutline, CircleShape)
                 .clickable(enabled = enabled, role = Role.Button) {
                     if (isPaused) onResume() else onPause()
                 }
@@ -1950,11 +2154,23 @@ private fun PausePlayButton(
                 imageVector = if (isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
                 contentDescription = if (isPaused) stringResource(R.string.ctl_resume) else stringResource(R.string.ctl_pause),
                 tint = if (enabled) OssmBackground else OssmOnSurfaceMuted,
-                modifier = Modifier.size(30.dp)
+                modifier = Modifier.size(PauseIconSize)
             )
         }
     }
 }
+
+private val PauseIconSize = 32.dp
+
+/** Couleurs communes des interrupteurs des reglages (meme rendu que OssmSwitchRow). */
+@Composable
+private fun settingsSwitchColors() = SwitchDefaults.colors(
+    checkedThumbColor = OssmOnPrimary,
+    checkedTrackColor = OssmPrimary,
+    uncheckedThumbColor = OssmOnSurfaceMuted,
+    uncheckedTrackColor = OssmSurfaceRaised,
+    uncheckedBorderColor = OssmOutline
+)
 
 @Composable
 private fun ControlSettingsDialog(
@@ -2003,17 +2219,15 @@ private fun ControlSettingsDialog(
         ) {
             Surface(
                 modifier = Modifier
-                    .padding(horizontal = 16.dp, vertical = 24.dp)
-                    .widthIn(max = 720.dp)
+                    .padding(horizontal = OssmDimens.Space16, vertical = OssmDimens.Space24)
+                    .widthIn(max = SettingsDialogMaxWidth)
                     .fillMaxWidth()
                     .heightIn(max = maxHeight * 0.9f),
-                shape = RoundedCornerShape(24.dp),
+                shape = RoundedCornerShape(OssmDimens.SheetRadius),
                 color = OssmSurface,
-                tonalElevation = 10.dp,
-                shadowElevation = 18.dp,
-                border = androidx.compose.foundation.BorderStroke(1.dp, OssmOutline)
+                border = BorderStroke(OssmDimens.BorderWidth, OssmGlassBorder)
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
+                Column(modifier = Modifier.padding(OssmDimens.Space16)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
@@ -2022,14 +2236,15 @@ private fun ControlSettingsDialog(
                             text = stringResource(R.string.ctl_control_settings),
                             color = OssmOnSurface,
                             style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier
+                                .weight(1f)
+                                .semantics { heading() }
                         )
-                        IconButton(onClick = onDismiss, modifier = Modifier.size(48.dp)) {
+                        IconButton(onClick = onDismiss, modifier = Modifier.size(OssmDimens.TouchTarget)) {
                             Icon(
                                 imageVector = Icons.Default.Close,
                                 contentDescription = stringResource(R.string.ctl_close_settings),
-                                tint = OssmPrimaryLight
+                                tint = OssmOnSurface
                             )
                         }
                     }
@@ -2039,8 +2254,9 @@ private fun ControlSettingsDialog(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .verticalScroll(rememberScrollState()),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                            verticalArrangement = Arrangement.spacedBy(OssmDimens.Space12)
                         ) {
+                            SectionLabel(stringResource(R.string.ctlrd_settings_section_input))
                             SettingsToggleRow(
                                 title = stringResource(R.string.ctl_precision_option),
                                 explanation = precisionHint,
@@ -2050,13 +2266,14 @@ private fun ControlSettingsDialog(
                                     heldExplanation = precisionHint.takeIf { visible }
                                 }
                             )
-                            if (showLiveAcceleration) {
+                            if (showLiveAcceleration || showLiveInvert) {
                                 HorizontalDivider(color = OssmGlassBorder)
+                                SectionLabel(stringResource(R.string.ctlrd_settings_section_live))
+                            }
+                            if (showLiveAcceleration) {
                                 SettingLabelWithInfo(
-                                    title = stringResource(
-                                        R.string.ctl_live_acceleration_value,
-                                        accelerationDraft
-                                    ),
+                                    title = stringResource(R.string.ctlrd_live_acceleration_title),
+                                    value = "$accelerationDraft%",
                                     explanation = accelerationHint,
                                     onExplanationVisibilityChange = { visible ->
                                         heldExplanation = accelerationHint.takeIf { visible }
@@ -2066,7 +2283,7 @@ private fun ControlSettingsDialog(
                                     valuePercent = (accelerationDraft - 10) / 90f * 100f,
                                     enabled = true,
                                     precisionEnabled = precisionChecked,
-                                    activeColor = OssmAccent,
+                                    activeColor = OssmPrimary,
                                     label = stringResource(
                                         R.string.ctl_live_acceleration_value,
                                         accelerationDraft
@@ -2086,11 +2303,10 @@ private fun ControlSettingsDialog(
                                     gestureCancellationKey = gestureCancellationKey,
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .heightIn(min = 56.dp)
+                                        .heightIn(min = SettingsRowMinHeight)
                                 )
                             }
                             if (showLiveInvert) {
-                                HorizontalDivider(color = OssmGlassBorder)
                                 SettingsToggleRow(
                                     title = stringResource(R.string.ctl_live_invert),
                                     explanation = invertHint,
@@ -2102,6 +2318,7 @@ private fun ControlSettingsDialog(
                                 )
                             }
                             HorizontalDivider(color = OssmGlassBorder)
+                            SectionLabel(stringResource(R.string.ctlrd_settings_section_guards))
                             Text(
                                 text = stringResource(R.string.ctl_guards_intro),
                                 color = OssmOnSurfaceMuted,
@@ -2126,11 +2343,8 @@ private fun ControlSettingsDialog(
                                 }
                             )
                             SettingLabelWithInfo(
-                                title = stringResource(
-                                    R.string.ctl_depth_limits_value,
-                                    (depthLimits.start * 100).toInt(),
-                                    (depthLimits.endInclusive * 100).toInt()
-                                ),
+                                title = stringResource(R.string.ctlrd_depth_limits_title),
+                                value = "${(depthLimits.start * 100).toInt()}%–${(depthLimits.endInclusive * 100).toInt()}%",
                                 explanation = depthLimitsHint,
                                 onExplanationVisibilityChange = { visible ->
                                     heldExplanation = depthLimitsHint.takeIf { visible }
@@ -2143,12 +2357,15 @@ private fun ControlSettingsDialog(
                                     onDepthLimitsChange(depthLimits.start, depthLimits.endInclusive)
                                 },
                                 valueRange = 0f..1f,
+                                modifier = Modifier.heightIn(min = OssmDimens.TouchTarget),
                                 colors = SliderDefaults.colors(
-                                    thumbColor = OssmAccent,
-                                    activeTrackColor = OssmAccent
+                                    thumbColor = OssmDepth,
+                                    activeTrackColor = OssmDepth,
+                                    inactiveTrackColor = OssmSurfaceHigh
                                 )
                             )
                             HorizontalDivider(color = OssmGlassBorder)
+                            SectionLabel(stringResource(R.string.ctlrd_settings_section_help))
                             InfoLine(
                                 stringResource(R.string.ctl_stop_info_title),
                                 stringResource(R.string.ctl_stop_info_hint)
@@ -2164,38 +2381,35 @@ private fun ControlSettingsDialog(
                                 modifier = Modifier
                                     .align(Alignment.TopCenter)
                                     .fillMaxWidth()
-                                    .padding(horizontal = 8.dp, vertical = 12.dp),
-                                shape = RoundedCornerShape(14.dp),
-                                color = OssmSurfaceRaised,
-                                tonalElevation = 12.dp,
-                                shadowElevation = 14.dp,
-                                border = androidx.compose.foundation.BorderStroke(1.dp, OssmPrimaryLight)
+                                    .padding(horizontal = OssmDimens.Space8, vertical = OssmDimens.Space12),
+                                shape = RoundedCornerShape(OssmDimens.ControlRadius),
+                                color = OssmSurfaceHigh,
+                                border = BorderStroke(OssmDimens.BorderWidth, OssmPrimary)
                             ) {
                                 Text(
                                     text = explanation,
                                     color = OssmOnSurface,
-                                    fontSize = 13.sp,
-                                    modifier = Modifier.padding(16.dp)
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.padding(OssmDimens.Space16)
                                 )
                             }
                         }
                     }
 
-                    Button(
+                    Spacer(Modifier.height(OssmDimens.Space12))
+                    OssmButton(
+                        text = stringResource(R.string.ctl_understood),
                         onClick = onDismiss,
                         modifier = Modifier.align(Alignment.End),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = OssmPrimary,
-                            contentColor = OssmOnPrimary
-                        )
-                    ) {
-                        Text(stringResource(R.string.ctl_understood))
-                    }
+                        kind = OssmButtonKind.Primary
+                    )
                 }
             }
         }
     }
 }
+
+private val SettingsDialogMaxWidth = 720.dp
 
 @Composable
 private fun SettingsToggleRow(
@@ -2210,13 +2424,13 @@ private fun SettingsToggleRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 56.dp),
+            .heightIn(min = SettingsRowMinHeight),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Row(
             modifier = Modifier
                 .weight(1f)
-                .heightIn(min = 56.dp)
+                .heightIn(min = SettingsRowMinHeight)
                 .toggleable(
                     value = checked,
                     role = Role.Switch,
@@ -2230,18 +2444,14 @@ private fun SettingsToggleRow(
                 style = MaterialTheme.typography.bodyLarge,
                 modifier = Modifier.weight(1f)
             )
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.width(OssmDimens.Space12))
             Switch(
                 checked = checked,
                 onCheckedChange = null,
-                modifier = Modifier.sizeIn(minWidth = 56.dp, minHeight = 56.dp),
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = OssmOnPrimary,
-                    checkedTrackColor = OssmPrimary
-                )
+                colors = settingsSwitchColors()
             )
         }
-        Spacer(Modifier.width(4.dp))
+        Spacer(Modifier.width(OssmDimens.Space8))
         PressHoldInfo(
             explanation = explanation,
             onVisibilityChange = onExplanationVisibilityChange
@@ -2254,7 +2464,8 @@ private fun SettingLabelWithInfo(
     title: String,
     explanation: String,
     onExplanationVisibilityChange: (Boolean) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    value: String? = null
 ) {
     Row(
         modifier = modifier,
@@ -2266,6 +2477,14 @@ private fun SettingLabelWithInfo(
             style = MaterialTheme.typography.bodyLarge,
             modifier = Modifier.weight(1f)
         )
+        if (value != null) {
+            Text(
+                text = value,
+                color = OssmOnSurface,
+                style = OssmValue
+            )
+            Spacer(Modifier.width(OssmDimens.Space8))
+        }
         PressHoldInfo(
             explanation = explanation,
             onVisibilityChange = onExplanationVisibilityChange
@@ -2285,10 +2504,10 @@ private fun PressHoldInfo(
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
-            .size(48.dp)
+            .size(OssmDimens.TouchTarget)
             .clip(CircleShape)
-            .background(OssmGlass)
-            .border(1.dp, OssmGlassBorder, CircleShape)
+            .background(OssmSurfaceRaised)
+            .border(OssmDimens.BorderWidth, OssmOutline, CircleShape)
             .clearAndSetSemantics {
                 role = Role.Button
                 contentDescription = holdLabel
@@ -2325,7 +2544,7 @@ private fun PressHoldInfo(
             imageVector = Icons.Default.Info,
             contentDescription = null,
             tint = OssmPrimaryLight,
-            modifier = Modifier.size(20.dp)
+            modifier = Modifier.size(ControlIconSize)
         )
     }
 }
@@ -2336,8 +2555,8 @@ internal fun shouldKeepHoldInfoVisible(distancePx: Float, touchSlopPx: Float): B
 @Composable
 private fun InfoLine(title: String, description: String) {
     Column {
-        Text(title, color = OssmPrimaryLight, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-        Text(description, color = OssmOnSurface.copy(alpha = 0.8f), fontSize = 12.sp)
+        Text(title, color = OssmOnSurface, style = MaterialTheme.typography.labelLarge)
+        Text(description, color = OssmOnSurfaceMuted, style = OssmCaption)
     }
 }
 
@@ -2354,11 +2573,11 @@ private fun RandomToggle(
     onCheckedChange: (Boolean) -> Unit,
     visibleLabel: String = label
 ) {
-    // Compact one-line toggle (48dp): the whole row is one checkbox target, so TalkBack reads
-    // "label, checkbox, state" instead of an unnamed box next to loose text. The on-screen text
-    // may be shorter than [label] (the section header already names speed/depth); TalkBack
-    // still gets the full [label].
-    val toggleSize = LocalControlSliderMetrics.current.toggleMinSize
+    // Compact one-line toggle (>= 48dp, meme en paysage) : the whole row is one checkbox target,
+    // so TalkBack reads "label, checkbox, state" instead of an unnamed box next to loose text.
+    // The on-screen text may be shorter than [label] (the section header already names
+    // speed/depth); TalkBack still gets the full [label].
+    val toggleSize = maxOf(LocalControlSliderMetrics.current.toggleMinSize, OssmDimens.TouchTarget)
     Row(
         modifier = Modifier
             .heightIn(min = toggleSize)
@@ -2375,16 +2594,19 @@ private fun RandomToggle(
             checked = checked,
             onCheckedChange = null,
             enabled = enabled,
-            modifier = Modifier.sizeIn(minWidth = toggleSize, minHeight = toggleSize),
+            modifier = Modifier.sizeIn(minWidth = ToggleBoxWidth, minHeight = toggleSize),
             colors = CheckboxDefaults.colors(
-                checkedColor = OssmAccent,
-                uncheckedColor = OssmOnSurface.copy(alpha = 0.5f)
+                checkedColor = OssmPrimary,
+                uncheckedColor = OssmOutline,
+                checkmarkColor = OssmOnPrimary,
+                disabledCheckedColor = OssmOutline,
+                disabledUncheckedColor = OssmGlassBorder
             )
         )
         Text(
             text = visibleLabel,
-            color = if (enabled) OssmOnSurface.copy(alpha = 0.9f) else OssmOnSurface.copy(alpha = 0.5f),
-            fontSize = 13.sp,
+            color = if (enabled) OssmOnSurface else OssmOnSurfaceMuted,
+            style = MaterialTheme.typography.labelMedium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.clearAndSetSemantics {}
@@ -2408,8 +2630,8 @@ private fun RandomPresetRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+            .padding(top = OssmDimens.Space4),
+        horizontalArrangement = Arrangement.spacedBy(OssmDimens.Space8)
     ) {
         presets.forEachIndexed { index, preset ->
             val selected = index == selectedIndex
@@ -2419,7 +2641,7 @@ private fun RandomPresetRow(
             Surface(
                 modifier = Modifier
                     .weight(1f)
-                    .heightIn(min = 48.dp)
+                    .heightIn(min = OssmDimens.TouchTarget)
                     .combinedClickable(
                         enabled = enabled,
                         onClick = { onSave(target, index) },
@@ -2432,26 +2654,25 @@ private fun RandomPresetRow(
                         role = Role.Button
                     }
                     .border(
-                        width = 1.dp,
-                        color = if (selected) OssmAccent else OssmGlassBorder,
-                        shape = RoundedCornerShape(10.dp)
+                        width = OssmDimens.BorderWidth,
+                        color = if (selected) OssmPrimary else OssmOutline,
+                        shape = RoundedCornerShape(OssmDimens.ControlRadius)
                     ),
-                shape = RoundedCornerShape(10.dp),
-                color = if (selected) OssmPrimary.copy(alpha = 0.22f) else OssmGlass.copy(alpha = 0.72f)
+                shape = RoundedCornerShape(OssmDimens.ControlRadius),
+                color = if (selected) OssmSurfaceHigh else OssmSurfaceRaised
             ) {
                 // Compact chip: one readable "min–max%" line, plus an optional saved-speed line.
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 4.dp, vertical = 6.dp),
+                        .padding(horizontal = OssmDimens.Space4, vertical = OssmDimens.Space8),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
                     Text(
                         text = "${preset.minPercent}–${preset.maxPercent}%",
-                        color = if (selected) OssmAccent else OssmOnSurface,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
+                        color = if (selected) OssmPrimary else OssmOnSurface,
+                        style = OssmValue,
                         maxLines = 1,
                         softWrap = false,
                         textAlign = TextAlign.Center
@@ -2459,9 +2680,8 @@ private fun RandomPresetRow(
                     preset.savedSpeedPercent?.let { saved ->
                         Text(
                             text = stringResource(R.string.ui2_preset_saved_speed_short, saved),
-                            color = OssmAccent,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium,
+                            color = OssmOnSurfaceMuted,
+                            style = OssmCaption,
                             maxLines = 1,
                             softWrap = false,
                             textAlign = TextAlign.Center
@@ -2498,9 +2718,9 @@ private fun RandomRangePresetDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = OssmGlass,
-        shape = RoundedCornerShape(24.dp),
-        tonalElevation = 8.dp,
+        containerColor = OssmSurface,
+        shape = RoundedCornerShape(OssmDimens.SheetRadius),
+        tonalElevation = NoElevation,
         title = {
             Text(
                 stringResource(R.string.ctl_random_preset_title, targetLabel, index + 1),
@@ -2510,14 +2730,14 @@ private fun RandomRangePresetDialog(
         text = {
             Column(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                verticalArrangement = Arrangement.spacedBy(OssmDimens.Space12)
             ) {
                 Text(
                     stringResource(R.string.ctl_random_preset_hint),
-                    color = OssmOnSurface.copy(alpha = 0.72f),
-                    fontSize = 12.sp
+                    color = OssmOnSurfaceMuted,
+                    style = OssmCaption
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(OssmDimens.Space8)) {
                     OutlinedTextField(
                         value = minText,
                         onValueChange = { minText = it.filter(Char::isDigit).take(3) },
@@ -2526,7 +2746,7 @@ private fun RandomRangePresetDialog(
                         modifier = Modifier.weight(1f),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = OssmPrimary,
-                            unfocusedBorderColor = OssmGlassBorder,
+                            unfocusedBorderColor = OssmOutline,
                             focusedTextColor = OssmOnSurface,
                             unfocusedTextColor = OssmOnSurface
                         )
@@ -2539,41 +2759,35 @@ private fun RandomRangePresetDialog(
                         modifier = Modifier.weight(1f),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = OssmPrimary,
-                            unfocusedBorderColor = OssmGlassBorder,
+                            unfocusedBorderColor = OssmOutline,
                             focusedTextColor = OssmOnSurface,
                             unfocusedTextColor = OssmOnSurface
                         )
                     )
                 }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(
-                        checked = saveSpeedToo,
-                        onCheckedChange = { saveSpeedToo = it },
-                        colors = CheckboxDefaults.colors(checkedColor = OssmAccent)
-                    )
-                    Text(
-                        stringResource(R.string.ctl_random_save_speed, currentSpeedPercent),
-                        color = OssmOnSurface,
-                        fontSize = 12.sp
-                    )
-                }
+                OssmSwitchRow(
+                    label = stringResource(R.string.ctl_random_save_speed, currentSpeedPercent),
+                    checked = saveSpeedToo,
+                    onCheckedChange = { saveSpeedToo = it }
+                )
             }
         },
         confirmButton = {
-            Button(
+            OssmButton(
+                text = stringResource(R.string.ctl_save),
                 onClick = {
                     if (valid) onSave(min ?: 0, max ?: 0, saveSpeedToo)
                 },
-                enabled = valid,
-                colors = ButtonDefaults.buttonColors(containerColor = OssmPrimary)
-            ) {
-                Text(stringResource(R.string.ctl_save))
-            }
+                kind = OssmButtonKind.Primary,
+                enabled = valid
+            )
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.ctl_cancel), color = OssmPrimaryLight)
-            }
+            OssmButton(
+                text = stringResource(R.string.ctl_cancel),
+                onClick = onDismiss,
+                kind = OssmButtonKind.Text
+            )
         }
     )
 }
@@ -2584,27 +2798,37 @@ private fun AutoRandomPatternRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit
 ) {
+    // Toute la rangee est la cible (libelle + case), 56 dp mini ; coche + contour turquoise = choisi.
+    val shape = RoundedCornerShape(OssmDimens.ControlRadius)
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, OssmGlassBorder, shape = MaterialTheme.shapes.medium)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .clip(shape)
+            .background(if (checked) OssmSurfaceHigh else OssmSurfaceRaised)
+            .border(
+                if (checked) ActiveBorderWidth else OssmDimens.BorderWidth,
+                if (checked) OssmPrimary else OssmOutline,
+                shape
+            )
+            .toggleable(value = checked, role = Role.Checkbox, onValueChange = onCheckedChange)
+            .heightIn(min = SettingsRowMinHeight)
+            .padding(horizontal = OssmDimens.Space12),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             label,
             color = OssmOnSurface,
-            fontSize = 14.sp,
+            style = MaterialTheme.typography.bodyLarge,
             modifier = Modifier.weight(1f)
         )
         Checkbox(
             checked = checked,
-            onCheckedChange = onCheckedChange,
-            modifier = Modifier.sizeIn(minWidth = 56.dp, minHeight = 56.dp),
+            onCheckedChange = null,
             colors = CheckboxDefaults.colors(
-                checkedColor = OssmAccent,
-                uncheckedColor = OssmOnSurface.copy(alpha = 0.5f)
+                checkedColor = OssmPrimary,
+                uncheckedColor = OssmOutline,
+                checkmarkColor = OssmOnPrimary
             )
         )
     }
@@ -2622,39 +2846,48 @@ private fun AutoRandomStartDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = OssmSurface,
+        tonalElevation = NoElevation,
         title = { Text(stringResource(R.string.ctl_auto_dialog_title), color = OssmOnSurface) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(OssmDimens.Space12)) {
                 Text(
                     stringResource(R.string.ctl_auto_dialog_count, selectedCount),
-                    color = OssmOnSurface
+                    color = OssmOnSurface,
+                    style = MaterialTheme.typography.bodyLarge
                 )
                 Text(
                     stringResource(R.string.ctl_auto_dialog_limits, maxSpeedPercent, depthMinPercent, depthMaxPercent),
-                    color = OssmOnSurface.copy(alpha = 0.8f)
+                    color = OssmOnSurfaceMuted,
+                    style = OssmValue
                 )
-                Text(
-                    stringResource(R.string.ctl_auto_dialog_warning),
-                    color = OssmWarning,
-                    fontSize = 12.sp
+                OssmStatusLine(
+                    text = stringResource(R.string.ctl_auto_dialog_warning),
+                    tone = OssmTone.Warn
                 )
             }
         },
         confirmButton = {
-            Button(
+            OssmButton(
+                text = stringResource(R.string.ctlrd_start),
                 onClick = onConfirm,
-                colors = ButtonDefaults.buttonColors(containerColor = OssmConnected)
-            ) {
-                Text(stringResource(R.string.ctl_start))
-            }
+                kind = OssmButtonKind.Primary
+            )
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.ctl_cancel), color = OssmPrimaryLight)
-            }
+            OssmButton(
+                text = stringResource(R.string.ctl_cancel),
+                onClick = onDismiss,
+                kind = OssmButtonKind.Text
+            )
         }
     )
 }
+
+/** Les dialogues restent a plat : pas de teinte d'elevation. */
+private val NoElevation = 0.dp
+
+// Ecart entre deux lignes du dialogue de reorganisation (le seuil de permutation en tient compte).
+private val ReorderRowSpacing = 6.dp
 
 @Composable
 private fun SliderGuardRow(
@@ -2663,36 +2896,12 @@ private fun SliderGuardRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                title,
-                color = OssmOnSurface,
-                style = MaterialTheme.typography.bodyLarge
-            )
-            Text(
-                description,
-                color = OssmOnSurface.copy(alpha = 0.65f),
-                fontSize = 12.sp
-            )
-        }
-        Spacer(Modifier.width(12.dp))
-        Switch(
-            checked = checked,
-            onCheckedChange = null,
-            modifier = Modifier.sizeIn(minWidth = 56.dp, minHeight = 56.dp),
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = OssmPrimary,
-                checkedTrackColor = OssmPrimary.copy(alpha = 0.35f)
-            )
-        )
-    }
+    OssmSwitchRow(
+        label = title,
+        checked = checked,
+        onCheckedChange = onCheckedChange,
+        supporting = description
+    )
 }
 
 @Composable
@@ -2706,7 +2915,9 @@ internal fun DepthRangeEditor(
     randomMinValue: Float? = null,
     randomMaxValue: Float? = null,
     headerAccessory: (@Composable RowScope.() -> Unit)? = null,
-    gestureCancellationKey: Long = 0L
+    gestureCancellationKey: Long = 0L,
+    /** Plafond imposé par une session distante : cadenas, mot « limité » et lecture TalkBack. */
+    limited: Boolean = LocalModeContext.current.remoteLimited
 ) {
     val displayedMin = randomMinValue ?: minValue
     val displayedMax = randomMaxValue ?: maxValue
@@ -2722,24 +2933,26 @@ internal fun DepthRangeEditor(
         displayValue = "${(displayedMin * 100).toInt()}–${(displayedMax * 100).toInt()}%",
         enabled = enabled,
         displayValueColor = when {
-            !enabled -> OssmOnSurface.copy(alpha = 0.4f)
+            !enabled -> OssmOnSurfaceMuted
             randomRangeActive -> OssmError
             else -> null
         },
-        headerAccessory = headerAccessory
+        headerAccessory = headerAccessory,
+        limited = limited
     ) {
         // -/+ move the bar touched last (retract or depth); the depth bar by default.
         RangeBarControl(
             start = minValue,
             end = maxValue,
             enabled = enabled,
-            activeColor = OssmAccent,
+            activeColor = OssmDepth,
             label = label,
             onRangeChange = onRangeChange,
             onRangeCommit = onRangeCommit,
             modifier = Modifier.weight(1f),
             markers = markers,
-            gestureCancellationKey = gestureCancellationKey
+            gestureCancellationKey = gestureCancellationKey,
+            stateSuffix = if (limited) stringResource(R.string.sld_limited) else null
         )
     }
 }
@@ -2747,6 +2960,7 @@ internal fun DepthRangeEditor(
 /**
  * Réorganisation des patterns : appui long sur une ligne pour la saisir, glisser
  * pour la déplacer, relâcher pour la déposer. L'ordre s'applique à la grille.
+ * Actions « Monter » / « Descendre » en plus pour les lecteurs d'écran.
  */
 @Composable
 private fun ReorderPatternsDialog(
@@ -2758,17 +2972,23 @@ private fun ReorderPatternsDialog(
     var draggingIndex by remember { mutableIntStateOf(-1) }
     var dragOffsetPx by remember { mutableFloatStateOf(0f) }
     var rowHeightPx by remember { mutableIntStateOf(1) }
+    val moveUpLabel = stringResource(R.string.ctlrd_reorder_up)
+    val moveDownLabel = stringResource(R.string.ctlrd_reorder_down)
 
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = OssmSurface.copy(alpha = if (draggingIndex >= 0) 0.75f else 1f),
-        title = { Text(stringResource(R.string.ctl_reorder_title), color = OssmOnSurface, fontSize = 17.sp) },
+        tonalElevation = NoElevation,
+        title = { Text(stringResource(R.string.ctl_reorder_title), color = OssmOnSurface) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(ReorderRowSpacing)
+            ) {
                 Text(
                     stringResource(R.string.ctl_reorder_hint),
-                    color = OssmOnSurface.copy(alpha = 0.6f),
-                    fontSize = 12.sp
+                    color = OssmOnSurfaceMuted,
+                    style = OssmCaption
                 )
                 order.forEachIndexed { index, entry ->
                     val key = entry.first
@@ -2782,10 +3002,41 @@ private fun ReorderPatternsDialog(
                                 translationY = if (isDragging) dragOffsetPx else 0f
                                 alpha = if (isDragging) 0.85f else 1f
                             }
-                            .clip(RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(OssmDimens.ControlRadius))
                             .background(
-                                if (isDragging) OssmPrimary.copy(alpha = 0.35f) else OssmGlass
+                                if (isDragging) OssmSurfaceHigh else OssmSurfaceRaised
                             )
+                            .border(
+                                OssmDimens.BorderWidth,
+                                if (isDragging) OssmPrimary else OssmOutline,
+                                RoundedCornerShape(OssmDimens.ControlRadius)
+                            )
+                            .semantics {
+                                customActions = listOf(
+                                    CustomAccessibilityAction(moveUpLabel) {
+                                        val current = order.indexOfFirst { it.first == key }
+                                        if (current > 0) {
+                                            val m = order.toMutableList()
+                                            m.add(current - 1, m.removeAt(current))
+                                            order = m
+                                            true
+                                        } else {
+                                            false
+                                        }
+                                    },
+                                    CustomAccessibilityAction(moveDownLabel) {
+                                        val current = order.indexOfFirst { it.first == key }
+                                        if (current >= 0 && current < order.size - 1) {
+                                            val m = order.toMutableList()
+                                            m.add(current + 1, m.removeAt(current))
+                                            order = m
+                                            true
+                                        } else {
+                                            false
+                                        }
+                                    }
+                                )
+                            }
                             .pointerInput(key, order.size) {
                                 detectDragGesturesAfterLongPress(
                                     onDragStart = {
@@ -2817,23 +3068,38 @@ private fun ReorderPatternsDialog(
                                     onDragCancel = { draggingIndex = -1; dragOffsetPx = 0f }
                                 )
                             }
-                            .padding(horizontal = 14.dp, vertical = 12.dp)
+                            .heightIn(min = OssmDimens.TouchTarget)
+                            .padding(horizontal = OssmDimens.Space12, vertical = OssmDimens.Space8)
                     ) {
-                        Text("☰", color = OssmPrimaryLight, fontSize = 14.sp)
-                        Spacer(Modifier.width(12.dp))
-                        Text(entry.second, color = OssmOnSurface, fontSize = 15.sp)
+                        Icon(
+                            Icons.Default.DragHandle,
+                            contentDescription = null,
+                            tint = OssmOnSurfaceMuted,
+                            modifier = Modifier.size(ControlIconSize)
+                        )
+                        Spacer(Modifier.width(OssmDimens.Space12))
+                        Text(
+                            entry.second,
+                            color = OssmOnSurface,
+                            style = MaterialTheme.typography.bodyLarge
+                        )
                     }
                 }
             }
         },
         confirmButton = {
-            Button(
+            OssmButton(
+                text = stringResource(R.string.ctl_save),
                 onClick = { onSave(order.map { it.first }) },
-                colors = ButtonDefaults.buttonColors(containerColor = OssmPrimary)
-            ) { Text(stringResource(R.string.ctl_save)) }
+                kind = OssmButtonKind.Primary
+            )
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.ctl_cancel), color = OssmOnSurface.copy(alpha = 0.7f)) }
+            OssmButton(
+                text = stringResource(R.string.ctl_cancel),
+                onClick = onDismiss,
+                kind = OssmButtonKind.Text
+            )
         }
     )
 }
@@ -2851,6 +3117,7 @@ private fun SavePresetDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = OssmSurface,
+        tonalElevation = NoElevation,
         title = { Text(stringResource(R.string.ctl_preset_save_title), color = OssmOnSurface) },
         text = {
             OutlinedTextField(
@@ -2860,16 +3127,17 @@ private fun SavePresetDialog(
                 singleLine = true,
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = OssmPrimary,
-                    unfocusedBorderColor = OssmGlassBorder,
+                    unfocusedBorderColor = OssmOutline,
                     focusedTextColor = OssmOnSurface,
                     unfocusedTextColor = OssmOnSurface
                 )
             )
         },
         confirmButton = {
-            Button(
+            OssmButton(
+                text = stringResource(R.string.ctl_preset_save),
                 onClick = {
-                    val pattern = currentState.activePattern ?: return@Button
+                    val pattern = currentState.activePattern ?: return@OssmButton
                     onSave(
                         Preset(
                             name = name.ifBlank { fallbackPresetName },
@@ -2881,13 +3149,15 @@ private fun SavePresetDialog(
                         )
                     )
                 },
-                colors = ButtonDefaults.buttonColors(containerColor = OssmPrimary)
-            ) {
-                Text(stringResource(R.string.ctl_preset_save))
-            }
+                kind = OssmButtonKind.Primary
+            )
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.ctl_cancel), color = OssmPrimaryLight) }
+            OssmButton(
+                text = stringResource(R.string.ctl_cancel),
+                onClick = onDismiss,
+                kind = OssmButtonKind.Text
+            )
         }
     )
 }
@@ -2905,12 +3175,14 @@ private fun AbruptChangeDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = OssmSurface,
+        tonalElevation = NoElevation,
         title = { Text(stringResource(R.string.ctl_abrupt_title), color = OssmOnSurface) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(OssmDimens.Space12)) {
                 Text(
                     stringResource(R.string.ctl_abrupt_body, stringResource(controlLabel(control)), thresholdPercent),
-                    color = OssmOnSurface.copy(alpha = 0.8f)
+                    color = OssmOnSurfaceMuted,
+                    style = MaterialTheme.typography.bodyMedium
                 )
                 HorizontalDivider(color = OssmGlassBorder)
                 GuardCheckboxRow(
@@ -2926,17 +3198,19 @@ private fun AbruptChangeDialog(
             }
         },
         confirmButton = {
-            Button(
+            // Changement risque : bouton neutre (contour), l'action sure (Annuler) reste la plus visible.
+            OssmButton(
+                text = stringResource(R.string.ctl_abrupt_confirm),
                 onClick = { onConfirm(skipForSession, neverAskAgain) },
-                colors = ButtonDefaults.buttonColors(containerColor = OssmWarning)
-            ) {
-                Text(stringResource(R.string.ctl_abrupt_confirm))
-            }
+                kind = OssmButtonKind.Secondary
+            )
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.ctl_cancel), color = OssmError)
-            }
+            OssmButton(
+                text = stringResource(R.string.ctl_cancel),
+                onClick = onDismiss,
+                kind = OssmButtonKind.Primary
+            )
         }
     )
 }
@@ -2952,35 +3226,18 @@ private fun GuardCheckboxRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            label,
-            color = OssmOnSurface,
-            fontSize = 13.sp,
-            modifier = Modifier.weight(1f)
-        )
-        Switch(
-            checked = checked,
-            onCheckedChange = null,
-            modifier = Modifier.sizeIn(minWidth = 56.dp, minHeight = 56.dp),
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = OssmPrimary,
-                checkedTrackColor = OssmPrimary.copy(alpha = 0.35f)
-            )
-        )
-    }
+    OssmSwitchRow(
+        label = label,
+        checked = checked,
+        onCheckedChange = onCheckedChange
+    )
 }
 
 /**
  * Bandeau compact affiché pendant une session distante active : maximums (vitesse, profondeur,
  * sensation) fixés par les curseurs locaux, valeurs EN DIRECT envoyées par le site, et avertissement si le maximum de
  * vitesse est à 0 % (le site ne peut alors rien faire bouger).
+ * Ambre + cadenas = limite imposée par la session ; le texte porte l'information, jamais la couleur seule.
  */
 @Composable
 private fun RemoteSessionBanner(
@@ -2989,8 +3246,7 @@ private fun RemoteSessionBanner(
     compact: Boolean
 ) {
     val blocked = view.motionBlockedByZeroMaximum
-    val accent = if (blocked) OssmWarning else OssmPrimaryLight
-    val shape = RoundedCornerShape(10.dp)
+    val shape = RoundedCornerShape(OssmDimens.ControlRadius)
     fun pct(value: Float) = (value.coerceIn(0f, 1f) * 100f).roundToInt()
     val live = buildList {
         view.remoteSpeed?.let { add(stringResource(R.string.ui2_remote_live_speed, pct(it))) }
@@ -3006,32 +3262,37 @@ private fun RemoteSessionBanner(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = if (compact) 6.dp else 8.dp)
+            .padding(bottom = if (compact) OssmDimens.Space8 else OssmDimens.Space12)
             .clip(shape)
             .background(OssmSurfaceRaised)
-            .border(1.dp, accent.copy(alpha = 0.6f), shape)
-            .padding(horizontal = 10.dp, vertical = 6.dp)
+            .border(OssmDimens.BorderWidth, OssmWarning.copy(alpha = 0.6f), shape)
+            .padding(horizontal = OssmDimens.Space12, vertical = OssmDimens.Space8)
             .testTag("remote_session_banner"),
-        verticalArrangement = Arrangement.spacedBy(2.dp)
+        verticalArrangement = Arrangement.spacedBy(OssmDimens.Space4)
     ) {
-        Text(
-            stringResource(
-                R.string.ui2_remote_banner_limits,
-                pct(view.speedMax),
-                pct(view.depthMin),
-                pct(view.depthMax)
-            ) + " · " + stringResource(R.string.ui2_remote_banner_sensation_range, *remoteSensationBannerArgs(view)),
-            color = accent,
-            fontSize = 12.sp,
-            lineHeight = 16.sp,
-            fontWeight = FontWeight.SemiBold
-        )
-        if (blocked) {
+        Row(verticalAlignment = Alignment.Top) {
+            Icon(
+                Icons.Default.Lock,
+                contentDescription = null,
+                tint = OssmWarning,
+                modifier = Modifier.size(StatusIconSize)
+            )
+            Spacer(Modifier.width(OssmDimens.Space8))
             Text(
-                stringResource(R.string.ui2_remote_blocked_zero),
+                stringResource(
+                    R.string.ui2_remote_banner_limits,
+                    pct(view.speedMax),
+                    pct(view.depthMin),
+                    pct(view.depthMax)
+                ) + " · " + stringResource(R.string.ui2_remote_banner_sensation_range, *remoteSensationBannerArgs(view)),
                 color = OssmWarning,
-                fontSize = 12.sp,
-                lineHeight = 16.sp
+                style = MaterialTheme.typography.labelMedium
+            )
+        }
+        if (blocked) {
+            OssmStatusLine(
+                text = stringResource(R.string.ui2_remote_blocked_zero),
+                tone = OssmTone.Warn
             )
         }
         Text(
@@ -3040,9 +3301,8 @@ private fun RemoteSessionBanner(
             } else {
                 stringResource(R.string.ui2_remote_live_prefix, live.joinToString(" · "))
             },
-            color = OssmOnSurface.copy(alpha = 0.85f),
-            fontSize = 12.sp,
-            lineHeight = 16.sp
+            color = OssmOnSurfaceMuted,
+            style = OssmCaption
         )
     }
 }

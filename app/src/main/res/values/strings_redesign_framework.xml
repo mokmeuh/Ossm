@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Cadre des modes : une phrase par mode, affichée dans le sélecteur. -->
+    <string name="mode_summary_auto_random">Mélange au hasard les modes choisis, avec une intensité qui monte.</string>
+    <string name="mode_summary_natural">Gestes naturels générés par le téléphone.</string>
+    <string name="mode_summary_progressive">Allers-retours complets dont la vitesse monte à chaque course.</string>
+    <string name="mode_summary_live">Tu pilotes la position en direct avec le doigt.</string>
+    <string name="mode_summary_voice">Instructions parlées en français, exécutées sur le téléphone.</string>
+    <string name="mode_summary_stroke_engine">Mouvement géré par la machine : tu règles vitesse, profondeur et course.</string>
+    <string name="mode_summary_simple">Va-et-vient simple géré par la machine.</string>
+    <string name="mode_summary_launch_only">Se lance sans réglage.</string>
+</resources>

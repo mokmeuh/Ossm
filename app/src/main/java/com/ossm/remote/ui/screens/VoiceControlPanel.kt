@@ -6,57 +6,77 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MicOff
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Switch
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
-import com.ossm.remote.ui.theme.OssmGlass
-import com.ossm.remote.ui.theme.OssmOutline
-import com.ossm.remote.ui.theme.OssmSurfaceRaised
-import com.ossm.remote.voice.VoiceDepthRange
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.ossm.remote.R
 import com.ossm.remote.ui.components.ControlSlider
+import com.ossm.remote.ui.components.OssmButton
+import com.ossm.remote.ui.components.OssmButtonKind
+import com.ossm.remote.ui.components.OssmStatusLine
+import com.ossm.remote.ui.components.OssmSwitchRow
+import com.ossm.remote.ui.components.OssmTone
+import com.ossm.remote.ui.theme.OssmCaption
 import com.ossm.remote.ui.theme.OssmConnected
-import com.ossm.remote.ui.theme.OssmError
+import com.ossm.remote.ui.theme.OssmDimens
+import com.ossm.remote.ui.theme.OssmGlass
+import com.ossm.remote.ui.theme.OssmGlassBorder
 import com.ossm.remote.ui.theme.OssmOnSurface
+import com.ossm.remote.ui.theme.OssmOnSurfaceMuted
+import com.ossm.remote.ui.theme.OssmOutline
 import com.ossm.remote.ui.theme.OssmPrimary
 import com.ossm.remote.ui.theme.OssmPrimaryLight
-import com.ossm.remote.ui.theme.OssmWarning
+import com.ossm.remote.ui.theme.OssmSectionTitle
+import com.ossm.remote.ui.theme.OssmSurfaceHigh
+import com.ossm.remote.ui.theme.OssmSurfaceRaised
 import com.ossm.remote.viewmodel.ControlUiState
 import com.ossm.remote.voice.AsrEngine
 import com.ossm.remote.voice.VoiceAiStatus
 import com.ossm.remote.voice.VoiceAiUiState
+import com.ossm.remote.voice.VoiceDepthRange
 import com.ossm.remote.voice.VoiceIgnoreReason
 import com.ossm.remote.voice.VoiceInterpretSource
 import com.ossm.remote.voice.VoiceInterpretation
@@ -76,6 +96,12 @@ data class VoiceControlActions(
     val hasMicrophonePermission: () -> Boolean = { false },
     val onMicrophonePermissionResult: (Boolean) -> Unit = {},
 )
+
+/** Hauteur du bouton Écouter / Pause micro et de la rangée « mot court » : 56 dp. */
+private val VoiceActionHeight = OssmDimens.TouchTarget + OssmDimens.Space8
+
+/** Icône de 20 dp des lignes du plan. */
+private val VoiceIconSize = OssmDimens.Space16 + OssmDimens.Space4
 
 /** 2.3.30: "Transcription : Whisper small (français)" / "Transcription : Parakeet (langue non forcée)". */
 internal fun voiceAsrLabelRes(engine: AsrEngine): Int = when (engine) {
@@ -122,130 +148,47 @@ internal fun VoiceControlPanel(
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         actions.onMicrophonePermissionResult(granted)
     }
-    // 2.3.28: the long explanation moved to the header "i" button (VoiceInfoButton).
-    Column(modifier = Modifier.fillMaxWidth().testTag("voice_panel")) {
+    val ready = voiceAi.status is VoiceAiStatus.Ready
+    // 2.3.28: la longue explication est dans le bouton « i » de l'en-tête (VoiceInfoButton).
+    // Ordre : état de l'IA, écoute, réglages, puis ce qui a été entendu et le plan en résultant.
+    Column(
+        modifier = Modifier.fillMaxWidth().testTag("voice_panel"),
+        verticalArrangement = Arrangement.spacedBy(OssmDimens.Space12)
+    ) {
         VoiceAiStatusBlock(voiceAi.status, modelRoot)
-        // 2.3.30: which engine transcribes (Whisper "fr" imposed, or the Parakeet fallback).
+        // 2.3.30: moteur de transcription (Whisper « fr » imposé, ou repli Parakeet).
         voiceAi.asrEngine?.let { engine ->
-            Text(
-                stringResource(voiceAsrLabelRes(engine)),
-                color = if (engine == AsrEngine.WHISPER_SMALL_FR) OssmConnected else OssmWarning,
-                fontSize = 12.sp,
-                modifier = Modifier.testTag("voice_asr_engine")
+            OssmStatusLine(
+                text = stringResource(voiceAsrLabelRes(engine)),
+                tone = if (engine == AsrEngine.WHISPER_SMALL_FR) OssmTone.Ok else OssmTone.Warn,
+                modifier = Modifier.modesStatusTag("voice_asr_engine")
             )
         }
-        val ready = voiceAi.status is VoiceAiStatus.Ready
-        Spacer(Modifier.height(8.dp))
-        OutlinedButton(
-            onClick = {
+        VoiceListenZone(
+            listening = voiceAi.listening,
+            ready = ready,
+            shortWordStop = uiState.voiceShortWordStop,
+            onShortWordStopChange = actions.onShortWordStopChange,
+            onToggleListen = {
                 when {
                     voiceAi.listening -> actions.onListenChange(false)
                     actions.hasMicrophonePermission() -> actions.onListenChange(true)
                     else -> permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                 }
-            },
-            enabled = ready,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("voice_listen")
-        ) {
-            Text(
-                stringResource(if (voiceAi.listening) R.string.voice_listen_pause else R.string.voice_listen),
-                fontWeight = FontWeight.Bold
-            )
-        }
-        if (voiceAi.listening) {
-            Text(
-                stringResource(R.string.voice_listening),
-                color = OssmConnected,
-                fontSize = 11.sp,
-                modifier = Modifier.padding(top = 4.dp)
-            )
-        }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 56.dp)
-                .toggleable(
-                    value = uiState.voiceShortWordStop,
-                    role = Role.Switch,
-                    onValueChange = actions.onShortWordStopChange,
-                )
-                .testTag("voice_short_word_stop"),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                stringResource(
-                    if (uiState.voiceShortWordStop) R.string.voice_short_word_stop_on
-                    else R.string.voice_short_word_stop_off
-                ),
-                color = if (uiState.voiceShortWordStop) OssmConnected else OssmWarning,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.weight(1f),
-            )
-            Switch(checked = uiState.voiceShortWordStop, onCheckedChange = null)
-        }
+            }
+        )
         if (voiceAi.microphoneDenied) {
-            Text(
-                stringResource(R.string.voice_mic_denied),
-                color = OssmError,
-                fontSize = 11.sp,
-                modifier = Modifier.padding(top = 4.dp)
-            )
-        }
-        voiceAi.lastTranscript?.takeIf { it.isNotBlank() }?.let { transcript ->
-            Text(
-                stringResource(R.string.voice_last_transcript, transcript),
-                color = OssmOnSurface.copy(alpha = 0.85f),
-                fontSize = 12.sp,
-                modifier = Modifier.padding(top = 6.dp).testTag("voice_transcript")
-            )
-        }
-        if (voiceAi.speechToTextMs != null || voiceAi.textToStepsMs != null) {
-            Text(
-                stringResource(
-                    R.string.voice_latency,
-                    voiceAi.speechToTextMs?.toString() ?: "—",
-                    voiceAi.textToStepsMs?.toString() ?: "—",
-                ),
-                color = OssmOnSurface.copy(alpha = 0.6f),
-                fontSize = 11.sp,
-                modifier = Modifier.padding(top = 2.dp).testTag("voice_latency")
-            )
-        }
-        voiceAi.interpretSource?.let { source ->
-            Text(
-                stringResource(
-                    R.string.voice_interpret_source,
-                    stringResource(
-                        when (source) {
-                            VoiceInterpretSource.RULES -> R.string.voice_source_rules
-                            VoiceInterpretSource.GEMMA -> R.string.voice_source_gemma
-                        }
-                    ),
-                    voiceAi.textToStepsMs?.toString() ?: "—",
-                ),
-                color = OssmOnSurface.copy(alpha = 0.6f),
-                fontSize = 11.sp,
-                modifier = Modifier.padding(top = 2.dp).testTag("voice_interpret_source")
-            )
-        }
-        voiceAi.lastIgnoredReason?.let { reason ->
-            Text(
-                stringResource(R.string.voice_transcript_ignored, stringResource(voiceIgnoreReasonLabel(reason))),
-                color = OssmWarning.copy(alpha = 0.9f),
-                fontSize = 11.sp,
-                modifier = Modifier.padding(top = 2.dp).testTag("voice_transcript_ignored")
+            OssmStatusLine(
+                text = stringResource(R.string.voice_mic_denied),
+                tone = OssmTone.Error
             )
         }
         if (!uiState.streamingReady) {
-            Text(
-                stringResource(R.string.ctl_live_preparing),
-                color = OssmWarning.copy(alpha = 0.9f),
-                fontSize = 11.sp,
-                modifier = Modifier.padding(top = 6.dp)
+            OssmStatusLine(
+                text = stringResource(R.string.ctl_live_preparing),
+                tone = OssmTone.Warn
             )
         }
-        Spacer(Modifier.height(12.dp))
         ControlSlider(
             label = stringResource(R.string.voice_max_speed),
             value = uiState.voiceMaxSpeed,
@@ -255,69 +198,81 @@ internal fun VoiceControlPanel(
             activeColor = OssmPrimary,
             gestureCancellationKey = uiState.liveGestureEpoch
         )
-        Spacer(Modifier.height(12.dp))
         VoiceDepthRangeControl(uiState = uiState, enabled = slidersEnabled, onCommit = actions.onDepthRangeChange)
-        Spacer(Modifier.height(12.dp))
-        Text(
-            stringResource(R.string.voice_plan_title),
-            color = OssmPrimaryLight,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 1.sp
+        VoiceHeardBlock(voiceAi)
+        VoicePlanBlock(uiState)
+        // 2.3.28: pas de STOP local. La barre STOP globale reste l'unique bouton ;
+        // le mot parlé « stop » reste actif (voiceStopNow).
+    }
+}
+
+/**
+ * Zone d'écoute : état du micro lisible (icône + mot), bouton Écouter / Pause micro,
+ * puis l'interrupteur « STOP rapide par mot court ».
+ */
+@Composable
+private fun VoiceListenZone(
+    listening: Boolean,
+    ready: Boolean,
+    shortWordStop: Boolean,
+    onShortWordStopChange: (Boolean) -> Unit,
+    onToggleListen: () -> Unit,
+) {
+    val shape = RoundedCornerShape(OssmDimens.ControlRadius)
+    val stateColor = if (listening) OssmConnected else OssmOnSurfaceMuted
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(OssmSurfaceRaised)
+            .border(OssmDimens.BorderWidth, if (listening) OssmConnected else OssmGlassBorder, shape)
+            .padding(OssmDimens.Space12),
+        verticalArrangement = Arrangement.spacedBy(OssmDimens.Space12)
+    ) {
+        // L'état est annoncé par TalkBack à chaque changement (écoute / pause).
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite }
+                .testTag("voice_listening_state")
+        ) {
+            Icon(
+                if (listening) Icons.Filled.Mic else Icons.Filled.MicOff,
+                contentDescription = null,
+                tint = stateColor,
+                modifier = Modifier.size(OssmDimens.Space24)
+            )
+            Spacer(Modifier.width(OssmDimens.Space12))
+            Text(
+                stringResource(if (listening) R.string.voice_listening else R.string.modes_voice_mic_paused),
+                color = stateColor,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+        OssmButton(
+            text = stringResource(if (listening) R.string.voice_listen_pause else R.string.voice_listen),
+            onClick = onToggleListen,
+            kind = if (listening) OssmButtonKind.Secondary else OssmButtonKind.Primary,
+            icon = if (listening) Icons.Filled.Pause else Icons.Filled.Mic,
+            enabled = ready,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = VoiceActionHeight)
+                .testTag("voice_listen")
         )
-        voiceInterpretationRes(uiState.voiceInterpretation)?.let { res ->
-            Text(
-                stringResource(res),
-                color = when (uiState.voiceInterpretation) {
-                    VoiceInterpretation.PLANNED -> OssmConnected
-                    VoiceInterpretation.STOPPED -> OssmOnSurface
-                    else -> OssmError
-                },
-                fontSize = 12.sp,
-                modifier = Modifier.padding(top = 4.dp).testTag("voice_state")
-            )
-        }
-        val motif = uiState.voiceMotif
-        if (motif != null) {
-            Text(
-                stringResource(
-                    R.string.voice_motif_line,
-                    motif.depthStart, motif.depthEnd, motif.speedStart, motif.speedEnd, motif.rampSeconds,
-                ),
-                color = if (uiState.voiceRunning) OssmConnected else OssmOnSurface.copy(alpha = 0.85f),
-                fontWeight = if (uiState.voiceRunning) FontWeight.Bold else FontWeight.Normal,
-                fontSize = 12.sp,
-                modifier = Modifier.padding(top = 4.dp).testTag("voice_motif")
-            )
-            if (uiState.voiceRunning) {
-                Text(
-                    stringResource(R.string.voice_motif_running),
-                    color = OssmOnSurface.copy(alpha = 0.6f),
-                    fontSize = 11.sp,
-                    modifier = Modifier.padding(top = 2.dp)
-                )
-            }
-        } else if (uiState.voicePlan.isEmpty()) {
-            Text(
-                stringResource(R.string.voice_plan_empty),
-                color = OssmOnSurface.copy(alpha = 0.6f),
-                fontSize = 12.sp,
-                modifier = Modifier.padding(top = 4.dp)
-            )
-        } else {
-            uiState.voicePlan.forEachIndexed { index, step ->
-                val current = uiState.voiceRunning && uiState.voiceStepIndex == index
-                Text(
-                    voiceStepText(step, first = index == 0),
-                    color = if (current) OssmConnected else OssmOnSurface.copy(alpha = 0.85f),
-                    fontWeight = if (current) FontWeight.Bold else FontWeight.Normal,
-                    fontSize = 12.sp,
-                    modifier = Modifier.padding(top = 2.dp)
-                )
-            }
-        }
-        // 2.3.28: no STOP here any more. The global STOP bar at the top stays the only STOP
-        // button; the spoken STOP keyword stays active (voiceStopNow).
+        HorizontalDivider(color = OssmGlassBorder)
+        OssmSwitchRow(
+            label = stringResource(
+                if (shortWordStop) R.string.voice_short_word_stop_on else R.string.voice_short_word_stop_off
+            ),
+            checked = shortWordStop,
+            onCheckedChange = onShortWordStopChange,
+            modifier = Modifier
+                .heightIn(min = VoiceActionHeight)
+                .testTag("voice_short_word_stop")
+        )
     }
 }
 
@@ -349,7 +304,182 @@ private fun VoiceDepthRangeControl(
     }
 }
 
-/** Header "i" button of the Voix mode: same 48dp footprint as the gear, opens a short bubble. */
+/**
+ * Diagnostic de la dernière écoute : ce qui a été entendu, d'où vient l'interprétation, les
+ * latences, et pourquoi une transcription a été ignorée. N'affiche rien tant qu'il n'y a rien.
+ */
+@Composable
+private fun VoiceHeardBlock(voiceAi: VoiceAiUiState) {
+    val transcript = voiceAi.lastTranscript?.takeIf { it.isNotBlank() }
+    val hasLatency = voiceAi.speechToTextMs != null || voiceAi.textToStepsMs != null
+    val source = voiceAi.interpretSource
+    val ignored = voiceAi.lastIgnoredReason
+    if (transcript == null && !hasLatency && source == null && ignored == null) return
+
+    val shape = RoundedCornerShape(OssmDimens.ControlRadius)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(OssmSurfaceRaised)
+            .border(OssmDimens.BorderWidth, OssmGlassBorder, shape)
+            .padding(OssmDimens.Space12),
+        verticalArrangement = Arrangement.spacedBy(OssmDimens.Space8)
+    ) {
+        Text(
+            stringResource(R.string.modes_voice_heard_title).uppercase(),
+            color = OssmOnSurfaceMuted,
+            style = OssmSectionTitle,
+            modifier = Modifier.semantics { heading() }
+        )
+        if (transcript != null) {
+            Text(
+                stringResource(R.string.voice_last_transcript, transcript),
+                color = OssmOnSurface,
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.testTag("voice_transcript")
+            )
+        }
+        if (hasLatency) {
+            Text(
+                stringResource(
+                    R.string.voice_latency,
+                    voiceAi.speechToTextMs?.toString() ?: "—",
+                    voiceAi.textToStepsMs?.toString() ?: "—",
+                ),
+                color = OssmOnSurfaceMuted,
+                style = OssmCaption,
+                modifier = Modifier.testTag("voice_latency")
+            )
+        }
+        if (source != null) {
+            Text(
+                stringResource(
+                    R.string.voice_interpret_source,
+                    stringResource(
+                        when (source) {
+                            VoiceInterpretSource.RULES -> R.string.voice_source_rules
+                            VoiceInterpretSource.GEMMA -> R.string.voice_source_gemma
+                        }
+                    ),
+                    voiceAi.textToStepsMs?.toString() ?: "—",
+                ),
+                color = OssmOnSurfaceMuted,
+                style = OssmCaption,
+                modifier = Modifier.testTag("voice_interpret_source")
+            )
+        }
+        if (ignored != null) {
+            OssmStatusLine(
+                text = stringResource(R.string.voice_transcript_ignored, stringResource(voiceIgnoreReasonLabel(ignored))),
+                tone = OssmTone.Warn,
+                modifier = Modifier.modesStatusTag("voice_transcript_ignored")
+            )
+        }
+    }
+}
+
+/** Séquence planifiée : état de l'interprétation, motif continu ou liste des étapes. */
+@Composable
+private fun VoicePlanBlock(uiState: ControlUiState) {
+    Column(verticalArrangement = Arrangement.spacedBy(OssmDimens.Space8)) {
+        Text(
+            stringResource(R.string.voice_plan_title),
+            color = OssmOnSurfaceMuted,
+            style = OssmSectionTitle,
+            modifier = Modifier.semantics { heading() }
+        )
+        voiceInterpretationRes(uiState.voiceInterpretation)?.let { res ->
+            OssmStatusLine(
+                text = stringResource(res),
+                tone = when (uiState.voiceInterpretation) {
+                    VoiceInterpretation.PLANNED -> OssmTone.Ok
+                    VoiceInterpretation.STOPPED -> OssmTone.Neutral
+                    else -> OssmTone.Error
+                },
+                modifier = Modifier.modesStatusTag("voice_state")
+            )
+        }
+        val motif = uiState.voiceMotif
+        if (motif != null) {
+            OssmStatusLine(
+                text = stringResource(
+                    R.string.voice_motif_line,
+                    motif.depthStart, motif.depthEnd, motif.speedStart, motif.speedEnd, motif.rampSeconds,
+                ),
+                tone = if (uiState.voiceRunning) OssmTone.Ok else OssmTone.Neutral,
+                modifier = Modifier.modesStatusTag("voice_motif")
+            )
+            if (uiState.voiceRunning) {
+                Text(
+                    stringResource(R.string.voice_motif_running),
+                    color = OssmOnSurfaceMuted,
+                    style = OssmCaption
+                )
+            }
+        } else if (uiState.voicePlan.isEmpty()) {
+            Text(
+                stringResource(R.string.voice_plan_empty),
+                color = OssmOnSurfaceMuted,
+                style = OssmCaption
+            )
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(OssmDimens.Space4)) {
+                uiState.voicePlan.forEachIndexed { index, step ->
+                    VoiceStepRow(
+                        text = voiceStepText(step, first = index == 0),
+                        current = uiState.voiceRunning && uiState.voiceStepIndex == index
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Une étape du plan ; l'étape courante est encadrée, marquée d'une flèche et nommée. */
+@Composable
+private fun VoiceStepRow(text: String, current: Boolean) {
+    val shape = RoundedCornerShape(OssmDimens.FieldRadius)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(if (current) OssmSurfaceHigh else Color.Transparent)
+            .border(OssmDimens.BorderWidth, if (current) OssmConnected else Color.Transparent, shape)
+            .padding(horizontal = OssmDimens.Space8, vertical = OssmDimens.Space4)
+            .semantics(mergeDescendants = true) {}
+    ) {
+        Box(modifier = Modifier.size(VoiceIconSize)) {
+            if (current) {
+                Icon(
+                    Icons.Filled.PlayArrow,
+                    contentDescription = null,
+                    tint = OssmConnected,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        }
+        Spacer(Modifier.width(OssmDimens.Space8))
+        Column {
+            Text(
+                text,
+                color = if (current) OssmConnected else OssmOnSurface,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (current) FontWeight.Bold else FontWeight.Normal
+            )
+            if (current) {
+                Text(
+                    stringResource(R.string.modes_voice_step_current),
+                    color = OssmOnSurfaceMuted,
+                    style = OssmCaption
+                )
+            }
+        }
+    }
+}
+
+/** Bouton « i » de l'en-tête du mode Voix : même empreinte de 48 dp que l'engrenage, ouvre une bulle courte. */
 @Composable
 internal fun VoiceInfoButton(modifier: Modifier = Modifier) {
     var open by remember { mutableStateOf(false) }
@@ -357,18 +487,19 @@ internal fun VoiceInfoButton(modifier: Modifier = Modifier) {
     Box(
         contentAlignment = Alignment.Center,
         modifier = modifier
-            .size(48.dp)
+            .size(OssmDimens.TouchTarget)
             .clip(CircleShape)
             .background(OssmSurfaceRaised)
-            .border(1.dp, OssmOutline, CircleShape)
+            .border(OssmDimens.BorderWidth, OssmOutline, CircleShape)
             .clickable(role = Role.Button) { open = true }
             .semantics { contentDescription = description }
             .testTag("voice_info")
     ) {
+        // La lettre est décorative : le bouton se lit par sa description.
         Text(
             "i",
             color = OssmPrimaryLight,
-            fontSize = 22.sp,
+            style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
             fontStyle = FontStyle.Italic,
             fontFamily = FontFamily.Serif,
@@ -379,56 +510,74 @@ internal fun VoiceInfoButton(modifier: Modifier = Modifier) {
         AlertDialog(
             onDismissRequest = { open = false },
             containerColor = OssmGlass,
-            title = { Text(stringResource(R.string.voice_info_title), color = OssmOnSurface, fontWeight = FontWeight.Bold) },
-            text = { Text(stringResource(R.string.voice_info_body), color = OssmOnSurface, fontSize = 14.sp) },
-            confirmButton = {
-                TextButton(onClick = { open = false }) {
-                    Text(stringResource(R.string.voice_info_close), color = OssmPrimaryLight)
+            title = {
+                Text(
+                    stringResource(R.string.voice_info_title),
+                    color = OssmOnSurface,
+                    style = MaterialTheme.typography.titleLarge
+                )
+            },
+            // Le texte défile : il reste entièrement lisible sur petit écran et à 130 % de police.
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    Text(
+                        stringResource(R.string.voice_info_body),
+                        color = OssmOnSurface,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
                 }
+            },
+            confirmButton = {
+                OssmButton(
+                    text = stringResource(R.string.voice_info_close),
+                    onClick = { open = false },
+                    kind = OssmButtonKind.Text
+                )
             },
             modifier = Modifier.testTag("voice_info_dialog")
         )
     }
 }
 
+/** État de l'IA vocale (icône + texte) et, si le modèle manque, les chemins attendus. */
 @Composable
 private fun VoiceAiStatusBlock(status: VoiceAiStatus, modelRoot: String?) {
-    val (text, color) = when (status) {
-        VoiceAiStatus.Idle -> stringResource(R.string.voice_ai_idle) to OssmWarning
-        VoiceAiStatus.Loading -> stringResource(R.string.voice_ai_loading) to OssmWarning
-        is VoiceAiStatus.Ready -> stringResource(R.string.voice_ai_ready, status.llmBackend) to OssmConnected
-        is VoiceAiStatus.ModelMissing -> stringResource(R.string.voice_ai_missing) to OssmError
-        is VoiceAiStatus.ModelUnreadable -> stringResource(R.string.voice_ai_unreadable) to OssmError
-        is VoiceAiStatus.Error -> stringResource(R.string.voice_ai_error, status.message) to OssmError
+    val (text, tone) = when (status) {
+        VoiceAiStatus.Idle -> stringResource(R.string.voice_ai_idle) to OssmTone.Warn
+        VoiceAiStatus.Loading -> stringResource(R.string.voice_ai_loading) to OssmTone.Warn
+        is VoiceAiStatus.Ready -> stringResource(R.string.voice_ai_ready, status.llmBackend) to OssmTone.Ok
+        is VoiceAiStatus.ModelMissing -> stringResource(R.string.voice_ai_missing) to OssmTone.Error
+        is VoiceAiStatus.ModelUnreadable -> stringResource(R.string.voice_ai_unreadable) to OssmTone.Error
+        is VoiceAiStatus.Error -> stringResource(R.string.voice_ai_error, status.message) to OssmTone.Error
     }
-    Text(
-        text,
-        color = color,
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Bold,
-        modifier = Modifier.testTag("voice_model_state")
-    )
-    val paths = when (status) {
-        is VoiceAiStatus.ModelMissing -> status.paths
-        is VoiceAiStatus.ModelUnreadable -> status.paths
-        else -> emptyList()
-    }
-    if (paths.isNotEmpty()) {
-        paths.forEach { path ->
+    Column(verticalArrangement = Arrangement.spacedBy(OssmDimens.Space4)) {
+        OssmStatusLine(
+            text = text,
+            tone = tone,
+            modifier = Modifier.modesStatusTag("voice_model_state")
+        )
+        val paths = when (status) {
+            is VoiceAiStatus.ModelMissing -> status.paths
+            is VoiceAiStatus.ModelUnreadable -> status.paths
+            else -> emptyList()
+        }
+        if (paths.isNotEmpty()) {
+            paths.forEach { path ->
+                Text(
+                    stringResource(R.string.voice_ai_expected_path, path),
+                    color = OssmOnSurfaceMuted,
+                    style = OssmCaption,
+                    modifier = Modifier.padding(start = OssmDimens.Space24)
+                )
+            }
+        } else if (status is VoiceAiStatus.Error && modelRoot != null) {
             Text(
-                stringResource(R.string.voice_ai_expected_path, path),
-                color = OssmOnSurface.copy(alpha = 0.7f),
-                fontSize = 10.sp,
-                modifier = Modifier.padding(top = 2.dp)
+                stringResource(R.string.voice_ai_expected_path, modelRoot),
+                color = OssmOnSurfaceMuted,
+                style = OssmCaption,
+                modifier = Modifier.padding(start = OssmDimens.Space24)
             )
         }
-    } else if (status is VoiceAiStatus.Error && modelRoot != null) {
-        Text(
-            stringResource(R.string.voice_ai_expected_path, modelRoot),
-            color = OssmOnSurface.copy(alpha = 0.7f),
-            fontSize = 10.sp,
-            modifier = Modifier.padding(top = 2.dp)
-        )
     }
 }
 

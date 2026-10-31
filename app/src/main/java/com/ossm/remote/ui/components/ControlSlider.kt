@@ -1,12 +1,17 @@
 package com.ossm.remote.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -21,13 +26,17 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
+import com.ossm.remote.ui.modes.LocalModeContext
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -41,12 +50,16 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.ossm.remote.R
-import com.ossm.remote.ui.theme.OssmOnSurface
+import com.ossm.remote.ui.theme.OssmCaption
+import com.ossm.remote.ui.theme.OssmDimens
 import com.ossm.remote.ui.theme.OssmError
+import com.ossm.remote.ui.theme.OssmGlassBorder
+import com.ossm.remote.ui.theme.OssmOutline
 import com.ossm.remote.ui.theme.OssmPrimary
 import com.ossm.remote.ui.theme.OssmPrimaryLight
+import com.ossm.remote.ui.theme.OssmSurfaceRaised
+import com.ossm.remote.ui.theme.OssmTextFaint
 import android.os.SystemClock
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -82,7 +95,12 @@ fun ControlSlider(
     /** Optional invisible detent (in [valueRange] units) the thumb is pulled onto when close. */
     snapValue: Float? = null,
     /** Signed slider (sensation): fill from the center, colored by sign, fixed center tick. */
-    bipolar: BipolarStyle? = null
+    bipolar: BipolarStyle? = null,
+    /**
+     * Plafond imposé (session distante) : cadenas, mot « limité » et valeur en ambre dans
+     * l'en-tête, et « limité » lu par TalkBack. N'a aucun effet sur le réglage lui-même.
+     */
+    limited: Boolean = LocalModeContext.current.remoteLimited
 ) {
     val step = (valueRange.endInclusive - valueRange.start) / 100f
     val rangeSize = valueRange.endInclusive - valueRange.start
@@ -94,20 +112,26 @@ fun ControlSlider(
     fun fromPercent(percent: Float): Float =
         valueRange.start + percent.coerceIn(0f, 100f) / 100f * rangeSize
 
+    // Couleur du canal : la sensation (curseur signé) porte la sienne, les autres celle qu'on leur donne.
+    val channelColor = bipolar?.channelColor ?: activeColor
+    val limitedText = stringResource(R.string.sld_limited)
+
     SliderFrame(
         label = label,
         displayValue = displayValue,
         enabled = enabled,
         modifier = modifier,
         displayValueColor = displayValueColor,
-        headerAccessory = headerAccessory
+        headerAccessory = headerAccessory,
+        channelColor = channelColor,
+        limited = limited
     ) {
         RampButton(
-            symbol = "−",
+            icon = Icons.Filled.Remove,
             sign = -1,
             description = stringResource(R.string.control_slider_decrease, label),
             enabled = enabled,
-            activeColor = activeColor,
+            activeColor = channelColor,
             value = value,
             step = step,
             valueRange = valueRange,
@@ -119,7 +143,7 @@ fun ControlSlider(
             valuePercent = toPercent(value),
             enabled = enabled,
             precisionEnabled = LocalControlPrecisionEnabled.current,
-            activeColor = activeColor,
+            activeColor = channelColor,
             currentMarkerPercent = currentMarker?.let(::toPercent),
             label = label,
             onValueChange = { onValueChange(fromPercent(it)) },
@@ -130,15 +154,16 @@ fun ControlSlider(
                 .fillMaxWidth(),
             markerColor = markerColor,
             snapPercent = snapValue?.let(::toPercent),
-            bipolar = bipolar
+            bipolar = bipolar,
+            stateSuffix = if (limited) limitedText else null
         )
 
         RampButton(
-            symbol = "+",
+            icon = Icons.Filled.Add,
             sign = 1,
             description = stringResource(R.string.control_slider_increase, label),
             enabled = enabled,
-            activeColor = activeColor,
+            activeColor = channelColor,
             value = value,
             step = step,
             valueRange = valueRange,
@@ -165,7 +190,9 @@ fun PrecisionScalarSlider(
     /** Invisible detent in percent (0..100); a drag ending near it lands exactly on it. */
     snapPercent: Float? = null,
     snapRadiusPercent: Float = SNAP_RADIUS_PERCENT,
-    bipolar: BipolarStyle? = null
+    bipolar: BipolarStyle? = null,
+    /** Mot ajouté à l'état lu par TalkBack (ex. « limité »). Sans effet visuel ni sur le geste. */
+    stateSuffix: String? = null
 ) {
     val haptics = LocalHapticFeedback.current
     val metrics = LocalControlSliderMetrics.current
@@ -230,11 +257,12 @@ fun PrecisionScalarSlider(
             visibleRange.endInclusive.roundToInt()
         )
     }
-    val stateLabel = stringResource(
+    val baseStateLabel = stringResource(
         R.string.precision_state_description,
         rangeLabel,
         draftPercent.roundToInt()
     )
+    val stateLabel = if (stateSuffix != null) "$baseStateLabel, $stateSuffix" else baseStateLabel
     val rangeSpan = visibleRange.endInclusive - visibleRange.start
     val displayedFraction = if (rangeSpan <= 0f) 0f else {
         ((draftPercent - visibleRange.start) / rangeSpan).coerceIn(0f, 1f)
@@ -332,12 +360,7 @@ fun PrecisionScalarSlider(
             val trackWidth = (trackEnd - trackStart).coerceAtLeast(0f)
             val trackHeight = metrics.trackHeight.toPx()
             val radius = trackHeight / 2f
-            drawRoundRect(
-                color = activeColor.copy(alpha = if (enabled) 0.28f else 0.16f),
-                topLeft = androidx.compose.ui.geometry.Offset(trackStart, centerY - radius),
-                size = androidx.compose.ui.geometry.Size(trackWidth, trackHeight),
-                cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius)
-            )
+            drawSliderTrack(trackStart, centerY, trackWidth, trackHeight, enabled)
             // Bipolar: the fill starts at the center and takes the color of the sign.
             val centerFraction = bipolar?.let {
                 ((it.centerPercent - visibleRange.start) / rangeSpan).coerceIn(0f, 1f)
@@ -352,18 +375,18 @@ fun PrecisionScalarSlider(
             val fillTo = maxOf(centerFraction ?: 0f, displayedFraction)
             drawRoundRect(
                 color = valueColor.copy(alpha = if (enabled) 1f else 0.40f),
-                topLeft = androidx.compose.ui.geometry.Offset(trackStart + trackWidth * fillFrom, centerY - radius),
-                size = androidx.compose.ui.geometry.Size(trackWidth * (fillTo - fillFrom), trackHeight),
-                cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius)
+                topLeft = Offset(trackStart + trackWidth * fillFrom, centerY - radius),
+                size = Size(trackWidth * (fillTo - fillFrom), trackHeight),
+                cornerRadius = CornerRadius(radius)
             )
             // Fixed thin blue tick on the center (the magnetic zero), always visible.
             if (bipolar != null && bipolar.centerPercent in visibleRange) {
                 val tickX = trackStart + trackWidth * (centerFraction ?: 0f)
-                val tickHalf = metrics.thumbHeight.toPx() * 0.28f
+                val tickHalf = metrics.thumbHeight.toPx() * 0.36f
                 drawLine(
                     color = bipolar.centerTickColor.copy(alpha = if (enabled) 1f else 0.4f),
-                    start = androidx.compose.ui.geometry.Offset(tickX, centerY - tickHalf),
-                    end = androidx.compose.ui.geometry.Offset(tickX, centerY + tickHalf),
+                    start = Offset(tickX, centerY - tickHalf),
+                    end = Offset(tickX, centerY + tickHalf),
                     strokeWidth = 2.dp.toPx()
                 )
             }
@@ -371,21 +394,18 @@ fun PrecisionScalarSlider(
                 val markerX = trackStart + trackWidth * fraction
                 drawLine(
                     color = markerColor.copy(alpha = if (enabled) 0.95f else 0.4f),
-                    start = androidx.compose.ui.geometry.Offset(markerX, centerY - metrics.thumbHeight.toPx() * 0.4f),
-                    end = androidx.compose.ui.geometry.Offset(markerX, centerY + metrics.thumbHeight.toPx() * 0.4f),
+                    start = Offset(markerX, centerY - metrics.thumbHeight.toPx() * 0.45f),
+                    end = Offset(markerX, centerY + metrics.thumbHeight.toPx() * 0.45f),
                     strokeWidth = 3.dp.toPx()
                 )
             }
-            // Vertical bar thumb, same look as the depth range thumbs. Its half-width stays
-            // inside the track inset, so it never overlaps the -/+ buttons at 0 % or 100 %.
-            val thumbX = trackStart + trackWidth * displayedFraction
-            val thumbWidth = metrics.thumbWidth.toPx()
-            val thumbHeight = metrics.thumbHeight.toPx()
-            drawRoundRect(
-                color = valueColor.copy(alpha = if (enabled) 1f else 0.35f),
-                topLeft = androidx.compose.ui.geometry.Offset(thumbX - thumbWidth / 2f, centerY - thumbHeight / 2f),
-                size = androidx.compose.ui.geometry.Size(thumbWidth, thumbHeight),
-                cornerRadius = androidx.compose.ui.geometry.CornerRadius(thumbWidth / 2f)
+            // Poignée ronde de 28 dp (anneau clair, centre à la couleur de la valeur). Son rayon
+            // tient dans la marge de piste : elle ne recouvre jamais les boutons −/+ à 0 et 100 %.
+            drawSliderThumb(
+                center = Offset(trackStart + trackWidth * displayedFraction, centerY),
+                radiusPx = metrics.thumbWidth.toPx() / 2f,
+                color = valueColor,
+                alpha = if (enabled) 1f else 0.4f
             )
         }
         // The global "0-100" range is only informative when precision narrowing is on; with it
@@ -393,11 +413,11 @@ fun PrecisionScalarSlider(
         if (precisionEnabled || level != PrecisionLevel.Global) Text(
             text = rangeLabel,
             color = when (level) {
-                PrecisionLevel.Global -> OssmOnSurface.copy(alpha = 0.55f)
+                PrecisionLevel.Global -> OssmTextFaint
                 PrecisionLevel.Fine30, PrecisionLevel.Fine20 -> OssmPrimaryLight
                 PrecisionLevel.Fine10, PrecisionLevel.Fine5 -> activeColor
             },
-            fontSize = 11.sp,
+            style = OssmCaption,
             fontWeight = if (level == PrecisionLevel.Global) FontWeight.Normal else FontWeight.Bold,
             maxLines = 1
         )
@@ -411,7 +431,7 @@ fun PrecisionScalarSlider(
  */
 @Composable
 private fun RampButton(
-    symbol: String,
+    icon: ImageVector,
     sign: Int,
     description: String,
     enabled: Boolean,
@@ -432,14 +452,18 @@ private fun RampButton(
     val stepState = rememberUpdatedState(step)
     val onChange = rememberUpdatedState(onValueChange)
     val onCommit = rememberUpdatedState(onValueCommit)
+    val metrics = LocalControlSliderMetrics.current
 
     Box(
         modifier = Modifier
-            .size(LocalControlSliderMetrics.current.buttonSize)
+            .size(metrics.buttonSize)
             .clip(CircleShape)
-            .background(
-                if (enabled) activeColor.copy(alpha = 0.22f)
-                else activeColor.copy(alpha = 0.10f)
+            // Bouton rond secondaire : fond relevé et filet de contour, glyphe à la couleur du canal.
+            .background(OssmSurfaceRaised)
+            .border(
+                width = OssmDimens.BorderWidth,
+                color = if (enabled) OssmOutline else OssmGlassBorder,
+                shape = CircleShape
             )
             // TalkBack: the glyph is not a usable name, and the touch gesture below is not an
             // accessibility action. Expose a named button that applies one step and commits it.
@@ -501,12 +525,12 @@ private fun RampButton(
             },
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            symbol,
-            color = if (enabled) activeColor else activeColor.copy(alpha = 0.5f),
-            fontSize = LocalControlSliderMetrics.current.symbolSize,
-            fontWeight = FontWeight.Bold,
-            lineHeight = 18.sp
+        // Glyphe décoratif : la sémantique du bouton (nom, rôle, clic) est posée plus haut.
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = if (enabled) activeColor else activeColor.copy(alpha = 0.4f),
+            modifier = Modifier.size(metrics.buttonSize * 0.45f)
         )
     }
 }

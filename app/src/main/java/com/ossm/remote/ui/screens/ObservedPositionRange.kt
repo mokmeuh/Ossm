@@ -1,5 +1,9 @@
 package com.ossm.remote.ui.screens
 
+/**
+ * Course observée du chariot (mm) depuis la connexion : sert à placer le repère rouge de position
+ * sur la barre de profondeur. Aucun repère tant que la course observée reste sous 5 mm.
+ */
 internal class ObservedPositionRange private constructor(
     private val minMm: Float?,
     private val maxMm: Float?,

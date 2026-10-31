@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Redesign : coque (STOP, navigation, dialogue Quitter, indicateur de connexion, overlay). -->
+    <string name="shell_stop_word">STOP</string>
+    <string name="shell_home_word">HOME</string>
+
+    <string name="shell_quit_title">Quitter l\'application ?</string>
+    <string name="shell_quit_body">La machine sera arrêtée avant de fermer l\'application.</string>
+    <string name="shell_quit_confirm">Quitter</string>
+
+    <string name="shell_pattern_active">Actif</string>
+
+    <string name="shell_ble_disconnected">Déconnecté</string>
+    <string name="shell_ble_scanning">Scan en cours…</string>
+    <string name="shell_ble_connecting">Connexion à %1$s</string>
+    <string name="shell_ble_connected">Connecté : %1$s</string>
+    <string name="shell_ble_usb">USB-C connecté</string>
+    <string name="shell_ble_error">Erreur : %1$s</string>
+    <string name="shell_ble_emergency">ARRÊT D\'URGENCE</string>
+</resources>
