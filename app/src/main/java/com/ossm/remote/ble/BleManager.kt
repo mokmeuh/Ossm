@@ -1146,18 +1146,12 @@ class BleManager @Inject constructor(
         }
     }
 
-    private fun mergeKnownPatterns(devicePatterns: List<OssmPattern>): List<OssmPattern> {
-        val deviceById = devicePatterns.associateBy { it.id }
-        val updatedStrokeEngine = KnownStrokeEnginePatterns.map { fallback ->
-            val fromDevice = deviceById[fallback.id]
-            if (fromDevice != null) fallback.copy(name = fromDevice.name) else fallback
-        }
-        // Même composition que KnownFallbackPatterns : les modes applicatifs
-        // (Auto Random, Naturel, Progressif, Live) existent TOUJOURS, la liste machine ne
-        // fait que rafraîchir les noms des patterns stroke-engine. Simple
-        // Penetration reste hors du sélecteur (convention établie).
-        return KnownAppDrivenPatterns + updatedStrokeEngine
-    }
+    // Même composition que KnownFallbackPatterns : les modes applicatifs
+    // (Auto Random, Naturel, Progressif, Live) existent TOUJOURS, la liste machine rafraîchit les
+    // noms des patterns stroke-engine connus et ajoute ceux qu'un firmware plus récent annonce.
+    // Simple Penetration reste hors du sélecteur (convention établie).
+    private fun mergeKnownPatterns(devicePatterns: List<OssmPattern>): List<OssmPattern> =
+        mergeDevicePatterns(devicePatterns, KnownStrokeEnginePatterns, KnownAppDrivenPatterns)
 
     private fun sanitizePatternKey(raw: String): String {
         return raw
