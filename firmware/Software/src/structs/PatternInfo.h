@@ -17,12 +17,13 @@ constexpr int kStateProtocolVersion = 2;
 constexpr const char* kNames[] = {
     "Simple Stroke", "Teasing Pounding", "Robo Stroke", "Half n Half",
     "Deeper",        "Stop n Go",        "Insist",
+    "Wave",
 };
 
 constexpr int kCount = sizeof(kNames) / sizeof(kNames[0]);
 
 // Adding a pattern to the enum without naming it here stops the build.
-static_assert(static_cast<int>(StrokePatterns::Insist) == kCount - 1,
+static_assert(static_cast<int>(StrokePatterns::Wave) == kCount - 1,
               "pattern_info::kNames must list every StrokePatterns value");
 
 inline int indexOf(StrokePatterns pattern) {

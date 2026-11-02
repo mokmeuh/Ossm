@@ -8,7 +8,7 @@ void setUp() {}
 void tearDown() {}
 
 void test_every_pattern_has_a_name() {
-    TEST_ASSERT_EQUAL_INT(7, pattern_info::kCount);
+    TEST_ASSERT_EQUAL_INT(8, pattern_info::kCount);
     for (int i = 0; i < pattern_info::kCount; i++) {
         const char* name = pattern_info::kNames[i];
         TEST_ASSERT_NOT_NULL(name);
@@ -24,6 +24,8 @@ void test_names_follow_the_enum_order() {
         pattern_info::nameOf(StrokePatterns::TeasingPounding));
     TEST_ASSERT_EQUAL_STRING("Insist",
                              pattern_info::nameOf(StrokePatterns::Insist));
+    TEST_ASSERT_EQUAL_STRING("Wave",
+                             pattern_info::nameOf(StrokePatterns::Wave));
 }
 
 void test_names_are_safe_to_put_in_json() {
@@ -35,9 +37,10 @@ void test_names_are_safe_to_put_in_json() {
 void test_wrap_index_stays_in_range() {
     TEST_ASSERT_EQUAL_INT(0, pattern_info::wrapIndex(0));
     TEST_ASSERT_EQUAL_INT(6, pattern_info::wrapIndex(6));
-    TEST_ASSERT_EQUAL_INT(0, pattern_info::wrapIndex(7));
-    TEST_ASSERT_EQUAL_INT(2, pattern_info::wrapIndex(100));
-    TEST_ASSERT_EQUAL_INT(6, pattern_info::wrapIndex(-1));
+    TEST_ASSERT_EQUAL_INT(7, pattern_info::wrapIndex(7));
+    TEST_ASSERT_EQUAL_INT(0, pattern_info::wrapIndex(8));
+    TEST_ASSERT_EQUAL_INT(4, pattern_info::wrapIndex(100));
+    TEST_ASSERT_EQUAL_INT(7, pattern_info::wrapIndex(-1));
 }
 
 void test_state_protocol_is_at_least_two() {

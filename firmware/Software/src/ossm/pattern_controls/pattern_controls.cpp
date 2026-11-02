@@ -22,7 +22,9 @@ namespace pattern_controls {
 static size_t numberOfDescriptions =
     sizeof(ui::strings::strokeEngineDescriptions) /
     sizeof(ui::strings::strokeEngineDescriptions[0]);
-static size_t numberOfPatterns = 7;
+static size_t numberOfPatterns =
+    sizeof(ui::strings::strokeEngineNames) /
+    sizeof(ui::strings::strokeEngineNames[0]);
 
 static void drawPatternControlsTask(void *pvParameters) {
     SettingPercents savedSettings = settings;

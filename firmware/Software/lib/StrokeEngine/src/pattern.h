@@ -650,3 +650,76 @@ class Insist : public Pattern {
         _realStroke = int((float)_stroke * _strokeFraction);
     }
 };
+
+/**************************************************************************/
+/*!
+  @brief  The stroke depth swells and fades along a smooth wave. Every cycle
+  is a little deeper than the previous one up to the full stroke, then a little
+  shallower again, following a raised cosine, so there is no sudden change of
+  amplitude. The shallowest cycle is still kMinAmplitude of the stroke, so the
+  motion never stalls. Sensation sets how many cycles one wave lasts.
+*/
+/**************************************************************************/
+class Wave : public Pattern {
+  public:
+    // Shortest and longest wave, in cycles (one cycle = one stroke in + out).
+    static constexpr int kMinCycles = 8;
+    static constexpr int kNeutralCycles = 16;
+    static constexpr int kMaxCycles = 24;
+    // Share of the stroke kept at the bottom of the wave.
+    static constexpr float kMinAmplitude = 0.2f;
+
+    Wave(const char *str) : Pattern(str) {}
+
+    void setTimeOfStroke(float speed = 0) {
+        // In & Out have same time, so we need to divide by 2
+        _timeOfStroke = 0.5 * speed;
+    }
+
+    void setSensation(float sensation) {
+        _sensation = sensation;
+        float clamped = sensation;
+        if (clamped < -100.0f) clamped = -100.0f;
+        if (clamped > 100.0f) clamped = 100.0f;
+        // -100 -> 8 cycles, 0 -> 16 cycles, 100 -> 24 cycles
+        _cyclesPerWave = kNeutralCycles + int(clamped * 0.08f);
+    }
+
+    motionParameter nextTarget(unsigned int index) {
+        // One cycle is two moves (in, out)
+        const int cycle = int((index / 2) % (unsigned int)_cyclesPerWave);
+
+        // Raised cosine from 0 to 1 and back over one wave
+        const float phase = 6.2831853f * (float)cycle / (float)_cyclesPerWave;
+        const float level = 0.5f - 0.5f * cosf(phase);
+
+        int amplitude =
+            int((float)_stroke * (kMinAmplitude + (1.0f - kMinAmplitude) * level));
+        if (amplitude > _stroke) amplitude = _stroke;
+        if (amplitude < 0) amplitude = 0;
+
+        // A zero or tiny time would give an absurd speed: stay finite
+        const float timeOfMove = _timeOfStroke > 0.05f ? _timeOfStroke : 0.05f;
+
+        // maximum speed of the trapezoidal motion
+        _nextMove.speed = int(1.5 * amplitude / timeOfMove);
+
+        // acceleration to meet the profile
+        _nextMove.acceleration = int(3.0 * _nextMove.speed / timeOfMove);
+
+        // odd stroke is moving out
+        if (index % 2) {
+            _nextMove.stroke = _depth - _stroke;
+
+            // even stroke is moving in
+        } else {
+            _nextMove.stroke = (_depth - _stroke) + amplitude;
+        }
+
+        _index = index;
+        return _nextMove;
+    }
+
+  protected:
+    int _cyclesPerWave = kNeutralCycles;
+};
