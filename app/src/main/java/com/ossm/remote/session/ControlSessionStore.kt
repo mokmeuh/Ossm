@@ -649,6 +649,12 @@ class ControlSessionStore @Inject constructor(
             PatternControlMode.PROGRESSIVE -> state.progressiveMaxSpeed
             PatternControlMode.AUTO_RANDOM -> state.autoMaxSpeed
             PatternControlMode.NATURAL -> state.naturalMaxSpeed
+            // Live keeps the local speed at 0 and the pad has no speed slider of its own: reading
+            // `speed` here captured a maximum of 0 and every Live target of the session was
+            // rejected. Live runs at its fixed rate locally, so the session starts at 100 %.
+            // Voix has its own maximum.
+            PatternControlMode.STREAMING ->
+                if (state.activePattern.isVoicePattern()) state.voiceMaxSpeed else 1f
             else -> state.speed
         }.coerceIn(0f, 1f)
     }
@@ -1325,7 +1331,13 @@ class ControlSessionStore @Inject constructor(
         if (expectedGestureEpoch != null && expectedGestureEpoch != _uiState.value.liveGestureEpoch) return
         val current = _uiState.value
         val mode = current.activePattern?.mode ?: return
-        if (mode == PatternControlMode.STREAMING || mode == PatternControlMode.LAUNCH_ONLY) return
+        if (mode == PatternControlMode.STREAMING) {
+            // Live is not driven by this slider. In a session it is the only way to set the
+            // envelope maximum from the Live screen; outside a session it stays a no-op.
+            consumeLocalSpeedAsMaximum(value)
+            return
+        }
+        if (mode == PatternControlMode.LAUNCH_ONLY) return
         if (mode == PatternControlMode.NATURAL) {
             setNaturalMaxSpeed(value)
             return

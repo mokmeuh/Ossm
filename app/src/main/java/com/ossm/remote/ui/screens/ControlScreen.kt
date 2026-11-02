@@ -642,6 +642,28 @@ fun ControlScreen(
                                 modifier = Modifier.padding(bottom = 10.dp)
                             )
                         }
+                        if (remoteSession.active) {
+                            // In a session this slider is the envelope's speed maximum (as in the
+                            // other modes); without it a maximum of 0 left Live unusable.
+                            ControlSlider(
+                                label = stringResource(R.string.ctl_speed),
+                                value = speedDraft,
+                                onValueChange = {
+                                    speedDraft = it
+                                    draftEditClock.markLocalEdit(android.os.SystemClock.uptimeMillis())
+                                    dispatchSpeedLive(it)
+                                },
+                                onValueCommit = { committed ->
+                                    speedDraft = committed
+                                    draftEditClock.markLocalEdit(android.os.SystemClock.uptimeMillis())
+                                    dispatchSpeedCommit(committed)
+                                },
+                                enabled = slidersEnabled,
+                                activeColor = OssmPrimary,
+                                gestureCancellationKey = uiState.liveGestureEpoch,
+                            )
+                            Spacer(Modifier.height(6.dp))
+                        }
                         LiveAnchorPad(
                             positionPercent = uiState.streamPositionPercent,
                             enabled = slidersEnabled && uiState.streamingReady,

@@ -8,6 +8,7 @@ import com.ossm.remote.data.repository.SliderGuardSettings
 import com.ossm.remote.data.repository.UserHabitsRepository
 import com.ossm.remote.model.BleConnectionState
 import com.ossm.remote.model.KnownFallbackPatterns
+import com.ossm.remote.model.KnownStrokeEnginePattern
 import com.ossm.remote.model.KnownStreamingPattern
 import com.ossm.remote.model.MachineState
 import com.ossm.remote.model.OssmCommand
@@ -554,6 +555,124 @@ class ControlSessionStoreRemoteSessionEndTest {
         runCurrent()
         assertEquals(0.6f, strokeCommands().last().command.sensation, 0.0001f)
         assertEquals(0.6f, store.uiState.value.sensation, 0.0001f)
+    }
+
+    // ---- Live inside a session (2.3.47) ----
+    // RemoteSessionClient opens a session with beginSession() and no explicit maximum. The Live
+    // screen has no speed slider and keeps the local speed at 0, so the captured maximum used to
+    // be 0: every remote and local Live target was rejected (and answered with a STOP).
+
+    private fun enterLiveReady() {
+        connectionStateFlow.value = BleConnectionState.Connected("OSSM", "AA:BB:CC:DD:EE:FF")
+        runCurrent()
+        store.activatePattern(KnownStreamingPattern.key)
+        streamingReadyFlow.value = true
+        runCurrent()
+        assertEquals(0f, store.uiState.value.speed, 0f)
+    }
+
+    private fun streamTargets(): List<OssmCommand.Stream> {
+        val sent = mutableListOf<OssmCommand>()
+        verify(atLeast = 0) { bleManager.sendCommand(capture(sent)) }
+        return sent.filterIsInstance<OssmCommand.Stream>()
+    }
+
+    @Test
+    fun `a session opened in Live keeps a usable speed maximum and accepts the browser Live`() {
+        enterLiveReady()
+
+        val limits = store.beginRemoteSession()
+        runCurrent()
+
+        assertEquals(1f, limits.speedMaximum, 0.0001f)
+        assertEquals(1f, store.remoteSessionView.value.speedMax, 0.0001f)
+        clearRecordedCalls()
+
+        assertTrue(store.setRemoteStreamPosition(60))
+        advance(2_000)
+
+        assertTrue("the browser target must reach the machine", streamTargets().isNotEmpty())
+        verify(exactly = 0) { bleManager.sendCommand(OssmCommand.Stop) }
+    }
+
+    @Test
+    fun `the local Live pad still drives the machine during a session opened in Live`() {
+        enterLiveReady()
+        store.beginRemoteSession()
+        runCurrent()
+        clearRecordedCalls()
+
+        store.setStreamPositionDrag(40)
+        advance(2_000)
+
+        assertTrue("the finger target must reach the machine", streamTargets().isNotEmpty())
+        verify(exactly = 0) { bleManager.sendCommand(OssmCommand.Stop) }
+    }
+
+    @Test
+    fun `a Live session still bounds the target by the depth envelope`() {
+        enterLiveReady()
+        store.beginRemoteSession(localDepthMinimum = 0.2f, localDepthMaximum = 0.4f)
+        runCurrent()
+        clearRecordedCalls()
+
+        assertTrue(store.setRemoteStreamPosition(100))
+        assertTrue(store.setRemoteStreamPosition(0))
+        advance(5_000)
+
+        val raw = streamTargets().map { it.positionPercent }
+        assertTrue(raw.isNotEmpty())
+        // Not inverted: the raw BLE argument is 100 - physical, physical must stay in 20..40.
+        assertTrue("targets $raw leave the 20..40 envelope", raw.all { it in 60..80 })
+    }
+
+    @Test
+    fun `a session opened outside Live keeps the local speed as its maximum`() {
+        connectionStateFlow.value = BleConnectionState.Connected("OSSM", "AA:BB:CC:DD:EE:FF")
+        runCurrent()
+        store.activatePattern(KnownStrokeEnginePattern.key)
+        runCurrent()
+        store.requestSpeedChange(0.3f)
+        runCurrent()
+
+        val limits = store.beginRemoteSession()
+
+        assertEquals(0.3f, limits.speedMaximum, 0.0001f)
+    }
+
+    @Test
+    fun `in Live the speed slider sets the session maximum and re-opens Live`() {
+        connectionStateFlow.value = BleConnectionState.Connected("OSSM", "AA:BB:CC:DD:EE:FF")
+        runCurrent()
+        store.activatePattern(KnownStrokeEnginePattern.key)
+        runCurrent()
+        // Opened in a stroke mode at speed 0: the captured maximum is 0 (envelope model).
+        val limits = store.beginRemoteSession()
+        assertEquals(0f, limits.speedMaximum, 0f)
+        store.activatePattern(KnownStreamingPattern.key)
+        streamingReadyFlow.value = true
+        runCurrent()
+        assertFalse(store.setRemoteStreamPosition(60))
+
+        store.setSpeedLive(0.6f)
+        runCurrent()
+
+        assertEquals(0.6f, store.remoteSessionLimits()!!.speedMaximum, 0.0001f)
+        assertEquals(0.6f, store.remoteSessionView.value.speedMax, 0.0001f)
+        verify { bleManager.setPhoneHostSpeedCeiling(0.6f) }
+        assertTrue(store.setRemoteStreamPosition(60))
+    }
+
+    @Test
+    fun `outside a session the Live speed slider stays a no-op`() {
+        enterLiveReady()
+
+        store.setSpeedLive(0.8f)
+        runCurrent()
+
+        assertEquals(0f, store.uiState.value.speed, 0f)
+        assertEquals(null, store.remoteSessionLimits())
+        verify(exactly = 0) { bleManager.liveSet("speed", any(), any()) }
     }
 
     private fun setPrivateJob(name: String, job: Job) {
