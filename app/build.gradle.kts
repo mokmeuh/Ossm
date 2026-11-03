@@ -1,4 +1,4 @@
-﻿import org.gradle.api.tasks.Copy
+import org.gradle.api.tasks.Copy
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -31,8 +31,8 @@ android {
         applicationId = "com.ossm.remote"
         minSdk = 26
         targetSdk = 35
-        versionCode = 196
-        versionName = "2.3.48"
+        versionCode = 197
+        versionName = "2.3.49"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Voix 2.3.27: the on-device models (sherpa-onnx, LiteRT-LM) only target the S25 Ultra.
         ndk {

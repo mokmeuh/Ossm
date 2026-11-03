@@ -19,6 +19,15 @@ const parameterControls = document.querySelector("#parameter-controls");
 const liveTouchPanel = document.querySelector("#live-touch-panel");
 const livePad = document.querySelector("#live-pad");
 const liveValue = document.querySelector("#live-value");
+const liveStyleTitle = document.querySelector("#live-style-title");
+const liveStyleVertical = document.querySelector("#live-style-vertical");
+const liveStyleFree = document.querySelector("#live-style-free");
+const liveVpadBlock = document.querySelector("#live-vpad-block");
+const liveVpad = document.querySelector("#live-vpad");
+const liveVpadLegend = document.querySelector("#live-vpad-legend");
+// The anchored free zone (pad + legend + hint) and the up/down pad are two views of Direct.
+const liveFreeParts = [livePad, document.querySelector("#live-legend"), document.querySelector("#live-hint")];
+let liveStyle = "vertical";
 // The mode picker is a fieldset of native radio chips; its "change" bubbles from the chosen radio.
 const pattern = document.querySelector("#pattern");
 const patternInputs = [...pattern.querySelectorAll('input[name="pattern"]')];
@@ -360,6 +369,7 @@ function renderPhoneLimits() {
   phoneLimitsValues.textContent = known ? phoneLimitsText(phoneLimits) : "Maximums du téléphone : en attente";
   phoneLimitsNote.hidden = !(known && phoneLimits.speedMax === 0);
   phoneLimitsNote.textContent = known && phoneLimits.speedMax === 0 ? "Le téléphone est à 0 % : réglez un maximum sur le téléphone" : "";
+  renderLiveVpadWindow();
   syncSpeedAvailability();
 }
 
@@ -392,6 +402,9 @@ function syncModePresentation({ transition = false } = {}) {
   const padEnabled = controlAccess && liveMode;
   livePad.setAttribute("aria-disabled", String(!padEnabled));
   livePad.tabIndex = padEnabled ? 0 : -1;
+  liveVpad.setAttribute("aria-disabled", String(!padEnabled));
+  liveVpad.tabIndex = padEnabled ? 0 : -1;
+  syncLiveStyle();
   controls.classList.toggle("live-mode", liveMode);
   if (!liveMode) cancelLiveTouch("mode-exit");
   renderSensation();
@@ -825,8 +838,10 @@ function receive(data) {
       addDebugEntry("broker", "warning", "limits_ignored", "Maximums du téléphone illisibles; ignorés.");
       return;
     }
+    const previousWindow = phoneLimits ? [phoneLimits.depthMin, phoneLimits.depthMax] : undefined;
     phoneLimits = next;
     renderPhoneLimits();
+    resendLiveVpadForWindow(previousWindow);
     addDebugEntry("broker", "info", "limits_updated", `Maximums du téléphone reçus · ${phoneLimitsText(next).toLowerCase()}.`);
     return;
   }
@@ -1739,8 +1754,20 @@ function releaseLiveKey(event) {
 
 function resetLiveTouchVisual(gesture) {
   if (!gesture) return;
+  if (isVpadGesture(gesture)) {
+    liveVpad.dataset.state = "released";
+    renderLiveVpad(0);
+    return;
+  }
   livePad.dataset.state = "released";
   renderLivePad(0);
+}
+
+// A pointer captured by the pad that owns the gesture is handed back on release or cancellation.
+function releaseGesturePointer(gesture) {
+  const pad = isVpadGesture(gesture) ? liveVpad : livePad;
+  const pointerGesture = gesture?.source === "pointer" || gesture?.source === "vpad";
+  if (pointerGesture && pad.hasPointerCapture?.(gesture.pointerId)) pad.releasePointerCapture(gesture.pointerId);
 }
 
 // Successful pointer/key release: drop any pending position and ask the phone to own the slow
@@ -1756,7 +1783,7 @@ function releaseLiveTouch() {
     addDebugEntry("browser", "info", "live_touch_ended", `Toucher direct terminé (${liveStream.frames} position${liveStream.frames > 1 ? "s" : ""}); contenu masqué.`);
     liveStream.frames = 0;
   }
-  if (gesture?.source === "pointer" && livePad.hasPointerCapture?.(gesture.pointerId)) livePad.releasePointerCapture(gesture.pointerId);
+  releaseGesturePointer(gesture);
 }
 
 // Safety cancellation: pending positions are dropped and an admitted/open session is asked to
@@ -1774,7 +1801,132 @@ function cancelLiveTouch(reason = "cancelled", sendStop = true) {
     addDebugEntry("browser", "info", "live_touch_cancelled", `Toucher direct annulé (${reason}); contenu masqué.`);
     liveStream.frames = 0;
   }
-  if (gesture?.source === "pointer" && livePad.hasPointerCapture?.(gesture.pointerId)) livePad.releasePointerCapture(gesture.pointerId);
+  releaseGesturePointer(gesture);
+}
+
+/* ---------- Direct (Live) up/down pad ---------- */
+
+// Absolute pad: the bottom is 0 and the top is 100 of the window the phone allows (its two limits).
+// The phone maps 0..100 onto that window itself, so the browser never needs the window to stay
+// inside it: the pad sends the same set_live_position / end_live_touch frames as the free zone,
+// through the same throttle, so STOP, cancellation and release behave identically. The held
+// position is only re-sent when the phone moves its window, so the machine glides into it.
+const isVpadGesture = gesture => gesture?.source === "vpad" || gesture?.source === "vkey";
+
+function liveVpadPercent(clientY, top, height) {
+  return Math.max(0, Math.min(100, Math.round((1 - (clientY - top) / Math.max(1, height)) * 100)));
+}
+
+function liveVpadText(percent) {
+  if (percent === 0) return "0 %, limite basse";
+  if (percent === 100) return "100 %, limite haute";
+  return `${percent} %`;
+}
+
+// Purely visual: value, ARIA state and the fill/handle height. Never sends a command.
+function renderLiveVpad(percent) {
+  liveValue.textContent = `${percent} %`;
+  liveVpad.setAttribute("aria-valuenow", String(percent));
+  liveVpad.setAttribute("aria-valuetext", liveVpadText(percent));
+  liveVpad.style?.setProperty("--level", String(percent / 100));
+}
+
+function renderLiveVpadWindow() {
+  liveVpadLegend.textContent = phoneLimits === undefined
+    ? "Fenêtre du téléphone : en attente"
+    : `Fenêtre du téléphone : ${phoneLimits.depthMin}–${phoneLimits.depthMax} %`;
+}
+
+function syncLiveStyle() {
+  const vertical = liveStyle === "vertical";
+  liveVpadBlock.hidden = !vertical;
+  for (const part of liveFreeParts) part.hidden = vertical;
+  liveStyleVertical.setAttribute("aria-pressed", String(vertical));
+  liveStyleFree.setAttribute("aria-pressed", String(!vertical));
+  liveStyleTitle.textContent = vertical ? "Haut / bas" : "Zone libre";
+}
+
+function setLiveStyle(style) {
+  if (liveStyle === style) return;
+  cancelLiveTouch("style-change");
+  liveStyle = style;
+  syncLiveStyle();
+}
+
+function startLiveVpadGesture(source, pointerId, bounds) {
+  cancelLiveStream();
+  liveStream.lastSent = undefined;
+  liveStream.frames = 0;
+  liveGesture = { source, pointerId, epoch:controlEpoch, value:0, top:bounds.top, height:bounds.height };
+  liveInteractionActive = true;
+  liveVpad.dataset.state = "active";
+}
+
+function moveLiveVpadTo(clientY) {
+  const percent = liveVpadPercent(clientY, liveGesture.top, liveGesture.height);
+  liveGesture.value = percent;
+  renderLiveVpad(percent);
+  streamLivePosition(percent);
+}
+
+function beginLiveVpad(event) {
+  if (!controlAccess || patternKey() !== "streamingLive" || liveGesture) return;
+  if (event.pointerType === "mouse" && event.button !== 0) return;
+  event.preventDefault();
+  startLiveVpadGesture("vpad", event.pointerId, liveVpad.getBoundingClientRect());
+  liveVpad.setPointerCapture?.(event.pointerId);
+  moveLiveVpadTo(event.clientY);
+}
+
+function moveLiveVpad(event) {
+  if (liveGesture?.source !== "vpad" || liveGesture.pointerId !== event.pointerId) return;
+  event.preventDefault();
+  if (!liveMayStream()) {
+    cancelLiveTouch("access-lost");
+    return;
+  }
+  moveLiveVpadTo(event.clientY);
+}
+
+function releaseLiveVpadPointer(event) {
+  if (liveGesture && !isVpadGesture(liveGesture)) return;
+  if (liveGesture?.source === "vpad" && liveGesture.pointerId !== event.pointerId) return;
+  releaseLiveTouch();
+}
+
+function cancelLiveVpadPointer(event) {
+  if (liveGesture && !isVpadGesture(liveGesture)) return;
+  if (liveGesture?.source === "vpad" && liveGesture.pointerId !== event.pointerId) return;
+  cancelLiveTouch("pointer-cancel");
+}
+
+function keyLiveVpad(event) {
+  const step = LIVE_KEY_STEPS[event.key];
+  if (step === undefined) return;
+  event.preventDefault();
+  if (!controlAccess || patternKey() !== "streamingLive") return;
+  if (liveGesture && liveGesture.source !== "vkey") return;
+  if (!liveGesture) startLiveVpadGesture("vkey", undefined, liveVpad.getBoundingClientRect());
+  if (!liveMayStream()) {
+    cancelLiveTouch("access-lost");
+    return;
+  }
+  liveGesture.value = Math.max(0, Math.min(100, liveGesture.value + step));
+  renderLiveVpad(liveGesture.value);
+  streamLivePosition(liveGesture.value);
+}
+
+function releaseLiveVpadKey(event) {
+  if (LIVE_KEY_STEPS[event.key] !== undefined && liveGesture?.source === "vkey") releaseLiveTouch();
+}
+
+// After the phone moved its window, send the held position again: the phone maps it into the new
+// window and glides there at its own pace, so the machine is never left outside the new limits.
+function resendLiveVpadForWindow(previous) {
+  if (!isVpadGesture(liveGesture) || !liveMayStream()) return;
+  if (previous && previous[0] === phoneLimits.depthMin && previous[1] === phoneLimits.depthMax) return;
+  liveStream.lastSent = undefined;
+  streamLivePosition(liveGesture.value);
 }
 
 /* ---------- Wiring ---------- */
@@ -1822,6 +1974,16 @@ livePad.addEventListener("lostpointercapture", cancelLivePointer);
 livePad.addEventListener("keydown", keyLiveGesture);
 livePad.addEventListener("keyup", releaseLiveKey);
 livePad.addEventListener("blur", () => cancelLiveTouch("pad-blur"));
+liveVpad.addEventListener("pointerdown", beginLiveVpad);
+liveVpad.addEventListener("pointermove", moveLiveVpad);
+liveVpad.addEventListener("pointerup", releaseLiveVpadPointer);
+liveVpad.addEventListener("pointercancel", cancelLiveVpadPointer);
+liveVpad.addEventListener("lostpointercapture", cancelLiveVpadPointer);
+liveVpad.addEventListener("keydown", keyLiveVpad);
+liveVpad.addEventListener("keyup", releaseLiveVpadKey);
+liveVpad.addEventListener("blur", () => cancelLiveTouch("pad-blur"));
+liveStyleVertical.addEventListener("click", () => setLiveStyle("vertical"));
+liveStyleFree.addEventListener("click", () => setLiveStyle("free"));
 pattern.addEventListener("change", event => {
   if (event.target?.name !== "pattern") return;
   invalidateControlEpoch();

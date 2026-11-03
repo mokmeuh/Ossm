@@ -10,10 +10,10 @@ const packageJson = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8
 
 describe("static remote client", () => {
   it("keeps the web version synchronized and exposes one safe Stop action", () => {
-    expect(packageJson.version).toBe("2.0.13");
+    expect(packageJson.version).toBe("2.0.14");
     expect(html).toContain('lang="fr"');
-    expect(html).toContain('content="Client web OSSM Remote v2.0.13 pour session de contrôle sécurisée"');
-    expect(html).toContain("WEB v2.0.13");
+    expect(html).toContain('content="Client web OSSM Remote v2.0.14 pour session de contrôle sécurisée"');
+    expect(html).toContain("WEB v2.0.14");
     expect((html.match(/>STOP</g) ?? []).length).toBe(1);
     expect(html).not.toContain(">SPLIT<");
     expect(html).not.toContain(">FULL<");
@@ -63,7 +63,11 @@ describe("static remote client", () => {
     expect(html).not.toContain("live-pad-center");
     expect(html).not.toContain("live-pad-rings");
     expect(app).not.toContain("LIVE_PAD_RADIUS");
-    expect((html.match(/role="slider"/g) ?? []).length).toBe(1);
+    // Two views of Direct: the free zone above and the up/down pad bounded by the phone limits.
+    expect((html.match(/role="slider"/g) ?? []).length).toBe(2);
+    expect(html).toMatch(/<div class="live-vpad" id="live-vpad" role="slider" tabindex="0" aria-orientation="vertical" aria-label="Position haut \/ bas"/);
+    expect(html).toContain("Haut · limite haute");
+    expect(html).toContain("Bas · limite basse");
     expect(app).toContain('const liveMode = patternKey() === "streamingLive"');
     expect(app).toContain("const LIVE_THROTTLE_MS = 40;");
     expect(css).toContain(".live-touch-panel");

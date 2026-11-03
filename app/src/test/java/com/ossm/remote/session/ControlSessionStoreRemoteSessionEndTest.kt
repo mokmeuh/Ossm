@@ -675,6 +675,106 @@ class ControlSessionStoreRemoteSessionEndTest {
         verify(exactly = 0) { bleManager.liveSet("speed", any(), any()) }
     }
 
+    // ---- Two session limits set from the phone in Live ----
+
+    @Test
+    fun `the phone sets the low and high limits of a Live session`() {
+        enterLiveReady()
+        store.beginRemoteSession()
+        runCurrent()
+
+        store.setRemoteSessionDepthRange(0.3f, 0.7f)
+        runCurrent()
+
+        val limits = store.remoteSessionLimits()!!
+        assertEquals(0.3f, limits.depthMinimum, 0.0001f)
+        assertEquals(0.7f, limits.depthMaximum, 0.0001f)
+        assertEquals(0.3f, store.remoteSessionView.value.depthMin, 0.0001f)
+        assertEquals(0.7f, store.remoteSessionView.value.depthMax, 0.0001f)
+    }
+
+    @Test
+    fun `the browser Live pad reaches exactly both limits and never leaves them`() {
+        enterLiveReady()
+        store.beginRemoteSession()
+        runCurrent()
+        store.setRemoteSessionDepthRange(0.3f, 0.7f)
+        runCurrent()
+        clearRecordedCalls()
+
+        // Each target replaces the previous one while the phone glides to it: let the first settle.
+        assertTrue(store.setRemoteStreamPosition(100))
+        advance(5_000)
+        assertTrue(store.setRemoteStreamPosition(0))
+        advance(5_000)
+
+        val raw = streamTargets().map { it.positionPercent }
+        assertTrue(raw.isNotEmpty())
+        // Not inverted: raw = 100 - physical, so physical 30..70 is raw 30..70.
+        assertTrue("targets $raw leave the 30..70 window", raw.all { it in 30..70 })
+        assertTrue("the pad must reach the lower limit, got $raw", raw.any { it <= 31 })
+        assertTrue("the pad must reach the upper limit, got $raw", raw.any { it >= 69 })
+    }
+
+    @Test
+    fun `narrowing the limits keeps the browser inside the new window`() {
+        enterLiveReady()
+        store.beginRemoteSession()
+        runCurrent()
+        store.setRemoteSessionDepthRange(0.1f, 0.9f)
+        runCurrent()
+        store.setRemoteSessionDepthRange(0.4f, 0.6f)
+        runCurrent()
+        clearRecordedCalls()
+
+        assertTrue(store.setRemoteStreamPosition(100))
+        assertTrue(store.setRemoteStreamPosition(0))
+        advance(5_000)
+
+        val raw = streamTargets().map { it.positionPercent }
+        assertTrue("targets $raw leave the 40..60 window", raw.all { it in 40..60 })
+    }
+
+    @Test
+    fun `a window narrower than the minimum span is ignored`() {
+        enterLiveReady()
+        store.beginRemoteSession()
+        runCurrent()
+        store.setRemoteSessionDepthRange(0.3f, 0.7f)
+        runCurrent()
+
+        store.setRemoteSessionDepthRange(0.5f, 0.52f)
+        store.setRemoteSessionDepthRange(Float.NaN, 0.9f)
+        runCurrent()
+
+        val limits = store.remoteSessionLimits()!!
+        assertEquals(0.3f, limits.depthMinimum, 0.0001f)
+        assertEquals(0.7f, limits.depthMaximum, 0.0001f)
+    }
+
+    @Test
+    fun `swapped limits are put back in order`() {
+        enterLiveReady()
+        store.beginRemoteSession()
+        runCurrent()
+
+        store.setRemoteSessionDepthRange(0.8f, 0.2f)
+        runCurrent()
+
+        assertEquals(0.2f, store.remoteSessionLimits()!!.depthMinimum, 0.0001f)
+        assertEquals(0.8f, store.remoteSessionLimits()!!.depthMaximum, 0.0001f)
+    }
+
+    @Test
+    fun `outside a session the limits setter does nothing`() {
+        enterLiveReady()
+
+        store.setRemoteSessionDepthRange(0.3f, 0.7f)
+        runCurrent()
+
+        assertEquals(null, store.remoteSessionLimits())
+        assertFalse(store.remoteSessionView.value.active)
+    }
     private fun setPrivateJob(name: String, job: Job) {
         val field = ControlSessionStore::class.java.getDeclaredField(name)
         field.isAccessible = true

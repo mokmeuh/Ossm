@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#061018" />
-    <meta name="description" content="Client web OSSM Remote v2.0.13 pour session de contrôle sécurisée" />
+    <meta name="description" content="Client web OSSM Remote v2.0.14 pour session de contrôle sécurisée" />
     <title>OSSM Remote</title>
     <link rel="stylesheet" href="/app.css" />
   </head>
@@ -13,7 +13,7 @@
       <header class="topbar">
         <div class="brand-group">
           <a class="wordmark" href="/" aria-label="Accueil OSSM Remote">OSSM <span>REMOTE</span></a>
-          <span class="hint" id="web-version">WEB v2.0.13</span>
+          <span class="hint" id="web-version">WEB v2.0.14</span>
         </div>
         <div class="status-chip" id="status" role="status">CONNEXION</div>
       </header>
@@ -67,9 +67,23 @@
           <div class="live-touch-header">
             <div>
               <p class="eyebrow">TOUCHER DIRECT</p>
-              <strong>Zone libre</strong>
+              <strong id="live-style-title">Haut / bas</strong>
             </div>
-            <output id="live-value" for="live-pad">0 %</output>
+            <output id="live-value" for="live-pad live-vpad">0 %</output>
+          </div>
+          <div class="live-style" role="group" aria-label="Type de commande directe">
+            <button class="live-style-button" id="live-style-vertical" type="button" aria-pressed="true">Haut / bas</button>
+            <button class="live-style-button" id="live-style-free" type="button" aria-pressed="false">Zone libre</button>
+          </div>
+          <div class="live-vpad-block" id="live-vpad-block">
+            <div class="live-vpad" id="live-vpad" role="slider" tabindex="0" aria-orientation="vertical" aria-label="Position haut / bas" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="0 %, limite basse" aria-describedby="live-vpad-legend live-vpad-hint" aria-disabled="true" data-state="idle">
+              <span class="live-vpad-label live-vpad-label--top" id="live-vpad-top" aria-hidden="true">Haut · limite haute</span>
+              <span class="live-vpad-fill" aria-hidden="true"></span>
+              <span class="live-vpad-handle" aria-hidden="true"></span>
+              <span class="live-vpad-label live-vpad-label--bottom" id="live-vpad-bottom" aria-hidden="true">Bas · limite basse</span>
+            </div>
+            <p class="live-legend" id="live-vpad-legend">Fenêtre du téléphone : en attente</p>
+            <p class="live-hint" id="live-vpad-hint">Glissez : le haut et le bas sont les deux limites réglées sur le téléphone. Relâchez : il ramène doucement en bas.</p>
           </div>
           <div class="live-pad" id="live-pad" role="slider" tabindex="0" aria-label="Position directe" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="0 %, rentré" aria-describedby="live-legend live-hint" aria-disabled="true" data-state="idle">
             <span class="live-pad-prompt" aria-hidden="true">Touchez n'importe où</span>
