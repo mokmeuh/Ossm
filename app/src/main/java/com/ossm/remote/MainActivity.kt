@@ -45,6 +45,7 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import com.ossm.remote.data.repository.OverlayPreferencesRepository
 import com.ossm.remote.model.BleConnectionState
+import com.ossm.remote.model.PatternControlMode
 import com.ossm.remote.model.isVoicePattern
 import com.ossm.remote.usb.FirmwareFlashViewModel
 import com.ossm.remote.usb.FirmwareFlashState
@@ -271,6 +272,8 @@ fun OssmApp(
     val flashHoldsNavigation = flashState !is FirmwareFlashState.Idle || usbRecovering
     val controlUiState by controlVm.uiState.collectAsState()
     val remoteSession by controlVm.remoteSessionView.collectAsState()
+    val depthByLoadState by controlVm.depthByLoadState.collectAsState()
+    val depthByLoadSettings by controlVm.depthByLoadSettings.collectAsState()
     val voiceAiState by voiceAiVm.state.collectAsState()
     val diagnosticsLogs by diagnosticsVm.logs.collectAsState()
     val lastCommand by diagnosticsVm.lastCommand.collectAsState()
@@ -563,7 +566,16 @@ fun OssmApp(
                         onMicrophonePermissionResult = voiceAiVm::onMicrophonePermissionResult,
                     ),
                     voiceAi = voiceAiState,
-                    voiceModelRoot = remember(voiceAiVm) { voiceAiVm.modelRoot() }
+                    voiceModelRoot = remember(voiceAiVm) { voiceAiVm.modelRoot() },
+                    resistanceDepth = ResistanceDepthPanelModel(
+                        state = depthByLoadState,
+                        settings = depthByLoadSettings,
+                        canEnable = connectionState is BleConnectionState.Connected &&
+                            controlUiState.activePattern?.mode == PatternControlMode.STROKE_ENGINE,
+                        onEnabledChange = controlVm::setDepthByLoadEnabled,
+                        onSensitivityCommit = controlVm::setDepthByLoadSensitivity,
+                        onFloorCommit = controlVm::setDepthByLoadFloor,
+                    )
                 )
                 }
                 Screen.Diagnostics -> {

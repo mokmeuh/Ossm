@@ -1,6 +1,8 @@
 package com.ossm.remote.session
 
 import com.ossm.remote.ble.BleManager
+import com.ossm.remote.ble.DepthByLoadProtocol
+import com.ossm.remote.ble.DepthByLoadState
 import com.ossm.remote.ble.mapLiveStreamPositionPercent
 import com.ossm.remote.data.repository.ControlSafetySettingsRepository
 import com.ossm.remote.data.repository.UserHabitsRepository
@@ -227,6 +229,46 @@ class ControlSessionStore @Inject constructor(
     /** État de connexion BLE (flow exposé par le BleManager). */
     val connectionState: StateFlow<BleConnectionState> get() = bleManager.connectionState
 
+    // ---- Profondeur selon la résistance (2.3.50) ----
+    // Le firmware module la profondeur ; l'appli choisit seulement d'activer le mode et règle
+    // sensibilité/plancher. Seuls ces deux réglages sont mémorisés : le mode démarre toujours
+    // désactivé et se coupe à tout STOP, perte de liaison, sortie du mode et fin de session Remote.
+    private val _depthByLoadSettings = MutableStateFlow(DepthByLoadSettings())
+    val depthByLoadSettings: StateFlow<DepthByLoadSettings> = _depthByLoadSettings.asStateFlow()
+    /** État réel annoncé par la machine (jamais deviné par l'appli). */
+    val depthByLoadState: StateFlow<DepthByLoadState> get() = bleManager.depthByLoadState
+
+    fun setDepthByLoadEnabled(enabled: Boolean) {
+        if (!enabled) {
+            bleManager.disableDepthByLoad()
+            return
+        }
+        if (_uiState.value.activePattern?.mode != PatternControlMode.STROKE_ENGINE) return
+        if (bleManager.connectionState.value !is BleConnectionState.Connected) return
+        val settings = _depthByLoadSettings.value
+        bleManager.writeDepthByLoad(true, settings.sensitivityPercent, settings.floorPercent)
+    }
+
+    fun setDepthByLoadSensitivity(percent: Int) {
+        val value = DepthByLoadProtocol.clampSensitivity(percent)
+        _depthByLoadSettings.update { it.copy(sensitivityPercent = value) }
+        storeScope.launch { safetySettingsRepository.setDepthByLoadSensitivityPercent(value) }
+        rewriteDepthByLoadIfEnabled()
+    }
+
+    fun setDepthByLoadFloor(percent: Int) {
+        val value = DepthByLoadProtocol.clampFloor(percent)
+        _depthByLoadSettings.update { it.copy(floorPercent = value) }
+        storeScope.launch { safetySettingsRepository.setDepthByLoadFloorPercent(value) }
+        rewriteDepthByLoadIfEnabled()
+    }
+
+    private fun rewriteDepthByLoadIfEnabled() {
+        if (!bleManager.depthByLoadState.value.enabled) return
+        val settings = _depthByLoadSettings.value
+        bleManager.writeDepthByLoad(true, settings.sensitivityPercent, settings.floorPercent)
+    }
+
     /**
      * Capture the local phone-owned envelope before a browser can issue a
      * command. The optional values let the remote session seam pass the exact
@@ -288,6 +330,7 @@ class ControlSessionStore @Inject constructor(
     fun endRemoteSession(): Boolean {
         val hadSession = remoteHostLimits != null
         if (hadSession) stop()
+        bleManager.disableDepthByLoad()
         naturalRemoteSpeed = 0f
         synchronized(remoteSessionLock) { remoteHostLimits = null }
         bleManager.setPhoneHostSpeedCeiling(null)
@@ -795,6 +838,18 @@ class ControlSessionStore @Inject constructor(
         }
 
         storeScope.launch {
+            safetySettingsRepository.depthByLoadSensitivityPercent.collect { percent ->
+                _depthByLoadSettings.update { it.copy(sensitivityPercent = percent) }
+            }
+        }
+
+        storeScope.launch {
+            safetySettingsRepository.depthByLoadFloorPercent.collect { percent ->
+                _depthByLoadSettings.update { it.copy(floorPercent = percent) }
+            }
+        }
+
+        storeScope.launch {
             safetySettingsRepository.precisionOverrides.collect { overrides ->
                 _uiState.update { it.copy(precisionOverrides = overrides) }
             }
@@ -949,6 +1004,8 @@ class ControlSessionStore @Inject constructor(
 
     fun activatePattern(patternKey: String) {
         val pattern = _uiState.value.availablePatterns.firstOrNull { it.key == patternKey } ?: return
+        // Sortie du mode : seul le Stroke Engine module la profondeur d'après la résistance.
+        if (pattern.mode != PatternControlMode.STROKE_ENGINE) bleManager.disableDepthByLoad()
         val previousPosition = _uiState.value.streamPositionPercent
         invalidateLiveGestureEpoch()
         cancelLiveReturn()
@@ -1547,6 +1604,8 @@ class ControlSessionStore @Inject constructor(
         cancelSessionJobs()
         _uiState.update { it.copy(isRunning = false, isPaused = false, autoRunning = false, autoIntensity = 0f, speed = 0f, pendingManualChange = null) }
         bleManager.sendCommand(OssmCommand.Stop)
+        // Après le STOP, jamais avant : rien ne doit retarder l'arrêt de la machine.
+        bleManager.disableDepthByLoad()
         if (remoteHostLimits != null) publishRemoteSessionView { it.copy(remoteSpeed = 0f) }
     }
 
@@ -1555,6 +1614,7 @@ class ControlSessionStore @Inject constructor(
         cancelSessionJobs()
         _uiState.update { it.copy(isRunning = false, isPaused = false, autoRunning = false, autoIntensity = 0f, speed = 0f, pendingManualChange = null) }
         bleManager.emergencyStop()
+        bleManager.disableDepthByLoad()
         if (remoteHostLimits != null) publishRemoteSessionView { it.copy(remoteSpeed = 0f) }
     }
 

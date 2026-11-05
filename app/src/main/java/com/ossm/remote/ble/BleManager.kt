@@ -59,6 +59,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
@@ -202,6 +203,7 @@ class BleManager @Inject constructor(
     private var latencyCompensationCharacteristic: BluetoothGattCharacteristic? = null
     private var capabilityCharacteristic: BluetoothGattCharacteristic? = null
     private var liveSmoothCharacteristic: BluetoothGattCharacteristic? = null
+    private var depthByLoadCharacteristic: BluetoothGattCharacteristic? = null
     @Volatile private var liveSmoothCapabilityPayload: ByteArray? = null
     // Vrai quand la séquence post-connexion (MTU → CCCD → lectures/config) est finie.
     @Volatile private var postSetupDone = false
@@ -280,6 +282,74 @@ class BleManager @Inject constructor(
 
     private val _availablePatterns = MutableStateFlow(KnownFallbackPatterns)
     val availablePatterns: StateFlow<List<OssmPattern>> = _availablePatterns.asStateFlow()
+
+    // ---- Profondeur selon la résistance : caractéristique facultative du firmware ----
+    private val _depthByLoadState = MutableStateFlow(DepthByLoadState())
+    /** Faux partout tant que le firmware ne publie pas la caractéristique (aucune UI active). */
+    val depthByLoadState: StateFlow<DepthByLoadState> = _depthByLoadState.asStateFlow()
+    @Volatile private var depthByLoadDesiredEnabled = false
+    @Volatile private var depthByLoadNotifying = false
+    @Volatile private var depthByLoadSensitivity = DepthByLoadProtocol.DEFAULT_SENSITIVITY_PERCENT
+    @Volatile private var depthByLoadFloor = DepthByLoadProtocol.DEFAULT_FLOOR_PERCENT
+
+    /**
+     * Écrit la configuration du mode par la file GATT sérialisée. Une activation est refusée si
+     * la machine ne le propose pas ou déclare son signal indisponible ; une désactivation passe
+     * toujours, en urgence. Retourne vrai si l'écriture a été mise en file.
+     */
+    fun writeDepthByLoad(enabled: Boolean, sensitivityPercent: Int, floorPercent: Int): Boolean {
+        val characteristic = depthByLoadCharacteristic ?: return false
+        val sensitivity = DepthByLoadProtocol.clampSensitivity(sensitivityPercent)
+        val floor = DepthByLoadProtocol.clampFloor(floorPercent)
+        if (enabled && !_depthByLoadState.value.usable) return false
+        if (_connectionState.value !is BleConnectionState.Connected || !postSetupDone) return false
+        depthByLoadSensitivity = sensitivity
+        depthByLoadFloor = floor
+        depthByLoadDesiredEnabled = enabled
+        enqueueGattWrite(
+            characteristic,
+            DepthByLoadProtocol.encodeWrite(enabled, sensitivity, floor),
+            urgent = !enabled,
+        )
+        // Sans abonnement, rien ne confirmera l'état : on ne reflète que ce qui est sans risque.
+        if (!enabled || !depthByLoadNotifying) {
+            _depthByLoadState.update {
+                it.copy(enabled = enabled && it.usable, sensitivityPercent = sensitivity, floorPercent = floor)
+            }
+        }
+        return true
+    }
+
+    /** Coupe le mode s'il est actif ou demandé. Sans effet si la machine ne le propose pas. */
+    fun disableDepthByLoad() {
+        if (depthByLoadCharacteristic == null) return
+        if (!depthByLoadDesiredEnabled && !_depthByLoadState.value.enabled) return
+        writeDepthByLoad(false, depthByLoadSensitivity, depthByLoadFloor)
+        depthByLoadDesiredEnabled = false
+    }
+
+    private fun resetDepthByLoad() {
+        depthByLoadCharacteristic = null
+        depthByLoadDesiredEnabled = false
+        depthByLoadNotifying = false
+        _depthByLoadState.value = DepthByLoadState()
+    }
+
+    private fun applyDepthByLoadPayload(value: ByteArray): Boolean {
+        val result = DepthByLoadProtocol.decode(value)
+        val packet = result.value
+        if (packet == null) {
+            // Paquet illisible : on neutralise le mode plutôt que de supposer son état.
+            log(LogLevel.WARNING, "DEPTH_LOAD", "Paquet rejeté (${result.error}) — mode neutralisé")
+            depthByLoadDesiredEnabled = false
+            _depthByLoadState.update { it.copy(present = true, unavailable = true, enabled = false) }
+            return false
+        }
+        val state = DepthByLoadState.from(packet)
+        if (!state.enabled) depthByLoadDesiredEnabled = false
+        _depthByLoadState.value = state
+        return true
+    }
 
     private val _machineState = MutableStateFlow(MachineState())
     val machineState: StateFlow<MachineState> = _machineState.asStateFlow()
@@ -372,6 +442,7 @@ class BleManager @Inject constructor(
         notifyCharacteristic = null
         liveSmoothCharacteristic = null
         liveSmoothCapabilityPayload = null
+        resetDepthByLoad()
         resetPostSetupReadiness()
         _streamingReady.value = false
         cancelLiveTargets()
@@ -584,6 +655,7 @@ class BleManager @Inject constructor(
         capabilityCharacteristic = null
         liveSmoothCharacteristic = null
         liveSmoothCapabilityPayload = null
+        resetDepthByLoad()
         resetPostSetupReadiness()
         postSetupStarted = false
         stateBootstrapPending = false
@@ -663,6 +735,7 @@ class BleManager @Inject constructor(
         capabilityCharacteristic = null
         liveSmoothCharacteristic = null
         liveSmoothCapabilityPayload = null
+        resetDepthByLoad()
         resetPostSetupReadiness()
         postSetupStarted = false
         stateBootstrapPending = false
@@ -721,6 +794,7 @@ class BleManager @Inject constructor(
                     capabilityCharacteristic = null
                     liveSmoothCharacteristic = null
                     liveSmoothCapabilityPayload = null
+                    resetDepthByLoad()
                     resetPostSetupReadiness()
                     postSetupStarted = false
                     stateBootstrapPending = false
@@ -826,6 +900,7 @@ class BleManager @Inject constructor(
             latencyCompensationCharacteristic = ossmService?.getCharacteristic(BleConstants.LATENCY_UUID)
             capabilityCharacteristic = ossmService?.getCharacteristic(ResistanceProtocol.CAPABILITY_UUID)
             liveSmoothCharacteristic = ossmService?.getCharacteristic(UUID.fromString(LiveSmoothProtocol.CHARACTERISTIC_UUID))
+            depthByLoadCharacteristic = ossmService?.getCharacteristic(DepthByLoadProtocol.CHARACTERISTIC_UUID)
 
             val deviceName = gatt.device.name ?: gatt.device.address
             _connectionState.value = BleConnectionState.Connected(deviceName, gatt.device.address)
@@ -878,6 +953,12 @@ class BleManager @Inject constructor(
         override fun onDescriptorWrite(gatt: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
             log(LogLevel.DEBUG, "GATT", "CCCD écrit (status=$status)")
             if (descriptor.uuid != BleConstants.CCCD_UUID) return
+            // L'abonnement du mode « profondeur selon la résistance » ne fait pas partie de la
+            // séquence d'amorçage de l'état machine.
+            if (descriptor.characteristic?.uuid == DepthByLoadProtocol.CHARACTERISTIC_UUID) {
+                depthByLoadNotifying = status == BluetoothGatt.GATT_SUCCESS
+                return
+            }
             when (
                 choosePostCccdAction(
                     status = status,
@@ -939,6 +1020,11 @@ class BleManager @Inject constructor(
                 capabilityCharacteristic?.let { capability ->
                     gatt.readCharacteristic(capability)
                     delay(CAPABILITY_READ_WAIT_MS)
+                }
+                depthByLoadCharacteristic?.let { depth ->
+                    gatt.readCharacteristic(depth)
+                    delay(CAPABILITY_READ_WAIT_MS)
+                    if (enableNotifications(gatt, depth)) delay(CAPABILITY_READ_WAIT_MS)
                 }
                 if (patternListCharacteristic != null) {
                     gatt.readCharacteristic(patternListCharacteristic)
@@ -1058,6 +1144,9 @@ class BleManager @Inject constructor(
                 if (verified) "Marqueur firmware v1 vérifié" else "Marqueur firmware invalide — transport texte conservé",
             )
             return verified
+        }
+        if (source.equals(DepthByLoadProtocol.CHARACTERISTIC_UUID.toString(), ignoreCase = true)) {
+            return applyDepthByLoadPayload(value)
         }
         val message = value.toString(Charsets.UTF_8).trim()
         if (message.isBlank()) return false

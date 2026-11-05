@@ -225,6 +225,7 @@ fun ControlScreen(
     voiceActions: VoiceControlActions = VoiceControlActions(),
     voiceAi: com.ossm.remote.voice.VoiceAiUiState = com.ossm.remote.voice.VoiceAiUiState(),
     voiceModelRoot: String? = null,
+    resistanceDepth: ResistanceDepthPanelModel? = null,
 ) {
     val connected = connectionState is BleConnectionState.Connected
     val usbControlActive = (connectionState as? BleConnectionState.Connected)?.address == "USB-C"
@@ -1120,6 +1121,7 @@ fun ControlScreen(
             showLiveAcceleration = shouldShowLiveAccelerationSetting(activePattern),
             liveAccelerationPercent = uiState.liveAccelerationPercent,
             onLiveAccelerationChange = onLiveAccelerationChange,
+            resistanceDepth = resistanceDepth.takeIf { activePattern?.mode == PatternControlMode.STROKE_ENGINE },
             gestureCancellationKey = uiState.liveGestureEpoch,
             onDismiss = { showInfoDialog = false }
         )
@@ -1995,6 +1997,7 @@ private fun ControlSettingsDialog(
     showLiveAcceleration: Boolean,
     liveAccelerationPercent: Int,
     onLiveAccelerationChange: (Int) -> Unit,
+    resistanceDepth: ResistanceDepthPanelModel? = null,
     gestureCancellationKey: Long = 0L,
     onDismiss: () -> Unit
 ) {
@@ -2170,6 +2173,10 @@ private fun ControlSettingsDialog(
                                     activeTrackColor = OssmAccent
                                 )
                             )
+                            if (resistanceDepth != null && shouldShowResistanceDepthPanel(resistanceDepth.state)) {
+                                HorizontalDivider(color = OssmGlassBorder)
+                                ResistanceDepthPanel(resistanceDepth)
+                            }
                             HorizontalDivider(color = OssmGlassBorder)
                             InfoLine(
                                 stringResource(R.string.ctl_stop_info_title),

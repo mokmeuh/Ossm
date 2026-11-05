@@ -69,4 +69,23 @@ class ControlSafetySettingsRepositoryTest {
             ControlSafetySettingsRepository(context).precisionOverrides.first()
         )
     }
+
+    @Test
+    fun `depth by load settings default persist and clamp`() = runTest {
+        val context = RuntimeEnvironment.getApplication()
+        val repository = ControlSafetySettingsRepository(context)
+
+        assertEquals(50, repository.depthByLoadSensitivityPercent.first())
+        assertEquals(40, repository.depthByLoadFloorPercent.first())
+
+        repository.setDepthByLoadSensitivityPercent(75)
+        repository.setDepthByLoadFloorPercent(20)
+        assertEquals(75, ControlSafetySettingsRepository(context).depthByLoadSensitivityPercent.first())
+        assertEquals(20, ControlSafetySettingsRepository(context).depthByLoadFloorPercent.first())
+
+        repository.setDepthByLoadSensitivityPercent(900)
+        repository.setDepthByLoadFloorPercent(1)
+        assertEquals(100, repository.depthByLoadSensitivityPercent.first())
+        assertEquals(10, repository.depthByLoadFloorPercent.first())
+    }
 }

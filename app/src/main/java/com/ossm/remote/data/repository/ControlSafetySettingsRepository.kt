@@ -102,6 +102,19 @@ class ControlSafetySettingsRepository @Inject constructor(
         prefs[VOICE_SHORT_WORD_STOP] ?: true
     }
 
+    /** Profondeur selon la résistance (2.3.50) : réglages seulement, l'activation n'est jamais mémorisée. */
+    val depthByLoadSensitivityPercent: Flow<Int> = context.controlSafetyDataStore.data.map { prefs ->
+        com.ossm.remote.ble.DepthByLoadProtocol.clampSensitivity(
+            prefs[DEPTH_BY_LOAD_SENSITIVITY] ?: com.ossm.remote.ble.DepthByLoadProtocol.DEFAULT_SENSITIVITY_PERCENT
+        )
+    }
+
+    val depthByLoadFloorPercent: Flow<Int> = context.controlSafetyDataStore.data.map { prefs ->
+        com.ossm.remote.ble.DepthByLoadProtocol.clampFloor(
+            prefs[DEPTH_BY_LOAD_FLOOR] ?: com.ossm.remote.ble.DepthByLoadProtocol.DEFAULT_FLOOR_PERCENT
+        )
+    }
+
     val settings: Flow<ControlSafetySettings> = combine(
         speedGuardEnabled,
         speedGuardThresholdPercent,
@@ -112,6 +125,18 @@ class ControlSafetySettingsRepository @Inject constructor(
             speed = SliderGuardSettings(speedEnabled, speedThreshold),
             depth = SliderGuardSettings(depthEnabled, depthThreshold)
         )
+    }
+
+    suspend fun setDepthByLoadSensitivityPercent(percent: Int) {
+        context.controlSafetyDataStore.edit { prefs ->
+            prefs[DEPTH_BY_LOAD_SENSITIVITY] = com.ossm.remote.ble.DepthByLoadProtocol.clampSensitivity(percent)
+        }
+    }
+
+    suspend fun setDepthByLoadFloorPercent(percent: Int) {
+        context.controlSafetyDataStore.edit { prefs ->
+            prefs[DEPTH_BY_LOAD_FLOOR] = com.ossm.remote.ble.DepthByLoadProtocol.clampFloor(percent)
+        }
     }
 
     suspend fun setSpeedGuardEnabled(enabled: Boolean) {
@@ -214,6 +239,8 @@ class ControlSafetySettingsRepository @Inject constructor(
         private val LIVE_ACCELERATION_PERCENT = intPreferencesKey("live_acceleration_percent")
         private const val MIN_DEPTH_LIMIT_SPAN = 0.05f
         private val VOICE_SHORT_WORD_STOP = booleanPreferencesKey("voice_short_word_stop")
+        private val DEPTH_BY_LOAD_SENSITIVITY = intPreferencesKey("depth_by_load_sensitivity_percent")
+        private val DEPTH_BY_LOAD_FLOOR = intPreferencesKey("depth_by_load_floor_percent")
         private val VOICE_DEPTH_MIN = floatPreferencesKey("voice_depth_min")
         private val VOICE_DEPTH_MAX = floatPreferencesKey("voice_depth_max")
         private val NATURAL_AI_ENABLED = booleanPreferencesKey("natural_ai_enabled")

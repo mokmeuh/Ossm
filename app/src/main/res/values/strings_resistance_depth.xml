@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="resistance_depth_title">Profondeur selon la résistance</string>
+    <string name="resistance_depth_hint">La machine lit la résistance en continu : plus il y en a, moins l’actuateur va loin ; moins il y en a, plus il va loin, sans jamais dépasser votre profondeur maximale. Le mode se coupe à chaque STOP.</string>
+    <string name="resistance_depth_unavailable">Signal de résistance non validé sur la machine</string>
+    <string name="resistance_depth_needs_stroke_engine">Disponible avec un pattern Stroke Engine, machine connectée.</string>
+    <string name="resistance_depth_sensitivity">Sensibilité</string>
+    <string name="resistance_depth_floor">Profondeur minimale</string>
+    <string name="resistance_depth_load">Résistance mesurée</string>
+    <string name="resistance_depth_applied">Profondeur appliquée</string>
+</resources>

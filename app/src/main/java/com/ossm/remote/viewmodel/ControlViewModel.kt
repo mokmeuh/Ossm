@@ -7,7 +7,9 @@ import com.ossm.remote.model.OssmPattern
 import com.ossm.remote.model.PatternControlMode
 import com.ossm.remote.model.Preset
 import com.ossm.remote.remote.RemoteSessionView
+import com.ossm.remote.ble.DepthByLoadState
 import com.ossm.remote.session.ControlSessionStore
+import com.ossm.remote.session.DepthByLoadSettings
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.StateFlow
@@ -249,6 +251,12 @@ class ControlViewModel @Inject constructor(
     val uiState: StateFlow<ControlUiState> = controlSessionStore.uiState
 
     val remoteSessionView: StateFlow<RemoteSessionView> = controlSessionStore.remoteSessionView
+
+    val depthByLoadState: StateFlow<DepthByLoadState> get() = controlSessionStore.depthByLoadState
+    val depthByLoadSettings: StateFlow<DepthByLoadSettings> = controlSessionStore.depthByLoadSettings
+    fun setDepthByLoadEnabled(enabled: Boolean) = controlSessionStore.setDepthByLoadEnabled(enabled)
+    fun setDepthByLoadSensitivity(percent: Int) = controlSessionStore.setDepthByLoadSensitivity(percent)
+    fun setDepthByLoadFloor(percent: Int) = controlSessionStore.setDepthByLoadFloor(percent)
 
     fun activatePattern(patternKey: String) = controlSessionStore.activatePattern(patternKey)
 

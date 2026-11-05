@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="resistance_depth_title">Depth from resistance</string>
+    <string name="resistance_depth_hint">The machine reads the resistance continuously: the more there is, the shorter the stroke; the less there is, the deeper it goes, never beyond your maximum depth. The mode turns off on every STOP.</string>
+    <string name="resistance_depth_unavailable">Resistance signal not validated on the machine</string>
+    <string name="resistance_depth_needs_stroke_engine">Available with a Stroke Engine pattern, machine connected.</string>
+    <string name="resistance_depth_sensitivity">Sensitivity</string>
+    <string name="resistance_depth_floor">Minimum depth</string>
+    <string name="resistance_depth_load">Measured resistance</string>
+    <string name="resistance_depth_applied">Applied depth</string>
+</resources>

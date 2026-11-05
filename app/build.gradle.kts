@@ -31,8 +31,8 @@ android {
         applicationId = "com.ossm.remote"
         minSdk = 26
         targetSdk = 35
-        versionCode = 196
-        versionName = "2.3.48"
+        versionCode = 198
+        versionName = "2.3.50"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Voix 2.3.27: the on-device models (sherpa-onnx, LiteRT-LM) only target the S25 Ultra.
         ndk {
