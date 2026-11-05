@@ -643,6 +643,19 @@ class ControlSessionStore @Inject constructor(
         publishRemoteSessionView()
     }
 
+    /**
+     * Session-only depth window the browser may act in. Live has no depth slider of its own, so
+     * this is the phone's way to set the two limits there. A window narrower than the minimum
+     * span is ignored (it would leave the browser nothing to move in). Hard limits from the
+     * settings still intersect it.
+     */
+    fun setRemoteSessionDepthRange(minimum: Float, maximum: Float) {
+        if (minimum.isNaN() || maximum.isNaN()) return
+        if (remoteHostLimits == null) return
+        if (kotlin.math.abs(maximum - minimum) < REMOTE_MIN_DEPTH_SPAN) return
+        updateRemoteDepthRangeFromLocal(minimum, maximum)
+    }
+
     private fun updateRemoteDepthRangeFromLocal(minimum: Float, maximum: Float) {
         if (minimum.isNaN() || maximum.isNaN()) return
         val normalizedMinimum = minOf(minimum, maximum).coerceIn(0f, 1f)
@@ -4586,6 +4599,9 @@ class ControlSessionStore @Inject constructor(
         private const val MIN_DEPTH_LIMIT_SPAN = 0.05f
         // Confirmation STOP after a remote session ends (covers an in-flight stroke command).
         private const val REMOTE_SESSION_END_CONFIRM_STOP_MS = 250L
+
+        /** Narrowest depth window a session may leave to the browser (matches the envelope check). */
+        private const val REMOTE_MIN_DEPTH_SPAN = 0.05f
 
         // Naturel (2.3.18).
         internal const val NATURAL_TICK_MS = 200L

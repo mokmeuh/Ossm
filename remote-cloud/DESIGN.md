@@ -4,7 +4,7 @@
 
 This document records the implemented browser client contract in `static/index.html`,
 `static/app.css`, and `static/app.js`. It is descriptive rather than a proposal. The
-current web patch is `WEB v2.0.13`; the browser version is independent from the Android
+current web patch is `WEB v2.0.14`; the browser version is independent from the Android
 APK version.
 
 The page is a semantic French-language control surface. Its first DOM surface is the

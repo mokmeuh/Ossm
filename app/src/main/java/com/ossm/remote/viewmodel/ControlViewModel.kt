@@ -291,6 +291,7 @@ class ControlViewModel @Inject constructor(
     fun setDepthGuardEnabled(enabled: Boolean) = controlSessionStore.setDepthGuardEnabled(enabled)
 
     fun setDepthLimits(min: Float, max: Float) = controlSessionStore.setDepthLimits(min, max)
+    fun setRemoteSessionDepthRange(min: Float, max: Float) = controlSessionStore.setRemoteSessionDepthRange(min, max)
 
     fun stop() = controlSessionStore.stop()
 

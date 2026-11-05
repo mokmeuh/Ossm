@@ -364,6 +364,30 @@ input[type="range"]:disabled { cursor: not-allowed; accent-color: var(--disabled
 .live-pad[data-state="released"] .live-pad-reach { transition: transform var(--return) var(--ease-standard); }
 .live-pad[data-state="released"] .live-pad-ray { transition: inline-size var(--return) var(--ease-standard); }
 .live-pad[aria-disabled="true"] .live-pad-finger { background: var(--disabled-line); box-shadow: none; }
+.live-style { display: flex; gap: 8px; padding-inline: 8px; }
+.live-style-button { flex: 1 1 0; min-block-size: 44px; border: 1px solid var(--line-soft); border-radius: var(--radius-live); background: var(--glass); color: var(--muted); font: 700 var(--font-size-label) / 1.2 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; cursor: pointer; }
+.live-style-button[aria-pressed="true"] { border-color: var(--aqua-deep); background: var(--pulse-ring); color: var(--text); }
+.live-style-button:focus-visible { outline: var(--focus-ring-width) solid var(--aqua); outline-offset: var(--focus-ring-offset); }
+.live-style-button:disabled { cursor: not-allowed; border-style: dashed; border-color: var(--disabled-line); background: var(--disabled-surface); }
+.live-vpad-block { display: grid; gap: 8px; min-inline-size: 0; }
+.live-vpad {
+  --level: 0; --finger: 56px; --return: 650ms;
+  position: relative; display: block; inline-size: 100%;
+  block-size: max(280px, calc(100dvh - var(--dock-stop-height) - 260px - env(safe-area-inset-bottom)));
+  border: 1px solid var(--line-soft); border-radius: var(--radius-live);
+  background: linear-gradient(0deg, var(--control-hover), var(--glass));
+  overflow: hidden; cursor: ns-resize; touch-action: none;
+}
+.live-vpad:focus-visible { outline: var(--focus-ring-width) solid var(--aqua); outline-offset: var(--focus-ring-offset); }
+.live-vpad[aria-disabled="true"] { cursor: not-allowed; border-style: dashed; border-color: var(--disabled-line); background: var(--disabled-surface); }
+.live-vpad-fill { position: absolute; inset-inline: 0; inset-block-end: 0; block-size: calc(var(--level) * 100%); background: var(--pulse-ring); border-block-start: 2px solid var(--aqua-deep); pointer-events: none; }
+.live-vpad-handle { position: absolute; inset-inline-start: 50%; inset-block-end: calc(var(--level) * 100%); inline-size: var(--finger); block-size: var(--finger); border: 3px solid var(--ink); border-radius: 50%; background: var(--input-thumb); box-shadow: 0 0 0 6px var(--pulse-ring), 0 6px 18px var(--panel-shadow); transform: translate(-50%, 50%); pointer-events: none; z-index: 2; }
+.live-vpad-label { position: absolute; inset-inline: 0; padding-inline: 12px; color: var(--muted); font: 700 var(--font-size-label) / 1.4 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; text-align: center; pointer-events: none; z-index: 1; }
+.live-vpad-label--top { inset-block-start: 10px; }
+.live-vpad-label--bottom { inset-block-end: 10px; }
+.live-vpad[aria-disabled="true"] .live-vpad-handle { background: var(--disabled-line); box-shadow: none; }
+.live-vpad[data-state="released"] .live-vpad-fill { transition: block-size var(--return) var(--ease-standard); }
+.live-vpad[data-state="released"] .live-vpad-handle { transition: inset-block-end var(--return) var(--ease-standard); }
 .live-legend { margin: 0; color: var(--text); font: 700 var(--font-size-label) / 1.4 var(--font-mono); letter-spacing: .04em; text-align: center; }
 .live-hint { margin: 0; color: var(--muted); font-size: var(--font-size-secondary); line-height: 1.4; text-align: center; }
 
@@ -496,5 +520,5 @@ input[type="range"]:not(:disabled):active::-moz-range-thumb { box-shadow: 0 0 0 
   #remote-controls, #video-stage { transition: opacity var(--duration-crossfade) linear; }
   #remote-controls[data-ui-transition="crossfade"], #video-stage[data-ui-transition="crossfade"] { transition: opacity var(--duration-crossfade) linear; }
   /* Direct: the released marker returns to the anchor at once (no glide, no fade). */
-  .live-pad[data-state="released"] .live-pad-finger, .live-pad[data-state="released"] .live-pad-reach, .live-pad[data-state="released"] .live-pad-ray, .live-pad[data-state="released"] .live-pad-origin, .live-pad[data-state="released"] .live-pad-floor, .live-pad-prompt { transition: none; }
+  .live-vpad[data-state="released"] .live-vpad-fill, .live-vpad[data-state="released"] .live-vpad-handle, .live-pad[data-state="released"] .live-pad-finger, .live-pad[data-state="released"] .live-pad-reach, .live-pad[data-state="released"] .live-pad-ray, .live-pad[data-state="released"] .live-pad-origin, .live-pad[data-state="released"] .live-pad-floor, .live-pad-prompt { transition: none; }
 }

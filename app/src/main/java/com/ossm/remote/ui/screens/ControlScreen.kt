@@ -216,6 +216,7 @@ fun ControlScreen(
     onLiveAccelerationChange: (Int) -> Unit,
     onLiveRecordToggle: () -> Unit,
     remoteSession: RemoteSessionView = RemoteSessionView(),
+    onRemoteDepthRangeChange: (Float, Float) -> Unit = { _, _ -> },
     onSpeedCommitWithEpoch: ((Float, Long) -> Unit)? = null,
     onSpeedLiveWithEpoch: ((Float, Long) -> Unit)? = null,
     onSensationRandomRangeChange: (Float, Float) -> Unit = { _, _ -> },
@@ -662,6 +663,25 @@ fun ControlScreen(
                                 enabled = slidersEnabled,
                                 activeColor = OssmPrimary,
                                 gestureCancellationKey = uiState.liveGestureEpoch,
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            // The two limits (low / high) of the window the browser's pad moves in.
+                            DepthRangeEditor(
+                                minValue = depthRangeDraft.start,
+                                maxValue = depthRangeDraft.endInclusive,
+                                enabled = slidersEnabled,
+                                onRangeChange = { min, max ->
+                                    depthRangeDraft = min..max
+                                    draftEditClock.markLocalEdit(android.os.SystemClock.uptimeMillis())
+                                    onRemoteDepthRangeChange(min, max)
+                                },
+                                onRangeCommit = { min, max ->
+                                    depthRangeDraft = min..max
+                                    draftEditClock.markLocalEdit(android.os.SystemClock.uptimeMillis())
+                                    onRemoteDepthRangeChange(min, max)
+                                },
+                                gestureCancellationKey = uiState.liveGestureEpoch,
+                                labelOverride = stringResource(R.string.ctl_remote_limits),
                             )
                             Spacer(Modifier.height(6.dp))
                         }
@@ -2735,7 +2755,8 @@ internal fun DepthRangeEditor(
     randomMinValue: Float? = null,
     randomMaxValue: Float? = null,
     headerAccessory: (@Composable RowScope.() -> Unit)? = null,
-    gestureCancellationKey: Long = 0L
+    gestureCancellationKey: Long = 0L,
+    labelOverride: String? = null
 ) {
     val displayedMin = randomMinValue ?: minValue
     val displayedMax = randomMaxValue ?: maxValue
@@ -2745,7 +2766,7 @@ internal fun DepthRangeEditor(
         randomMinValue?.let { add(RangeBarMarker(it, OssmError)) }
         randomMaxValue?.let { add(RangeBarMarker(it, OssmError)) }
     }
-    val label = stringResource(R.string.ctl_depth)
+    val label = labelOverride ?: stringResource(R.string.ctl_depth)
     SliderFrame(
         label = label,
         displayValue = "${(displayedMin * 100).toInt()}–${(displayedMax * 100).toInt()}%",

@@ -1,4 +1,4 @@
-﻿import org.gradle.api.tasks.Copy
+import org.gradle.api.tasks.Copy
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {

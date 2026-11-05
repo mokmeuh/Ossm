@@ -528,6 +528,7 @@ fun OssmApp(
                     onPrecisionEnabledChange = controlVm::setPrecisionEnabled,
                     onDepthGuardEnabledChange = controlVm::setDepthGuardEnabled,
                     onDepthLimitsChange = controlVm::setDepthLimits,
+                    onRemoteDepthRangeChange = controlVm::setRemoteSessionDepthRange,
                     onConfirmPendingChange = controlVm::confirmPendingManualChange,
                     onDismissPendingChange = controlVm::dismissPendingManualChange,
                     onPatternOrderSave = controlVm::savePatternOrder,

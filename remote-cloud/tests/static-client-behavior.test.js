@@ -1450,3 +1450,154 @@ describe("controller media card reflects the real camera state", () => {
     expect(app.el("#video-placeholder-label").textContent).toBe("AUCUNE CAMÉRA CONNECTÉE");
   });
 });
+
+describe("Direct up/down pad bounded by the phone limits (v2.0.14)", () => {
+  // Pad stub: 300 x 200 at the origin. Bottom (y = 200) is 0, top (y = 0) is 100 of the phone window.
+  const positions = (socket) => socket.commands().filter(command => command.type === "set_live_position").map(command => command.percent);
+  const liveVertical = () => {
+    const app = boot();
+    const socket = admitController(app);
+    selectMode(app, "streamingLive");
+    return { app, socket, pad: app.el("#live-vpad") };
+  };
+  const down = (pad, y, pointerId = 1) => pad.fire("pointerdown", { pointerId, pointerType: "touch", button: 0, clientX: 150, clientY: y });
+  const move = (pad, y, pointerId = 1) => pad.fire("pointermove", { pointerId, clientX: 150, clientY: y });
+  const runLive = (app) => {
+    const entry = [...app.timers.entries()].find(([, timer]) => timer.ms === 40);
+    if (!entry) return false;
+    app.timers.delete(entry[0]);
+    entry[1].fn();
+    return true;
+  };
+
+  it("is the default Direct view and keeps the free zone one tap away", () => {
+    const { app, pad } = liveVertical();
+    expect(app.el("#live-vpad-block").hidden).toBe(false);
+    expect(app.el("#live-pad").hidden).toBe(true);
+    expect(app.el("#live-style-vertical").getAttribute("aria-pressed")).toBe("true");
+    expect(pad.getAttribute("aria-disabled")).toBe("false");
+
+    app.el("#live-style-free").fire("click");
+    expect(app.el("#live-vpad-block").hidden).toBe(true);
+    expect(app.el("#live-pad").hidden).toBe(false);
+    expect(app.el("#live-style-title").textContent).toBe("Zone libre");
+    app.el("#live-style-vertical").fire("click");
+    expect(app.el("#live-vpad-block").hidden).toBe(false);
+  });
+
+  it("maps the bottom to 0 and the top to 100 and sends the touched level at once", () => {
+    const { app, socket, pad } = liveVertical();
+    down(pad, 200);
+    expect(positions(socket)).toEqual([0]);
+    move(pad, 100);
+    runLive(app);
+    move(pad, 0);
+    runLive(app);
+    expect(positions(socket)).toEqual([0, 50, 100]);
+    expect(app.el("#live-value").textContent).toBe("100 %");
+    expect(pad.getAttribute("aria-valuetext")).toBe("100 %, limite haute");
+    expect(pad.style.props["--level"]).toBe("1");
+  });
+
+  it("never sends a value outside 0..100 whatever the pointer does", () => {
+    const { app, socket, pad } = liveVertical();
+    down(pad, 100);
+    move(pad, -400);
+    runLive(app);
+    move(pad, 900);
+    runLive(app);
+    expect(positions(socket).every(percent => percent >= 0 && percent <= 100)).toBe(true);
+    expect(positions(socket)).toEqual([50, 100, 0]);
+  });
+
+  it("shows the window set on the phone", () => {
+    const { app, socket } = liveVertical();
+    expect(app.el("#live-vpad-legend").textContent).toBe("Fenêtre du téléphone : en attente");
+    socket.receive(limitsEvent(1, 0.2, 0.8));
+    expect(app.el("#live-vpad-legend").textContent).toBe("Fenêtre du téléphone : 20–80 %");
+  });
+
+  it("sends the held level again when the phone moves its window, and only then", () => {
+    const { app, socket, pad } = liveVertical();
+    socket.receive(limitsEvent(1, 0.2, 0.8));
+    down(pad, 100);
+    expect(positions(socket)).toEqual([50]);
+    runLive(app);
+
+    socket.receive(limitsEvent(0.9, 0.2, 0.8));
+    runLive(app);
+    expect(positions(socket)).toEqual([50]);
+
+    socket.receive(limitsEvent(0.9, 0.4, 0.6));
+    expect(positions(socket)).toEqual([50, 50]);
+    expect(socket.commands().some(command => command.type === "stop")).toBe(false);
+  });
+
+  it("ignores a window change when nothing is held", () => {
+    const { socket } = liveVertical();
+    socket.receive(limitsEvent(1, 0.2, 0.8));
+    socket.receive(limitsEvent(1, 0.4, 0.6));
+    expect(positions(socket)).toEqual([]);
+  });
+
+  it("releases with end_live_touch only and resets the pad to 0", () => {
+    const { socket, pad } = liveVertical();
+    down(pad, 40);
+    pad.fire("pointerup", { pointerId: 1 });
+    expect(socket.commands().at(-1)).toEqual({ type: "end_live_touch" });
+    expect(socket.commands().filter(command => command.type === "stop")).toHaveLength(0);
+    expect(pad.dataset.state).toBe("released");
+    expect(pad.getAttribute("aria-valuenow")).toBe("0");
+  });
+
+  it("stops without a release return when the pointer is cancelled or access is lost", () => {
+    const { socket, pad } = liveVertical();
+    down(pad, 40);
+    pad.fire("pointercancel", { pointerId: 1 });
+    expect(socket.commands().at(-1)).toEqual({ type: "stop" });
+    expect(socket.commands().some(command => command.type === "end_live_touch")).toBe(false);
+
+    down(pad, 40, 2);
+    const before = socket.commands().length;
+    socket.receive(presence(false));
+    expect(socket.commands().at(-1)).toEqual({ type: "stop" });
+    move(pad, 10, 2);
+    expect(socket.commands().length).toBe(before + 1);
+  });
+
+  it("sends emergency STOP alone while the pad is held", () => {
+    const { app, socket, pad } = liveVertical();
+    down(pad, 40);
+    app.el("#emergency-stop").fire("click");
+    expect(socket.sent.at(-1).type).toBe("emergency_stop");
+    expect(socket.commands().filter(command => command.type === "end_live_touch" || command.type === "stop")).toHaveLength(0);
+  });
+
+  it("does nothing without control access", () => {
+    const app = boot();
+    const socket = admitController(app, false);
+    selectMode(app, "streamingLive");
+    const pad = app.el("#live-vpad");
+    expect(pad.getAttribute("aria-disabled")).toBe("true");
+    expect(pad.tabIndex).toBe(-1);
+    down(pad, 40);
+    pad.fire("keydown", { key: "ArrowUp" });
+    expect(positions(socket)).toEqual([]);
+  });
+
+  it("steps by 5 from the keyboard and releases on key up", () => {
+    const { socket, pad } = liveVertical();
+    pad.fire("keydown", { key: "ArrowUp" });
+    pad.fire("keyup", { key: "ArrowUp" });
+    expect(positions(socket)).toEqual([5]);
+    expect(socket.commands().at(-1)).toEqual({ type: "end_live_touch" });
+  });
+
+  it("cancels a held gesture when switching to the free zone", () => {
+    const { app, socket, pad } = liveVertical();
+    down(pad, 40);
+    app.el("#live-style-free").fire("click");
+    expect(socket.commands().at(-1)).toEqual({ type: "stop" });
+    expect(socket.commands().some(command => command.type === "end_live_touch")).toBe(false);
+  });
+});
