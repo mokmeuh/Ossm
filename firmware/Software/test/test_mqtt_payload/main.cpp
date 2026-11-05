@@ -193,11 +193,11 @@ void test_key_count_without_meta() {
 }
 
 // ─── Test: pattern enum values stay within known range ───────────────────
-// StrokePatterns has 7 values (0-6). The Dashboard stores this as an int
+// StrokePatterns has 8 values (0-7). The Dashboard stores this as an int
 // column and doesn't validate the range, but we should stay sane.
 
 void test_pattern_boundary_values() {
-    for (int p = 0; p <= 6; p++) {
+    for (int p = 0; p <= 7; p++) {
         auto doc = buildPayload(0, "s", 0, 0, 0, 0, p, 0.0f,
                                 "00000000-0000-0000-0000-000000000000");
         TEST_ASSERT_EQUAL_INT(p, doc["pattern"].as<int>());

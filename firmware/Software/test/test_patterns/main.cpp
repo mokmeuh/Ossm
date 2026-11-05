@@ -9,8 +9,9 @@
 // │   Deeper             — Ramping insertion depth                          │
 // │   StopNGo            — Pauses between stroke series                    │
 // │   Insist             — Fractional stroke with position bias            │
+// │   Wave               — Depth swells and fades along a raised cosine    │
 // │                                                                        │
-// │ All 7 concrete patterns derived from Pattern base class.               │
+// │ All 8 concrete patterns derived from Pattern base class.               │
 // └──────────────────────────────────────────────────────────────────────────┘
 
 #include <ArduinoFake.h>
@@ -772,6 +773,128 @@ void test_insist_name() {
 
 // ─── Runner ──────────────────────────────────────────────────────────────
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Wave
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Stroke 1000, depth 5000: positions must stay in [4000, 5000]. With a time of
+// 2.0 the engine halves it, so every move takes 1.0 s.
+
+void test_wave_targets_never_leave_the_stroke_range() {
+    const float sensations[] = {-100, -50, 0, 50, 100, 400, -400};
+    for (float sensation : sensations) {
+        Wave p("Wave");
+        setupPattern(p, 1000, 5000, 2.0, sensation);
+        for (unsigned int i = 0; i < 400; i++) {
+            motionParameter m = p.nextTarget(i);
+            TEST_ASSERT_TRUE(m.stroke >= 4000);
+            TEST_ASSERT_TRUE(m.stroke <= 5000);
+        }
+    }
+}
+
+void test_wave_odd_stroke_always_at_base() {
+    Wave p("Wave");
+    setupPattern(p, 1000, 5000, 2.0, 0);
+    for (unsigned int i = 1; i < 100; i += 2) {
+        TEST_ASSERT_EQUAL_INT(4000, p.nextTarget(i).stroke);
+    }
+}
+
+void test_wave_shallowest_cycle_keeps_a_fifth_of_the_stroke() {
+    Wave p("Wave");
+    setupPattern(p, 1000, 5000, 2.0, 0);
+    // cycle 0: level 0 → amplitude = 20% of 1000 = 200
+    TEST_ASSERT_EQUAL_INT(4200, p.nextTarget(0).stroke);
+}
+
+void test_wave_deepest_cycle_reaches_the_full_stroke() {
+    Wave p("Wave");
+    setupPattern(p, 1000, 5000, 2.0, 0);
+    // sensation 0 → 16 cycles; the middle one (cycle 8, index 16) is the peak
+    TEST_ASSERT_EQUAL_INT(5000, p.nextTarget(16).stroke);
+}
+
+void test_wave_is_symmetric_around_the_peak() {
+    Wave p("Wave");
+    setupPattern(p, 1000, 5000, 2.0, 0);
+    for (unsigned int k = 1; k < 8; k++) {
+        int rising = p.nextTarget(2 * k).stroke;
+        int falling = p.nextTarget(2 * (16 - k)).stroke;
+        TEST_ASSERT_INT_WITHIN(1, rising, falling);
+    }
+}
+
+void test_wave_has_no_sudden_jump_between_cycles() {
+    // Shortest wave (8 cycles) is the steepest: no step above 30% of the stroke
+    Wave p("Wave");
+    setupPattern(p, 1000, 5000, 2.0, -100);
+    int previous = p.nextTarget(0).stroke;
+    for (unsigned int i = 2; i < 200; i += 2) {
+        int current = p.nextTarget(i).stroke;
+        TEST_ASSERT_TRUE(abs(current - previous) <= 300);
+        previous = current;
+    }
+}
+
+void test_wave_length_follows_sensation() {
+    Wave shortWave("Wave");
+    setupPattern(shortWave, 1000, 5000, 2.0, -100);  // 8 cycles
+    TEST_ASSERT_EQUAL_INT(shortWave.nextTarget(0).stroke,
+                          shortWave.nextTarget(16).stroke);
+    TEST_ASSERT_TRUE(shortWave.nextTarget(0).stroke !=
+                     shortWave.nextTarget(8).stroke);
+
+    Wave longWave("Wave");
+    setupPattern(longWave, 1000, 5000, 2.0, 100);  // 24 cycles
+    TEST_ASSERT_EQUAL_INT(longWave.nextTarget(0).stroke,
+                          longWave.nextTarget(48).stroke);
+    TEST_ASSERT_EQUAL_INT(5000, longWave.nextTarget(24).stroke);
+}
+
+void test_wave_sensation_beyond_range_is_clamped() {
+    Wave a("Wave");
+    Wave b("Wave");
+    setupPattern(a, 1000, 5000, 2.0, 100);
+    setupPattern(b, 1000, 5000, 2.0, 9999);
+    for (unsigned int i = 0; i < 100; i++) {
+        TEST_ASSERT_EQUAL_INT(a.nextTarget(i).stroke, b.nextTarget(i).stroke);
+    }
+}
+
+void test_wave_speed_is_positive_and_grows_with_depth() {
+    Wave p("Wave");
+    setupPattern(p, 1000, 5000, 2.0, 0);
+    motionParameter shallow = p.nextTarget(0);
+    motionParameter deep = p.nextTarget(16);
+    TEST_ASSERT_TRUE(shallow.speed > 0);
+    TEST_ASSERT_TRUE(shallow.acceleration > 0);
+    TEST_ASSERT_TRUE(deep.speed > shallow.speed);
+    // deepest: speed = 1.5 * 1000 / 1.0 s
+    TEST_ASSERT_EQUAL_INT(1500, deep.speed);
+}
+
+void test_wave_zero_time_stays_finite() {
+    Wave p("Wave");
+    setupPattern(p, 1000, 5000, 0.0, 0);
+    motionParameter m = p.nextTarget(0);
+    TEST_ASSERT_TRUE(m.speed >= 0);
+    TEST_ASSERT_TRUE(m.speed < 100000);
+    TEST_ASSERT_TRUE(m.acceleration >= 0);
+}
+
+void test_wave_name() {
+    Wave p("Wave");
+    TEST_ASSERT_EQUAL_STRING("Wave", p.getName());
+}
+
+void test_wave_skip_is_false() {
+    Wave p("Wave");
+    setupPattern(p, 1000, 5000, 2.0, 0);
+    TEST_ASSERT_FALSE(p.nextTarget(0).skip);
+    TEST_ASSERT_FALSE(p.nextTarget(1).skip);
+}
+
 int main() {
     UNITY_BEGIN();
 
@@ -859,6 +982,20 @@ int main() {
     RUN_TEST(test_insist_negative_max_sensation_tiny_stroke);
     RUN_TEST(test_insist_skip_is_false);
     RUN_TEST(test_insist_name);
+
+    // Wave
+    RUN_TEST(test_wave_targets_never_leave_the_stroke_range);
+    RUN_TEST(test_wave_odd_stroke_always_at_base);
+    RUN_TEST(test_wave_shallowest_cycle_keeps_a_fifth_of_the_stroke);
+    RUN_TEST(test_wave_deepest_cycle_reaches_the_full_stroke);
+    RUN_TEST(test_wave_is_symmetric_around_the_peak);
+    RUN_TEST(test_wave_has_no_sudden_jump_between_cycles);
+    RUN_TEST(test_wave_length_follows_sensation);
+    RUN_TEST(test_wave_sensation_beyond_range_is_clamped);
+    RUN_TEST(test_wave_speed_is_positive_and_grows_with_depth);
+    RUN_TEST(test_wave_zero_time_stays_finite);
+    RUN_TEST(test_wave_name);
+    RUN_TEST(test_wave_skip_is_false);
 
     return UNITY_END();
 }

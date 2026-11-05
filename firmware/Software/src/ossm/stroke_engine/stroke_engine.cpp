@@ -129,6 +129,9 @@ static void startStrokeEngineTask(void *pvParameters) {
                 case StrokePatterns::Insist:
                     Stroker.setPattern(new Insist("Insist"), false);
                     break;
+                case StrokePatterns::Wave:
+                    Stroker.setPattern(new Wave("Wave"), false);
+                    break;
                 default:
                     break;
             }
