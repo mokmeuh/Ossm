@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="fw_pc_available">Firmware available on the PC</string>
+    <string name="fw_pc_details">%1$s · %2$d KB · %3$s</string>
+    <string name="fw_pc_fetch">Fetch and prepare</string>
+    <string name="fw_pc_check">Check for a firmware update</string>
+    <string name="fw_pc_checking">Looking on the PC…</string>
+    <string name="fw_pc_downloading">Downloading the firmware…</string>
+    <string name="fw_pc_none">No new firmware on the PC.</string>
+    <string name="fw_pc_unreachable">PC server unreachable, or no firmware published. Is the server on, and is Tailscale connected?</string>
+    <string name="fw_pc_no_address">No PC server address. Enter it under “Update from the PC”.</string>
+    <string name="fw_pc_error">The firmware from the PC could not be fetched or verified.</string>
+</resources>

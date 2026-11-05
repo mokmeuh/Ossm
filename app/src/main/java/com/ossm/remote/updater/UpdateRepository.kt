@@ -33,6 +33,12 @@ sealed interface PcManifestResult {
     data object Unreachable : PcManifestResult
 }
 
+sealed interface PcFirmwareManifestResult {
+    data class Found(val manifest: PcFirmwareManifest) : PcFirmwareManifestResult
+    data object Invalid : PcFirmwareManifestResult
+    data object Unreachable : PcFirmwareManifestResult
+}
+
 @Singleton
 class UpdateRepository @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -65,6 +71,50 @@ class UpdateRepository @Inject constructor(
         val json = fetchText(manifestUrl, PC_TIMEOUT_MILLIS) ?: return@withContext PcManifestResult.Unreachable
         UpdateManifestParser.parse(json, manifestUrl)?.let(PcManifestResult::Found) ?: PcManifestResult.Invalid
     }
+
+    /** SHA-256 of the last image written to the machine from this phone (any source). */
+    val lastFlashedFirmwareSha: Flow<String> = dataStore.data.map { prefs ->
+        prefs[LAST_FLASHED_FIRMWARE_SHA].orEmpty()
+    }
+
+    suspend fun saveLastFlashedFirmwareSha(sha256: String) {
+        dataStore.edit { prefs -> prefs[LAST_FLASHED_FIRMWARE_SHA] = sha256.lowercase() }
+    }
+
+    /** Same short timeout as the APK check: a PC server that does not answer is simply off. */
+    suspend fun fetchPcFirmwareManifest(serverUrl: String): PcFirmwareManifestResult = withContext(Dispatchers.IO) {
+        val url = pcFirmwareManifestUrl(serverUrl) ?: return@withContext PcFirmwareManifestResult.Invalid
+        val json = fetchText(url, PC_TIMEOUT_MILLIS) ?: return@withContext PcFirmwareManifestResult.Unreachable
+        parsePcFirmwareManifest(json)?.let(PcFirmwareManifestResult::Found) ?: PcFirmwareManifestResult.Invalid
+    }
+
+    /** Downloads the announced image; null unless its size and SHA-256 match the manifest. */
+    suspend fun downloadPcFirmware(serverUrl: String, manifest: PcFirmwareManifest): ByteArray? =
+        withContext(Dispatchers.IO) {
+            val url = pcFirmwareDownloadUrl(serverUrl, manifest.sha256) ?: return@withContext null
+            val connection = openConnection(url, DOWNLOAD_TIMEOUT_MILLIS) ?: return@withContext null
+            try {
+                val out = java.io.ByteArrayOutputStream(manifest.size)
+                connection.inputStream.use { input ->
+                    val buffer = ByteArray(16 * 1024)
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        out.write(buffer, 0, count)
+                        if (out.size() > PC_FIRMWARE_MAX_BYTES) return@withContext null
+                    }
+                }
+                val image = out.toByteArray()
+                if (image.size != manifest.size) return@withContext null
+                val digest = MessageDigest.getInstance("SHA-256").digest(image)
+                    .joinToString("") { byte -> "%02x".format(byte) }
+                image.takeIf { digest == manifest.sha256 }
+            } catch (_: Exception) {
+                null
+            } finally {
+                connection.disconnect()
+            }
+        }
 
     suspend fun shouldCheckOnStartup(nowMillis: Long = System.currentTimeMillis()): Boolean =
         dataStore.data.map { prefs ->
@@ -148,6 +198,7 @@ class UpdateRepository @Inject constructor(
         const val DOWNLOAD_TIMEOUT_MILLIS = 30_000
         val PC_SERVER_URL = stringPreferencesKey("pc_server_url")
         val PC_LISTENING = booleanPreferencesKey("pc_listening")
+        val LAST_FLASHED_FIRMWARE_SHA = stringPreferencesKey("last_flashed_firmware_sha256")
         const val CHECK_INTERVAL_MILLIS = 12 * 60 * 60 * 1_000L
         val MANUAL_URL = stringPreferencesKey("manual_manifest_url")
         val LAST_CHECK_MILLIS = longPreferencesKey("last_update_check_millis")

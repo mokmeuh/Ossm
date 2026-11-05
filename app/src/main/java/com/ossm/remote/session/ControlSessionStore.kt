@@ -1979,6 +1979,39 @@ class ControlSessionStore @Inject constructor(
         return (prev + step).coerceIn(lo, hi)
     }
 
+    /**
+     * Profondeur aléatoire (retrait, fond) : marche douce bornée par les curseurs.
+     * [stepWalk] = false renvoie la profondeur courante sans avancer la marche.
+     */
+    private fun nextRandomDepth(
+        s: ControlUiState,
+        hostRange: PhoneHostMotionLimits?,
+        stepWalk: Boolean
+    ): Pair<Float, Float> {
+        val baseMin = hostRange?.depthMinimum ?: s.depthMin
+        val baseMax = hostRange?.depthMaximum ?: s.depthMax
+        val minSpan = 0.05f.coerceAtMost((baseMax - baseMin).coerceAtLeast(0f))
+        val randomDepthMin = baseMin
+        val randomDepthMax = baseMax
+
+        // Retrait : plage [plancher, max−5 %] (jamais plus reculé que min).
+        val rMin = if (s.randDepthMin) {
+            val hi = (randomDepthMax - minSpan).coerceAtLeast(randomDepthMin)
+            val prev = randWalkMin.coerceIn(randomDepthMin, hi)
+            randWalkMin = if (stepWalk) randomWalkStep(prev, randomDepthMin, hi, (hi - randomDepthMin) * 0.3f) else prev
+            randWalkMin
+        } else baseMin
+
+        // Fond : plage [plancher, max réglé] (jamais plus profond que max).
+        val rMax = if (s.randDepthMax) {
+            val lo = (rMin + minSpan).coerceAtMost(randomDepthMax)
+            val prev = randWalkMax.coerceIn(lo, randomDepthMax)
+            randWalkMax = if (stepWalk) randomWalkStep(prev, lo, randomDepthMax, (randomDepthMax - lo) * 0.3f) else prev
+            randWalkMax
+        } else baseMax.coerceAtLeast((rMin + minSpan).coerceAtMost(baseMax))
+        return rMin to rMax
+    }
+
     private fun updateTeasingRandomTicker() {
         val st = _uiState.value
         val active = st.activePatternKey in RANDOM_CAPABLE_KEYS &&
@@ -2034,20 +2067,9 @@ class ControlSessionStore @Inject constructor(
                     bleManager.sendCommand(OssmCommand.Stop)
                     break
                 }
-                val baseMin = hostRange?.depthMinimum ?: s.depthMin
-                val baseMax = hostRange?.depthMaximum ?: s.depthMax
                 // Range presets are no longer exposed on the control screen: random mode
                 // follows the sliders only, so a hidden saved preset never narrows it.
                 val speedPreset: RandomRangePreset? = null
-                val depthPreset: RandomRangePreset? = null
-                val depthPresetMin = depthPreset?.minFraction ?: baseMin
-                val depthPresetMax = depthPreset?.maxFraction ?: baseMax
-                val depthIntersectionMin = maxOf(baseMin, depthPresetMin)
-                val depthIntersectionMax = minOf(baseMax, depthPresetMax)
-                val randomDepthRangeValid = depthIntersectionMax - depthIntersectionMin >= 0.05f
-                val randomDepthMin = if (randomDepthRangeValid) depthIntersectionMin else baseMin
-                val randomDepthMax = if (randomDepthRangeValid) depthIntersectionMax else baseMax
-                val minSpan = 0.05f.coerceAtMost((baseMax - baseMin).coerceAtLeast(0f))
 
                 // Vitesse : par BLOCS (paliers). On tient une vitesse pendant quelques
                 // secondes, puis on en tire une nouvelle. Jamais 0. Le plancher monte
@@ -2071,19 +2093,11 @@ class ControlSessionStore @Inject constructor(
                     currentBlockSpeed.coerceAtMost(ceiling)
                 } else hostSpeed(s.speed)
 
-                // Retrait : marche douce dans [plancher, max−5 %] (jamais plus reculé que min).
-                val rMin = if (s.randDepthMin) {
-                    val hi = (randomDepthMax - minSpan).coerceAtLeast(randomDepthMin)
-                    randWalkMin = randomWalkStep(randWalkMin.coerceIn(randomDepthMin, hi), randomDepthMin, hi, (hi - randomDepthMin) * 0.3f)
-                    randWalkMin
-                } else baseMin
-
-                // Fond : marche douce dans [plancher, max réglé] (jamais plus profond que max).
-                val rMax = if (s.randDepthMax) {
-                    val lo = (rMin + minSpan).coerceAtMost(randomDepthMax)
-                    randWalkMax = randomWalkStep(randWalkMax.coerceIn(lo, randomDepthMax), lo, randomDepthMax, (randomDepthMax - lo) * 0.3f)
-                    randWalkMax
-                } else baseMax.coerceAtLeast((rMin + minSpan).coerceAtMost(baseMax))
+                // Profondeur : si la sensation aléatoire suit l'actuateur, la profondeur ne
+                // change QU'aux retournements, avec la sensation (voir applyTurnSensation) ;
+                // ici on ne fait que renvoyer la profondeur courante, sans nouveau pas.
+                val depthFollowsTurns = s.sensationTurnActive && (s.randDepthMin || s.randDepthMax)
+                val (rMin, rMax) = nextRandomDepth(s, hostRange, stepWalk = !depthFollowsTurns)
 
                 // Sensation : la valeur est choisie aux retournements de l'actuateur par
                 // [sensationTurnJob] ; ce pas ne fait que la renvoyer avec vitesse/profondeur.
@@ -2222,7 +2236,23 @@ class ControlSessionStore @Inject constructor(
         randWalkSensation = value
         _uiState.update { it.copy(randomSensationCurrent = value.takeIf { _ -> it.sensationTurnActive }) }
         lastRandomStrokeCommand?.let { last ->
-            val command = last.copy(sensation = value)
+            // Profondeur et sensation changent ensemble, au retournement : la sensation
+            // choisie (ex. aller au fond) va jusqu'au bout, sans changer en plein trajet.
+            val s = _uiState.value
+            var command = last.copy(sensation = value)
+            if (s.sensationTurnActive && (s.randDepthMin || s.randDepthMax)) {
+                val hostRange = if (remoteHostLimits != null) effectiveRemoteMotionLimits() else null
+                if (remoteHostLimits == null || hostRange != null) {
+                    val (rMin, rMax) = nextRandomDepth(s, hostRange, stepWalk = true)
+                    command = command.copy(depthMin = rMin, depthMax = rMax)
+                    _uiState.update {
+                        it.copy(
+                            randomDepthMinCurrent = rMin.takeIf { _ -> it.randDepthMin },
+                            randomDepthMaxCurrent = rMax.takeIf { _ -> it.randDepthMax }
+                        )
+                    }
+                }
+            }
             lastRandomStrokeCommand = command
             sendStrokeEngineCommand(command)
         }

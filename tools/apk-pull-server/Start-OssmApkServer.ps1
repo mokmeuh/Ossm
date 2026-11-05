@@ -1,7 +1,8 @@
 # Demarre le serveur de mise a jour OSSM (port 8091) dans une fenetre minimisee.
 # Ecoute uniquement sur 127.0.0.1 et l'IPv4 Tailscale du PC (jamais 0.0.0.0).
 #   Start-OssmApkServer.ps1 [-Dossier <dossier des APK>]
-param([string]$Dossier = '')
+#   Start-OssmApkServer.ps1 [-Firmware <fichier .bin ou dossier>]  (defaut : firmware\Software\.pio\build\development\firmware.bin)
+param([string]$Dossier = '', [string]$Firmware = '')
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $server = Join-Path $here 'server.js'
@@ -27,6 +28,7 @@ if (Test-Listening) {
     $q = '"'
     $cmdLine = "/k title $title & $q$($node.Source)$q $q$server$q"
     if ($Dossier) { $cmdLine += " --dir $q$((Resolve-Path $Dossier).Path)$q" }
+    if ($Firmware) { $cmdLine += " --firmware $q$((Resolve-Path $Firmware).Path)$q" }
     Start-Process -FilePath "$env:SystemRoot\System32\cmd.exe" -ArgumentList $cmdLine -WorkingDirectory $here -WindowStyle Minimized | Out-Null
     $up = $false
     for ($i = 0; $i -lt 20; $i++) { Start-Sleep -Milliseconds 500; if (Test-Listening) { $up = $true; break } }

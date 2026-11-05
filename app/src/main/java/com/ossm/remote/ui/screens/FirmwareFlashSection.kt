@@ -30,6 +30,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
@@ -49,6 +50,9 @@ import com.ossm.remote.ui.theme.OssmPrimaryLight
 import com.ossm.remote.usb.FirmwareFlashState
 import com.ossm.remote.usb.FirmwareFlashViewModel
 import com.ossm.remote.usb.FlashFailure
+import com.ossm.remote.usb.PcFirmwareState
+import java.text.DateFormat
+import java.util.Date
 
 /** Réglages card: writes the machine firmware over USB (OTG cable), from the phone. */
 @Composable
@@ -57,6 +61,7 @@ internal fun FirmwareFlashCard() {
     val state by viewModel.state.collectAsState()
     val pending by viewModel.pending.collectAsState()
     val logs by viewModel.logs.collectAsState()
+    val pcFirmware by viewModel.pcFirmware.collectAsState()
     val clipboard = LocalClipboardManager.current
     val logScroll = rememberScrollState()
     LaunchedEffect(logs.size) { logScroll.scrollTo(logScroll.maxValue) }
@@ -68,6 +73,9 @@ internal fun FirmwareFlashCard() {
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) viewModel.prepareFile(uri)
     }
+
+    // One quiet look at the PC server when the card opens; silent when it is off.
+    LaunchedEffect(Unit) { viewModel.checkPcFirmware(manual = false) }
 
     // The phone must not sleep halfway through a transfer.
     val view = LocalView.current
@@ -157,6 +165,13 @@ internal fun FirmwareFlashCard() {
             }
         }
 
+        if (!busy) PcFirmwareBlock(
+            state = pcFirmware,
+            onFetch = viewModel::fetchPcFirmware,
+            onCheck = { viewModel.checkPcFirmware(manual = true) },
+            onDismiss = viewModel::dismissPcFirmwareMessage,
+        )
+
         if (!busy) {
             Button(onClick = viewModel::prepareBundled, modifier = buttonModifier) {
                 Text(stringResource(R.string.fw_flash_bundled))
@@ -179,6 +194,64 @@ internal fun FirmwareFlashCard() {
                 TextButton(onClick = viewModel::cancel) { Text(stringResource(R.string.fw_cancel)) }
             }
         )
+    }
+}
+
+/** Firmware announced by the PC server: nothing is shown unless there is news or the user asked. */
+@Composable
+private fun PcFirmwareBlock(
+    state: PcFirmwareState,
+    onFetch: (com.ossm.remote.updater.PcFirmwareManifest) -> Unit,
+    onCheck: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val buttonModifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+    when (state) {
+        is PcFirmwareState.Available -> {
+            val manifest = state.manifest
+            val date = remember(manifest.modifiedMs) {
+                DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(manifest.modifiedMs))
+            }
+            Text(
+                stringResource(R.string.fw_pc_available),
+                color = OssmConnected,
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp
+            )
+            Text(
+                stringResource(R.string.fw_pc_details, manifest.label, (manifest.size + 1023) / 1024, date),
+                color = OssmOnSurfaceMuted,
+                fontSize = 12.sp
+            )
+            Button(onClick = { onFetch(manifest) }, modifier = buttonModifier) {
+                Text(stringResource(R.string.fw_pc_fetch))
+            }
+        }
+        PcFirmwareState.Checking -> {
+            Text(stringResource(R.string.fw_pc_checking), color = OssmOnSurfaceMuted, fontSize = 12.sp)
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = OssmPrimary)
+        }
+        PcFirmwareState.Downloading -> {
+            Text(stringResource(R.string.fw_pc_downloading), color = OssmOnSurfaceMuted, fontSize = 12.sp)
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = OssmPrimary)
+        }
+        PcFirmwareState.UpToDate -> PcFirmwareMessage(R.string.fw_pc_none, OssmOnSurfaceMuted, onDismiss)
+        PcFirmwareState.Unreachable -> PcFirmwareMessage(R.string.fw_pc_unreachable, OssmError, onDismiss)
+        PcFirmwareState.NoAddress -> PcFirmwareMessage(R.string.fw_pc_no_address, OssmError, onDismiss)
+        PcFirmwareState.Failed -> PcFirmwareMessage(R.string.fw_pc_error, OssmError, onDismiss)
+        PcFirmwareState.Idle -> Unit
+    }
+    val checking = state is PcFirmwareState.Checking || state is PcFirmwareState.Downloading
+    TextButton(onClick = onCheck, enabled = !checking, modifier = buttonModifier) {
+        Text(stringResource(R.string.fw_pc_check), color = OssmPrimaryLight)
+    }
+}
+
+@Composable
+private fun PcFirmwareMessage(textRes: Int, color: androidx.compose.ui.graphics.Color, onDismiss: () -> Unit) {
+    Text(stringResource(textRes), color = color, fontSize = 12.sp)
+    TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
+        Text(stringResource(R.string.fw_ok), color = OssmPrimaryLight)
     }
 }
 

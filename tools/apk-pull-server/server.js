@@ -5,6 +5,10 @@
 // jamais sur 0.0.0.0. Le nom des fichiers n'a pas d'importance : la version est lue dans l'APK.
 //
 //   node server.js [--dir <dossier>] [--port 8091] [--host <ip>]... [--minutes 10] [--devices 2]
+//                  [--firmware <fichier ou dossier>]
+//
+// Le firmware de la machine est publie en plus des APK (/firmware/update.json), seulement s'il
+// ressemble a une image ESP32 d'application. Il ne compte pas dans l'arret "tous les appareils".
 //
 // Le serveur n'est pas fait pour rester allume : il s'arrete tout seul apres --minutes
 // (10 par defaut) ou des que --devices appareils differents (2 par defaut : S25 et Moto G)
@@ -16,14 +20,18 @@ const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
 const { execFile, execFileSync } = require('node:child_process');
-const { parseBadging, pickNewest, manifestFor, route, isTailscaleIpv4 } = require('./lib');
+const {
+  parseBadging, pickNewest, manifestFor, route, isTailscaleIpv4,
+  isEsp32AppImage, firmwareManifest, FIRMWARE_MIN_BYTES,
+} = require('./lib');
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const DEFAULT_DIR = path.join(REPO_ROOT, 'app', 'build', 'outputs', 'named-apk');
+const DEFAULT_FIRMWARE = path.join(REPO_ROOT, 'firmware', 'Software', '.pio', 'build', 'development', 'firmware.bin');
 const DEFAULT_PORT = 8091;
 
 function parseArgs(argv) {
-  const opts = { dir: process.env.OSSM_APK_DIR || DEFAULT_DIR, port: DEFAULT_PORT, hosts: [], minutes: 10, devices: 2 };
+  const opts = { dir: process.env.OSSM_APK_DIR || DEFAULT_DIR, port: DEFAULT_PORT, hosts: [], minutes: 10, devices: 2, firmware: process.env.OSSM_FIRMWARE || DEFAULT_FIRMWARE };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const next = () => argv[++i];
@@ -32,9 +40,11 @@ function parseArgs(argv) {
     else if (a === '--host') opts.hosts.push(next());
     else if (a === '--minutes') opts.minutes = Number.parseFloat(next());
     else if (a === '--devices') opts.devices = Number.parseInt(next(), 10);
+    else if (a === '--firmware') opts.firmware = next();
     else throw new Error(`Option inconnue : ${a}`);
   }
   opts.dir = path.resolve(opts.dir);
+  opts.firmware = path.resolve(opts.firmware);
   if (!Number.isInteger(opts.port) || opts.port < 1 || opts.port > 65535) throw new Error('Port invalide');
   if (!Number.isFinite(opts.minutes) || opts.minutes < 0) throw new Error('Duree invalide');
   if (!Number.isInteger(opts.devices) || opts.devices < 0) throw new Error('Nombre appareils invalide');
@@ -127,6 +137,56 @@ function createIndex(dir, aapt2, log) {
   };
 }
 
+function readHead(file, length) {
+  const fd = fs.openSync(file, 'r');
+  try {
+    const buf = Buffer.alloc(length);
+    const n = fs.readSync(fd, buf, 0, length, 0);
+    return buf.subarray(0, n);
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+/**
+ * Image firmware a publier : le fichier donne, ou le plus recent .bin valide d'un dossier
+ * (bootloader, partitions et ota_data sont trop petits pour passer pour une application).
+ * Relu a chaque demande ; l'empreinte n'est recalculee que si le fichier a change.
+ */
+function createFirmwareIndex(target, log) {
+  const cache = new Map(); // chemin -> { key, entry|null }
+  return async function scanFirmware() {
+    let candidates = [];
+    try {
+      const st = fs.statSync(target);
+      candidates = st.isDirectory()
+        ? fs.readdirSync(target).filter((n) => n.toLowerCase().endsWith('.bin')).map((n) => path.join(target, n))
+        : [target];
+    } catch { return null; }
+    let best = null;
+    for (const file of candidates) {
+      let st;
+      try { st = fs.statSync(file); } catch { continue; }
+      if (!st.isFile() || st.size < FIRMWARE_MIN_BYTES) continue;
+      const key = `${st.size}:${st.mtimeMs}`;
+      let cached = cache.get(file);
+      if (!cached || cached.key !== key) {
+        let entry = null;
+        if (isEsp32AppImage(readHead(file, 16), st.size)) {
+          entry = { file, label: path.basename(file), size: st.size, mtimeMs: st.mtimeMs, sha256: await sha256File(file) };
+          log(`Firmware indexe : ${entry.label} (${(st.size / 1024).toFixed(0)} Ko)`);
+        } else {
+          log(`Firmware ignore (pas une image ESP32 d'application) : ${path.basename(file)}`);
+        }
+        cached = { key, entry };
+        cache.set(file, cached);
+      }
+      if (cached.entry && (!best || cached.entry.mtimeMs > best.mtimeMs)) best = cached.entry;
+    }
+    return best;
+  };
+}
+
 function sendJson(res, status, body) {
   const data = Buffer.from(JSON.stringify(body, null, 2));
   res.writeHead(status, {
@@ -151,6 +211,7 @@ function main() {
     process.exit(1);
   }
   const scan = createIndex(opts.dir, aapt2, log);
+  const scanFirmware = createFirmwareIndex(opts.firmware, log);
 
   // Arret automatique : duree maximale, ou tous les appareils attendus ont leur mise a jour.
   const servers = [];
@@ -179,6 +240,20 @@ function main() {
       const { pathname } = new URL(req.url, 'http://localhost');
       const r = route(pathname);
       if (r.kind === 'notFound') return sendJson(res, 404, { error: 'Introuvable' });
+      if (r.kind === 'firmwareManifest' || r.kind === 'firmware') {
+        const fw = await scanFirmware();
+        if (!fw) return sendJson(res, 404, { error: 'Aucune image firmware valide' });
+        if (r.kind === 'firmwareManifest') return sendJson(res, 200, firmwareManifest(fw));
+        if (fw.sha256 !== r.sha256) return sendJson(res, 404, { error: 'Firmware introuvable (fichier modifie ?)' });
+        log(`${req.socket.remoteAddress} telecharge le firmware ${fw.label} (${(fw.size / 1024).toFixed(0)} Ko)`);
+        res.writeHead(200, {
+          'Content-Type': 'application/octet-stream',
+          'Content-Length': fw.size,
+          'Cache-Control': 'no-store',
+        });
+        if (req.method === 'HEAD') return res.end();
+        return fs.createReadStream(fw.file).on('error', () => res.destroy()).pipe(res);
+      }
       const entries = await scan();
       if (r.kind === 'index') {
         const packages = [...new Set(entries.map((e) => e.packageName))].sort();
@@ -211,6 +286,7 @@ function main() {
 
   log(`Dossier surveille : ${opts.dir}`);
   log(`aapt2 : ${aapt2}`);
+  log(`Firmware : ${opts.firmware}`);
   for (const host of hosts) {
     const server = http.createServer(handler);
     servers.push(server);
@@ -227,4 +303,4 @@ if (require.main === module) {
   try { main(); } catch (err) { console.error(err.message); process.exit(1); }
 }
 
-module.exports = { parseArgs, createIndex };
+module.exports = { parseArgs, createIndex, createFirmwareIndex };

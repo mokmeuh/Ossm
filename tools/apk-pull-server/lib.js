@@ -61,7 +61,27 @@ function route(pathname) {
   }
   m = pathname.match(/^\/apk\/([0-9a-f]{64})\.apk$/);
   if (m) return { kind: 'apk', sha256: m[1] };
+  if (pathname === '/firmware/update.json') return { kind: 'firmwareManifest' };
+  m = pathname.match(/^\/firmware\/([0-9a-f]{64})\.bin$/);
+  if (m) return { kind: 'firmware', sha256: m[1] };
   return { kind: 'notFound' };
+}
+
+const FIRMWARE_MAX_BYTES = 0x1E0000;
+const FIRMWARE_MIN_BYTES = 0x8000;
+
+/** Meme controle que l'appli (Esp32BootloaderProtocol.isEsp32AppImage) : une image ESP32 d'application. */
+function isEsp32AppImage(head, size) {
+  if (!Number.isInteger(size) || size < FIRMWARE_MIN_BYTES || size > FIRMWARE_MAX_BYTES) return false;
+  if (!head || head.length < 14) return false;
+  if (head[0] !== 0xe9) return false;
+  if (head[1] < 1 || head[1] > 16) return false;
+  return head[12] === 0 && head[13] === 0;
+}
+
+/** Manifeste du firmware lu par l'appli : l'empreinte sert aussi de nom de telechargement. */
+function firmwareManifest(entry) {
+  return { sha256: entry.sha256, size: entry.size, modifiedMs: Math.round(entry.mtimeMs), label: entry.label };
 }
 
 /** Adresse IPv4 Tailscale (plage CGNAT 100.64.0.0/10). */
@@ -69,4 +89,7 @@ function isTailscaleIpv4(ip) {
   return /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d{1,3}\.\d{1,3}$/.test(String(ip).trim());
 }
 
-module.exports = { parseBadging, pickNewest, manifestFor, route, isTailscaleIpv4 };
+module.exports = {
+  parseBadging, pickNewest, manifestFor, route, isTailscaleIpv4,
+  isEsp32AppImage, firmwareManifest, FIRMWARE_MAX_BYTES, FIRMWARE_MIN_BYTES,
+};
