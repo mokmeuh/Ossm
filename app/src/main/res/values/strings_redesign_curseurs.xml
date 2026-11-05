@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Redesign : curseurs et pad Live (nom du curseur de vitesse auto, états lus par TalkBack, limites). -->
+    <string name="sld_speed_auto">Vitesse (auto)</string>
+    <string name="sld_progressive_value">%1$d%% · max %2$d%%</string>
+    <string name="sld_progressive_state">Vitesse actuelle %1$d pour cent, maximum %2$d pour cent</string>
+    <string name="sld_progressive_max_up">Augmenter le maximum de 1 pour cent</string>
+    <string name="sld_progressive_max_down">Diminuer le maximum de 1 pour cent</string>
+    <string name="sld_limited">limité</string>
+    <string name="sld_bound_low">borne basse</string>
+    <string name="sld_bound_high">borne haute</string>
+    <string name="sld_range_state">%1$s – %2$s, %3$s sélectionnée</string>
+    <string name="sld_select_low">Régler la borne basse</string>
+    <string name="sld_select_high">Régler la borne haute</string>
+    <string name="sld_limit_upper">limite haute</string>
+    <string name="sld_limit_lower">limite basse</string>
+</resources>

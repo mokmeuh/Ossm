@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Redesign: sliders and Live pad (auto speed slider name, TalkBack states, limits). -->
+    <string name="sld_speed_auto">Speed (auto)</string>
+    <string name="sld_progressive_value">%1$d%% · max %2$d%%</string>
+    <string name="sld_progressive_state">Current speed %1$d percent, maximum %2$d percent</string>
+    <string name="sld_progressive_max_up">Raise the maximum by 1 percent</string>
+    <string name="sld_progressive_max_down">Lower the maximum by 1 percent</string>
+    <string name="sld_limited">limited</string>
+    <string name="sld_bound_low">lower bound</string>
+    <string name="sld_bound_high">upper bound</string>
+    <string name="sld_range_state">%1$s – %2$s, %3$s selected</string>
+    <string name="sld_select_low">Adjust the lower bound</string>
+    <string name="sld_select_high">Adjust the upper bound</string>
+    <string name="sld_limit_upper">upper limit</string>
+    <string name="sld_limit_lower">lower limit</string>
+</resources>

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Redesign: shell (STOP, navigation, quit dialog, connection indicator, overlay). -->
+    <string name="shell_stop_word">STOP</string>
+    <string name="shell_home_word">HOME</string>
+
+    <string name="shell_quit_title">Quit the app?</string>
+    <string name="shell_quit_body">The machine will be stopped before the app closes.</string>
+    <string name="shell_quit_confirm">Quit</string>
+
+    <string name="shell_pattern_active">Active</string>
+
+    <string name="shell_ble_disconnected">Disconnected</string>
+    <string name="shell_ble_scanning">Scanning…</string>
+    <string name="shell_ble_connecting">Connecting to %1$s</string>
+    <string name="shell_ble_connected">Connected: %1$s</string>
+    <string name="shell_ble_usb">USB-C connected</string>
+    <string name="shell_ble_error">Error: %1$s</string>
+    <string name="shell_ble_emergency">EMERGENCY STOP</string>
+</resources>

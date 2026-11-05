@@ -4,32 +4,33 @@ import android.content.Context
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
-import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -43,36 +44,53 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.ossm.remote.R
 import com.ossm.remote.data.repository.DailyStat
 import com.ossm.remote.data.repository.PatternStat
 import com.ossm.remote.data.repository.StatsSnapshot
-import com.ossm.remote.ui.components.GlassCard
-import com.ossm.remote.ui.theme.OssmAccent
-import com.ossm.remote.ui.theme.OssmConnected
+import com.ossm.remote.ui.components.OssmButton
+import com.ossm.remote.ui.components.OssmButtonKind
+import com.ossm.remote.ui.components.OssmCard
+import com.ossm.remote.ui.components.OssmStatusLine
+import com.ossm.remote.ui.components.OssmTone
+import com.ossm.remote.ui.theme.OssmCaption
+import com.ossm.remote.ui.theme.OssmDimens
+import com.ossm.remote.ui.theme.OssmDisplayValue
 import com.ossm.remote.ui.theme.OssmError
 import com.ossm.remote.ui.theme.OssmGlassBorder
 import com.ossm.remote.ui.theme.OssmOnSurface
+import com.ossm.remote.ui.theme.OssmOnSurfaceMuted
+import com.ossm.remote.ui.theme.OssmOutline
 import com.ossm.remote.ui.theme.OssmPrimary
-import com.ossm.remote.ui.theme.OssmPrimaryLight
-import com.ossm.remote.ui.theme.OssmSurface
-import com.ossm.remote.ui.theme.OssmWarning
-import com.ossm.remote.ui.theme.PatternColors
+import com.ossm.remote.ui.theme.OssmSurfaceHigh
+import com.ossm.remote.ui.theme.OssmSurfaceRaised
+import com.ossm.remote.ui.theme.OssmValue
 import com.ossm.remote.viewmodel.StatisticsViewModel
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
+
+// Repères propres à cette section (la grille générale vient de OssmDimens).
+private val StatsChartHeight = 96.dp
+private val StatsMinBarHeight = 2.dp
+private val StatsBarCorner = 2.dp
+private const val STATS_BAR_WIDTH_FRACTION = 0.55f
+private val StatsIconSmall = 20.dp
+private val StatsSpinnerStroke = 2.dp
 
 /** Section Statistiques de l'écran Profils : chiffres clés, graphiques et actions. */
 @Composable
@@ -110,13 +128,12 @@ fun StatisticsSection(modifier: Modifier = Modifier) {
         createDocumentLauncher.launch(exportFileName())
     }
 
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(OssmDimens.Space12)) {
         Text(
             stringResource(R.string.stat_title),
             style = MaterialTheme.typography.titleLarge,
-            color = OssmPrimary,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 2.sp
+            color = OssmOnSurface,
+            modifier = Modifier.semantics { heading() }
         )
         OverviewCard(snapshot)
         SessionsCard(snapshot)
@@ -132,285 +149,291 @@ fun StatisticsSection(modifier: Modifier = Modifier) {
         )
     }
 
+    // Effacement en deux étapes : première confirmation.
     if (showResetDialog) {
         AlertDialog(
             onDismissRequest = { showResetDialog = false },
-            containerColor = OssmSurface,
+            containerColor = OssmSurfaceHigh,
             title = { Text(stringResource(R.string.stat_reset_title), color = OssmOnSurface) },
-            text = { Text(stringResource(R.string.stat_reset_msg), color = OssmOnSurface.copy(alpha = 0.7f)) },
+            text = { Text(stringResource(R.string.stat_reset_msg), color = OssmOnSurfaceMuted) },
             confirmButton = {
-                Button(
+                OssmButton(
+                    text = stringResource(R.string.stat_continue),
                     onClick = {
                         showResetDialog = false
                         showResetConfirmStep2 = true
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = OssmError)
-                ) {
-                    Text(stringResource(R.string.stat_continue))
-                }
+                    kind = OssmButtonKind.Danger
+                )
             },
             dismissButton = {
-                TextButton(onClick = { showResetDialog = false }) {
-                    Text(stringResource(R.string.ctl_cancel), color = OssmPrimaryLight)
-                }
+                OssmButton(
+                    text = stringResource(R.string.ctl_cancel),
+                    onClick = { showResetDialog = false },
+                    kind = OssmButtonKind.Text
+                )
             }
         )
     }
 
+    // Seconde confirmation : seule celle-ci efface réellement les données.
     if (showResetConfirmStep2) {
         AlertDialog(
             onDismissRequest = { showResetConfirmStep2 = false },
-            containerColor = OssmSurface,
+            containerColor = OssmSurfaceHigh,
             title = { Text(stringResource(R.string.stat_reset_title), color = OssmOnSurface) },
-            text = {
-                Text(
-                    stringResource(R.string.stat_reset_final_msg),
-                    color = OssmOnSurface.copy(alpha = 0.7f)
-                )
-            },
+            text = { Text(stringResource(R.string.stat_reset_final_msg), color = OssmOnSurfaceMuted) },
             confirmButton = {
-                Button(
+                OssmButton(
+                    text = stringResource(R.string.stat_delete_permanently),
                     onClick = {
                         viewModel.resetAll()
                         showResetConfirmStep2 = false
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = OssmError)
-                ) {
-                    Text(stringResource(R.string.stat_delete_permanently))
-                }
+                    kind = OssmButtonKind.Danger
+                )
             },
             dismissButton = {
-                TextButton(onClick = { showResetConfirmStep2 = false }) {
-                    Text(stringResource(R.string.ctl_cancel), color = OssmPrimaryLight)
-                }
+                OssmButton(
+                    text = stringResource(R.string.ctl_cancel),
+                    onClick = { showResetConfirmStep2 = false },
+                    kind = OssmButtonKind.Text
+                )
             }
         )
     }
 }
 
+/** Une ligne « libellé ... valeur » : robuste à toutes les tailles de police. */
+private data class StatsEntry(val label: String, val value: String, val valueColor: Color = OssmOnSurface)
+
+/** Les libellés existants sont en majuscules : on les passe en casse de phrase pour la lecture. */
+private fun String.statsSentenceCase(): String = lowercase().replaceFirstChar { it.uppercase() }
+
 @Composable
 private fun OverviewCard(snapshot: StatsSnapshot) {
-    GlassCard(modifier = Modifier.fillMaxWidth()) {
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            StatCell(
-                label = stringResource(R.string.stat_total),
-                value = formatDuration(snapshot.totalDurationMillis),
-                color = OssmPrimary,
-                style = MaterialTheme.typography.headlineLarge,
-                modifier = Modifier.weight(1f)
+    OssmCard(
+        modifier = Modifier.testTag("stats_overview"),
+        title = stringResource(R.string.conn_stat_usage_title)
+    ) {
+        Column(
+            modifier = Modifier.semantics(mergeDescendants = true) {},
+            verticalArrangement = Arrangement.spacedBy(OssmDimens.Space4)
+        ) {
+            Text(
+                stringResource(R.string.stat_total).statsSentenceCase(),
+                color = OssmOnSurfaceMuted,
+                style = MaterialTheme.typography.bodyMedium
             )
-            StatCell(
-                label = stringResource(R.string.stat_today),
-                value = formatDuration(snapshot.todayDurationMillis),
-                color = OssmAccent,
-                style = MaterialTheme.typography.headlineMedium,
-                modifier = Modifier.weight(1f)
-            )
-        }
-        Spacer(Modifier.height(12.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            StatCell(
-                label = stringResource(R.string.stat_last7),
-                value = formatDuration(snapshot.last7DaysDurationMillis),
-                color = OssmConnected,
-                style = MaterialTheme.typography.headlineMedium,
-                modifier = Modifier.weight(1f)
-            )
-            StatCell(
-                label = stringResource(R.string.stat_last30),
-                value = formatDuration(snapshot.last30DaysDurationMillis),
-                color = OssmWarning,
-                style = MaterialTheme.typography.headlineMedium,
-                modifier = Modifier.weight(1f)
+            Text(
+                formatDuration(snapshot.totalDurationMillis),
+                color = OssmOnSurface,
+                style = OssmDisplayValue
             )
         }
+        StatsTable(
+            listOf(
+                StatsEntry(stringResource(R.string.stat_today).statsSentenceCase(), formatDuration(snapshot.todayDurationMillis)),
+                StatsEntry(stringResource(R.string.stat_last7).statsSentenceCase(), formatDuration(snapshot.last7DaysDurationMillis)),
+                StatsEntry(stringResource(R.string.stat_last30).statsSentenceCase(), formatDuration(snapshot.last30DaysDurationMillis))
+            )
+        )
     }
 }
 
 @Composable
 private fun SessionsCard(snapshot: StatsSnapshot) {
-    GlassCard(modifier = Modifier.fillMaxWidth()) {
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            StatCell(
-                label = stringResource(R.string.stat_sessions),
-                value = "${snapshot.sessionCount}",
-                color = OssmOnSurface,
-                style = MaterialTheme.typography.headlineMedium,
-                modifier = Modifier.weight(1f)
+    OssmCard(
+        modifier = Modifier.testTag("stats_sessions"),
+        title = stringResource(R.string.conn_stat_detail_title)
+    ) {
+        StatsTable(
+            listOf(
+                StatsEntry(stringResource(R.string.stat_sessions).statsSentenceCase(), "${snapshot.sessionCount}"),
+                StatsEntry(stringResource(R.string.stat_avg_duration).statsSentenceCase(), formatDuration(snapshot.avgSessionDurationMillis)),
+                StatsEntry(stringResource(R.string.stat_max_duration).statsSentenceCase(), formatDuration(snapshot.maxSessionDurationMillis)),
+                // La vitesse est le canal turquoise : ses valeurs gardent la couleur de l'action.
+                StatsEntry(stringResource(R.string.stat_avg_speed).statsSentenceCase(), "${snapshot.avgSpeedPercent.roundToInt()}%", OssmPrimary),
+                StatsEntry(stringResource(R.string.stat_max_speed).statsSentenceCase(), "${snapshot.maxSpeedPercent.roundToInt()}%", OssmPrimary)
             )
-            StatCell(
-                label = stringResource(R.string.stat_avg_duration),
-                value = formatDuration(snapshot.avgSessionDurationMillis),
-                color = OssmAccent,
-                style = MaterialTheme.typography.headlineMedium,
-                modifier = Modifier.weight(1f)
-            )
-            StatCell(
-                label = stringResource(R.string.stat_max_duration),
-                value = formatDuration(snapshot.maxSessionDurationMillis),
-                color = OssmWarning,
-                style = MaterialTheme.typography.headlineMedium,
-                modifier = Modifier.weight(1f)
-            )
-        }
-        Spacer(Modifier.height(12.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            StatCell(
-                label = stringResource(R.string.stat_avg_speed),
-                value = "${snapshot.avgSpeedPercent.roundToInt()}%",
-                color = OssmConnected,
-                style = MaterialTheme.typography.headlineMedium,
-                modifier = Modifier.weight(1f)
-            )
-            StatCell(
-                label = stringResource(R.string.stat_max_speed),
-                value = "${snapshot.maxSpeedPercent.roundToInt()}%",
-                color = OssmWarning,
-                style = MaterialTheme.typography.headlineMedium,
-                modifier = Modifier.weight(1f)
-            )
-        }
-    }
-}
-
-@Composable
-private fun StatCell(
-    label: String,
-    value: String,
-    color: Color,
-    style: TextStyle,
-    modifier: Modifier = Modifier
-) {
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(label, style = MaterialTheme.typography.labelSmall)
-        Text(
-            value,
-            style = style,
-            color = color,
-            maxLines = 1,
-            overflow = TextOverflow.Clip
         )
     }
 }
 
 @Composable
-private fun HistoryCard(history: List<DailyStat>) {
-    GlassCard(modifier = Modifier.fillMaxWidth()) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(R.string.stat_history), style = MaterialTheme.typography.labelSmall)
-            Spacer(Modifier.weight(1f))
-            Text(
-                stringResource(R.string.stat_cumulated, formatDuration(history.sumOf { it.durationMillis })),
-                style = MaterialTheme.typography.labelSmall,
-                color = OssmPrimaryLight
-            )
-        }
-        Spacer(Modifier.height(12.dp))
-        DailyHistoryChart(history)
-        Spacer(Modifier.height(6.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            history.firstOrNull()?.let { Text(dayLabel(it.dateEpochDay), style = MaterialTheme.typography.labelSmall) }
-            history.lastOrNull()?.let { Text(dayLabel(it.dateEpochDay), style = MaterialTheme.typography.labelSmall) }
+private fun StatsTable(entries: List<StatsEntry>) {
+    Column(verticalArrangement = Arrangement.spacedBy(OssmDimens.Space8)) {
+        entries.forEachIndexed { index, entry ->
+            if (index > 0) HorizontalDivider(color = OssmGlassBorder)
+            StatsRow(entry)
         }
     }
 }
 
 @Composable
-private fun DailyHistoryChart(history: List<DailyStat>) {
+private fun StatsRow(entry: StatsEntry) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) {},
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(OssmDimens.Space12)
+    ) {
+        Text(
+            entry.label,
+            color = OssmOnSurfaceMuted,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f)
+        )
+        Text(entry.value, color = entry.valueColor, style = OssmValue)
+    }
+}
+
+@Composable
+private fun HistoryCard(history: List<DailyStat>) {
+    val activeDays = history.count { it.durationMillis > 0L }
+    val peak = history.maxByOrNull { it.durationMillis }?.takeIf { it.durationMillis > 0L }
+    // Résumé textuel : lu par les lecteurs d'écran et affiché sous le graphe.
+    val summary = if (peak == null) {
+        stringResource(R.string.conn_stat_chart_empty)
+    } else {
+        stringResource(
+            R.string.conn_stat_chart_summary,
+            activeDays,
+            history.size,
+            formatDuration(peak.durationMillis),
+            dayLabel(peak.dateEpochDay)
+        )
+    }
+    val chartDescription = if (history.isEmpty()) {
+        summary
+    } else {
+        stringResource(
+            R.string.conn_stat_chart_cd,
+            dayLabel(history.first().dateEpochDay),
+            dayLabel(history.last().dateEpochDay),
+            summary
+        )
+    }
+    OssmCard(
+        modifier = Modifier.testTag("stats_history"),
+        title = stringResource(R.string.stat_history)
+    ) {
+        Text(
+            stringResource(R.string.stat_cumulated, formatDuration(history.sumOf { it.durationMillis })),
+            color = OssmOnSurface,
+            style = MaterialTheme.typography.bodyMedium
+        )
+        DailyHistoryChart(history, chartDescription)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            history.firstOrNull()?.let { Text(dayLabel(it.dateEpochDay), color = OssmOnSurfaceMuted, style = OssmCaption) }
+            history.lastOrNull()?.let { Text(dayLabel(it.dateEpochDay), color = OssmOnSurfaceMuted, style = OssmCaption) }
+        }
+        Text(summary, color = OssmOnSurfaceMuted, style = OssmCaption)
+    }
+}
+
+@Composable
+private fun DailyHistoryChart(history: List<DailyStat>, description: String) {
     val maxDuration = history.maxOfOrNull { it.durationMillis } ?: 0L
     Canvas(
         modifier = Modifier
             .fillMaxWidth()
-            .height(88.dp)
+            .height(StatsChartHeight)
+            .semantics {
+                contentDescription = description
+                role = Role.Image
+            }
     ) {
         if (history.isEmpty()) return@Canvas
         val barSlot = size.width / history.size
-        val barWidth = barSlot * 0.55f
+        val barWidth = barSlot * STATS_BAR_WIDTH_FRACTION
+        val minBar = StatsMinBarHeight.toPx()
+        val corner = StatsBarCorner.toPx()
         history.forEachIndexed { index, day ->
-            val fraction = if (maxDuration > 0L) day.durationMillis.toFloat() / maxDuration else 0f
-            if (fraction > 0f) {
-                val barHeight = size.height * fraction
+            if (day.durationMillis > 0L && maxDuration > 0L) {
+                val fraction = day.durationMillis.toFloat() / maxDuration
+                val barHeight = (size.height * fraction).coerceAtLeast(minBar)
+                // Barre unie : la hauteur porte la valeur, pas de dégradé décoratif.
                 drawRoundRect(
-                    brush = Brush.verticalGradient(listOf(OssmPrimary, OssmAccent)),
+                    color = OssmPrimary,
                     topLeft = Offset(index * barSlot + (barSlot - barWidth) / 2f, size.height - barHeight),
                     size = Size(barWidth, barHeight),
-                    cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
+                    cornerRadius = CornerRadius(corner, corner)
                 )
             }
         }
         drawLine(
-            color = OssmGlassBorder,
+            color = OssmOutline,
             start = Offset(0f, size.height),
             end = Offset(size.width, size.height),
-            strokeWidth = 1.dp.toPx()
+            strokeWidth = OssmDimens.BorderWidth.toPx()
         )
     }
 }
 
 @Composable
 private fun PatternsCard(stats: List<PatternStat>) {
-    GlassCard(modifier = Modifier.fillMaxWidth()) {
-        Text(stringResource(R.string.stat_patterns), style = MaterialTheme.typography.labelSmall)
-        Spacer(Modifier.height(12.dp))
+    OssmCard(
+        modifier = Modifier.testTag("stats_patterns"),
+        title = stringResource(R.string.stat_patterns)
+    ) {
         if (stats.isEmpty()) {
-            Text(
-                stringResource(R.string.stat_no_sessions),
-                color = OssmOnSurface.copy(alpha = 0.5f),
-                fontSize = 13.sp
-            )
+            OssmStatusLine(text = stringResource(R.string.stat_no_sessions), tone = OssmTone.Neutral)
         } else {
             val total = stats.sumOf { it.totalDurationMillis }
-            stats.forEachIndexed { index, stat ->
+            stats.forEach { stat ->
                 PatternBar(
                     stat = stat,
-                    color = PatternColors[index % PatternColors.size],
                     fraction = if (total > 0L) stat.totalDurationMillis.toFloat() / total else 0f
                 )
-                if (index != stats.lastIndex) Spacer(Modifier.height(14.dp))
             }
         }
     }
 }
 
 @Composable
-private fun PatternBar(stat: PatternStat, color: Color, fraction: Float) {
-    Column {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(10.dp).clip(CircleShape).background(color))
-            Spacer(Modifier.width(8.dp))
+private fun PatternBar(stat: PatternStat, fraction: Float) {
+    val barShape = RoundedCornerShape(OssmDimens.FieldRadius)
+    Column(
+        modifier = Modifier.semantics(mergeDescendants = true) {},
+        verticalArrangement = Arrangement.spacedBy(OssmDimens.Space4)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(OssmDimens.Space12)
+        ) {
             Text(
                 stat.patternName,
+                color = OssmOnSurface,
                 style = MaterialTheme.typography.bodyLarge,
                 modifier = Modifier.weight(1f)
             )
-            Text(
-                "${formatDuration(stat.totalDurationMillis)} · ${(fraction * 100).roundToInt()}%",
-                style = MaterialTheme.typography.bodyLarge,
-                color = color,
-                fontWeight = FontWeight.Bold
-            )
+            Text("${(fraction * 100).roundToInt()}%", color = OssmPrimary, style = OssmValue)
         }
         Text(
-            stringResource(R.string.stat_sessions_count, stat.sessionCount),
-            style = MaterialTheme.typography.labelSmall
+            "${formatDuration(stat.totalDurationMillis)} · " +
+                stringResource(R.string.stat_sessions_count, stat.sessionCount),
+            color = OssmOnSurfaceMuted,
+            style = OssmCaption
         )
-        Spacer(Modifier.height(6.dp))
+        // Une seule couleur pour toutes les barres : le nom et le pourcentage disent de quel pattern il s'agit.
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(6.dp)
-                .clip(RoundedCornerShape(3.dp))
-                .background(OssmPrimary.copy(alpha = 0.15f))
+                .height(OssmDimens.SliderTrack)
+                .clip(barShape)
+                .background(OssmSurfaceHigh)
         ) {
             Box(
                 Modifier
-                    .fillMaxWidth(fraction)
-                    .height(6.dp)
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(color)
+                    .fillMaxWidth(fraction.coerceIn(0f, 1f))
+                    .height(OssmDimens.SliderTrack)
+                    .clip(barShape)
+                    .background(OssmPrimary)
             )
         }
     }
@@ -425,73 +448,86 @@ private fun ActionsCard(
     onExport: () -> Unit,
     onImport: () -> Unit
 ) {
-    GlassCard(modifier = Modifier.fillMaxWidth()) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ActionButton(
-                label = stringResource(R.string.stat_reset),
-                icon = Icons.Default.Delete,
-                tint = OssmError,
-                enabled = true,
-                busy = false,
-                onClick = onReset,
-                modifier = Modifier.weight(1f)
-            )
-            ActionButton(
+    OssmCard(modifier = Modifier.testTag("stats_actions")) {
+        Row(horizontalArrangement = Arrangement.spacedBy(OssmDimens.Space8)) {
+            StatsActionButton(
                 label = stringResource(if (exporting) R.string.stat_exporting else R.string.stat_export),
-                icon = Icons.Default.FileDownload,
-                tint = OssmPrimary,
-                enabled = !exporting,
-                busy = exporting,
+                icon = Icons.Filled.FileDownload,
                 onClick = onExport,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag("stats_export"),
+                enabled = !exporting,
+                busy = exporting
             )
-            ActionButton(
+            StatsActionButton(
                 label = stringResource(if (importing) R.string.stat_importing else R.string.stat_import),
-                icon = Icons.Default.FileUpload,
-                tint = OssmAccent,
-                enabled = !importing,
-                busy = importing,
+                icon = Icons.Filled.FileUpload,
                 onClick = onImport,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag("stats_import"),
+                enabled = !importing,
+                busy = importing
             )
         }
         importError?.let { error ->
-            Spacer(Modifier.height(10.dp))
-            Text(
-                stringResource(R.string.stat_import_error, error),
-                color = OssmError,
-                fontSize = 12.sp
-            )
+            OssmStatusLine(text = stringResource(R.string.stat_import_error, error), tone = OssmTone.Error)
         }
+        // L'action destructive est isolée des deux autres : séparateur et bouton pleine largeur.
+        HorizontalDivider(color = OssmGlassBorder)
+        StatsActionButton(
+            label = stringResource(R.string.stat_reset),
+            icon = Icons.Filled.Delete,
+            onClick = onReset,
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("stats_reset"),
+            destructive = true
+        )
     }
 }
 
+/** Bouton d'action de 48 dp minimum : contour, icône + mot, rouge pour l'action destructive. */
 @Composable
-private fun ActionButton(
+private fun StatsActionButton(
     label: String,
     icon: ImageVector,
-    tint: Color,
-    enabled: Boolean,
-    busy: Boolean,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    busy: Boolean = false,
+    destructive: Boolean = false
 ) {
-    Button(
+    val accent = if (destructive) OssmError else OssmOnSurface
+    OutlinedButton(
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier,
-        colors = ButtonDefaults.buttonColors(
-            containerColor = tint.copy(alpha = 0.16f),
-            contentColor = tint
+        modifier = modifier.heightIn(min = OssmDimens.TouchTarget),
+        shape = RoundedCornerShape(OssmDimens.ControlRadius),
+        border = BorderStroke(
+            OssmDimens.BorderWidth,
+            if (!enabled) OssmGlassBorder else if (destructive) OssmError else OssmOutline
+        ),
+        contentPadding = PaddingValues(horizontal = OssmDimens.Space12, vertical = OssmDimens.Space8),
+        colors = ButtonDefaults.outlinedButtonColors(
+            containerColor = OssmSurfaceRaised,
+            contentColor = accent,
+            disabledContainerColor = OssmSurfaceRaised,
+            disabledContentColor = OssmOnSurfaceMuted
         )
     ) {
         if (busy) {
-            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = tint, strokeWidth = 2.dp)
+            CircularProgressIndicator(
+                modifier = Modifier.size(StatsIconSmall),
+                color = OssmPrimary,
+                strokeWidth = StatsSpinnerStroke
+            )
         } else {
-            Icon(icon, null, tint = tint, modifier = Modifier.size(16.dp))
+            Icon(icon, contentDescription = null, modifier = Modifier.size(StatsIconSmall))
         }
-        Spacer(Modifier.width(6.dp))
-        Text(label, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        Spacer(Modifier.width(OssmDimens.Space8))
+        Text(label, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
     }
 }
 

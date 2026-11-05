@@ -7,10 +7,12 @@ import androidx.compose.runtime.Composable
 private val OssmColorScheme = darkColorScheme(
     primary          = OssmPrimary,
     onPrimary        = OssmOnPrimary,
-    primaryContainer = OssmSurfaceRaised,
+    primaryContainer = OssmSurfaceHigh,
     onPrimaryContainer = OssmPrimaryLight,
     secondary        = OssmAccent,
     onSecondary      = OssmBackground,
+    tertiary         = OssmSensation,
+    onTertiary       = OssmBackground,
     background       = OssmBackground,
     surface          = OssmSurface,
     onSurface        = OssmOnSurface,
@@ -28,6 +30,7 @@ fun OssmRemoteTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = OssmColorScheme,
         typography  = OssmTypography,
+        shapes      = OssmShapes,
         content     = content
     )
 }

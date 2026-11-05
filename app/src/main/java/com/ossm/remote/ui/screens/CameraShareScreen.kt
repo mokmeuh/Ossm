@@ -28,26 +28,22 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.VideocamOff
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -62,15 +58,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
@@ -84,17 +83,25 @@ import com.ossm.remote.remote.CameraShareDiagnostics
 import com.ossm.remote.remote.CameraShareJournal
 import com.ossm.remote.remote.CameraSharePolicy
 import com.ossm.remote.ui.components.GlassCard
-import com.ossm.remote.ui.theme.OssmAccent
+import com.ossm.remote.ui.components.OssmButton
+import com.ossm.remote.ui.components.OssmButtonKind
+import com.ossm.remote.ui.components.OssmStatusLine
+import com.ossm.remote.ui.components.OssmTone
 import com.ossm.remote.ui.theme.OssmBackground
+import com.ossm.remote.ui.theme.OssmCaption
+import com.ossm.remote.ui.theme.OssmDimens
 import com.ossm.remote.ui.theme.OssmError
 import com.ossm.remote.ui.theme.OssmOnSurface
 import com.ossm.remote.ui.theme.OssmOnSurfaceMuted
 import com.ossm.remote.ui.theme.OssmPrimary
-import com.ossm.remote.ui.theme.OssmPrimaryLight
-import com.ossm.remote.ui.theme.OssmStop
-import com.ossm.remote.ui.theme.OssmWarning
+import com.ossm.remote.ui.theme.OssmSectionTitle
 
 private const val MAX_CONSOLE_LINES = 20
+
+// Repères de mise en page propres à cet écran (la grille générale vient de OssmDimens).
+private val CameraStopMinHeight = 56.dp
+private val CameraJournalMaxHeight = 120.dp
+private val CameraJournalIconSize = 16.dp
 
 private val CAMERA_SHARE_PERMISSIONS = arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
 
@@ -199,34 +206,31 @@ fun CameraShareScreen(
             .pointerInput(Unit) {}
             .background(OssmBackground)
             .systemBarsPadding()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+            .padding(OssmDimens.ScreenGutter),
+        verticalArrangement = Arrangement.spacedBy(OssmDimens.Space12),
     ) {
         Text(
             stringResource(R.string.ui2_camera_screen_title),
             color = OssmOnSurface,
             style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
             modifier = Modifier.semantics { heading() },
         )
         Text(
             stringResource(R.string.ui2_camera_screen_hint),
             color = OssmOnSurfaceMuted,
-            fontSize = 13.sp,
-            lineHeight = 18.sp,
+            style = MaterialTheme.typography.bodyMedium,
         )
-        Button(
+        // Arrêter le partage libère la caméra et le micro : action d'arrêt, donc rouge.
+        OssmButton(
+            text = stringResource(R.string.ui2_camera_stop),
             onClick = { stop() },
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 56.dp),
-            shape = RoundedCornerShape(14.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = OssmStop),
-        ) {
-            Icon(Icons.Default.VideocamOff, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text(stringResource(R.string.ui2_camera_stop), fontWeight = FontWeight.Bold)
-        }
+                .heightIn(min = CameraStopMinHeight)
+                .testTag("camera_stop_sharing"),
+            kind = OssmButtonKind.Danger,
+            icon = Icons.Filled.VideocamOff,
+        )
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -234,11 +238,7 @@ fun CameraShareScreen(
             contentAlignment = Alignment.Center,
         ) {
             when {
-                !urlAllowed -> Text(
-                    stringResource(R.string.ui2_camera_invalid_link),
-                    color = OssmError,
-                    textAlign = TextAlign.Center,
-                )
+                !urlAllowed -> CameraErrorCard(stringResource(R.string.ui2_camera_invalid_link))
                 !permissionsGranted -> CameraPermissionCard(
                     refused = permissionRefused,
                     onRequest = { permissionLauncher.launch(CAMERA_SHARE_PERMISSIONS) },
@@ -251,11 +251,7 @@ fun CameraShareScreen(
                 )
                 // Keep the screen open with a readable error: the WebView is already dropped
                 // (camera released); closing silently left the user with no explanation.
-                rendererGone -> Text(
-                    stringResource(R.string.ui2_camera_renderer_gone),
-                    color = OssmError,
-                    textAlign = TextAlign.Center,
-                )
+                rendererGone -> CameraErrorCard(stringResource(R.string.ui2_camera_renderer_gone))
                 else -> CameraShareWebView(
                     cameraUrl = cameraUrl,
                     brokerBaseUrl = brokerBaseUrl,
@@ -269,50 +265,102 @@ fun CameraShareScreen(
     }
 }
 
-/** Short, non-sensitive journal (never a link or key): what happened while opening the camera. */
+/** Message d'erreur lisible (icône + texte), annoncé aux lecteurs d'écran quand il apparaît. */
+@Composable
+private fun CameraErrorCard(message: String) {
+    GlassCard(modifier = Modifier.fillMaxWidth().testTag("camera_error"), tint = OssmError) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(OssmDimens.Space12),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Icon(
+                Icons.Filled.ErrorOutline,
+                contentDescription = null,
+                tint = OssmError,
+                modifier = Modifier.size(OssmDimens.Space24),
+            )
+            Text(
+                message,
+                color = OssmError,
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier
+                    .weight(1f)
+                    .semantics { liveRegion = LiveRegionMode.Polite },
+            )
+        }
+    }
+}
+
+/** Journal court et non sensible (jamais un lien ni une clé) : ce qui s'est passé à l'ouverture de la caméra. */
 @Composable
 private fun CameraDiagnosticsPanel(entries: List<CameraJournalEntry>) {
     val scroll = rememberScrollState()
     LaunchedEffect(entries.size) { scroll.animateScrollTo(scroll.maxValue) }
-    GlassCard(modifier = Modifier.fillMaxWidth(), padding = 10.dp) {
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    GlassCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("camera_diagnostics"),
+        padding = OssmDimens.Space12,
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(OssmDimens.Space8)) {
             Text(
-                stringResource(R.string.ui2_camera_diag_title),
-                color = OssmPrimaryLight,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
+                stringResource(R.string.ui2_camera_diag_title).uppercase(),
+                color = OssmOnSurfaceMuted,
+                style = OssmSectionTitle,
+                modifier = Modifier.semantics { heading() },
             )
+            // Dernier message annoncé à TalkBack ; le niveau se lit par l'icône, pas par la couleur seule.
             entries.lastOrNull()?.let { last ->
-                Text(
-                    last.message,
-                    color = if (last.level >= LogLevel.WARNING) OssmError else OssmOnSurface,
-                    fontSize = 12.sp,
-                    lineHeight = 16.sp,
-                    fontWeight = FontWeight.SemiBold,
+                OssmStatusLine(
+                    text = last.message,
                     modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                    tone = when (last.level) {
+                        LogLevel.ERROR -> OssmTone.Error
+                        LogLevel.WARNING -> OssmTone.Warn
+                        else -> OssmTone.Neutral
+                    },
                 )
             }
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 120.dp)
+                    .heightIn(max = CameraJournalMaxHeight)
                     .verticalScroll(scroll),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
+                verticalArrangement = Arrangement.spacedBy(OssmDimens.Space4),
             ) {
-                entries.forEach { entry ->
-                    Text(
-                        "• " + entry.message,
-                        color = when (entry.level) {
-                            LogLevel.ERROR -> OssmError
-                            LogLevel.WARNING -> OssmWarning
-                            else -> OssmOnSurfaceMuted
-                        },
-                        fontSize = 11.sp,
-                        lineHeight = 14.sp,
-                    )
-                }
+                entries.forEach { entry -> CameraJournalLine(entry) }
             }
         }
+    }
+}
+
+/** Une ligne du journal : icône de niveau, et le mot du niveau pour les alertes et erreurs. */
+@Composable
+private fun CameraJournalLine(entry: CameraJournalEntry) {
+    val style = logLevelStyle(entry.level)
+    val important = entry.level >= LogLevel.WARNING
+    val color = if (important) style.color else OssmOnSurfaceMuted
+    val label = stringResource(style.labelRes)
+    val text = if (important) {
+        buildAnnotatedString {
+            withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(label) }
+            append(" · ")
+            append(entry.message)
+        }
+    } else {
+        AnnotatedString(entry.message)
+    }
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(OssmDimens.Space8),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Icon(
+            style.icon,
+            contentDescription = null,
+            tint = color,
+            modifier = Modifier.size(CameraJournalIconSize),
+        )
+        Text(text, color = color, style = OssmCaption, modifier = Modifier.weight(1f))
     }
 }
 
@@ -322,41 +370,47 @@ private fun CameraPermissionCard(
     onRequest: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
-    GlassCard(modifier = Modifier.fillMaxWidth(), padding = 16.dp) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Icon(Icons.Default.Videocam, contentDescription = null, tint = OssmAccent, modifier = Modifier.size(32.dp))
+    GlassCard(modifier = Modifier.fillMaxWidth().testTag("camera_permission_card")) {
+        Column(verticalArrangement = Arrangement.spacedBy(OssmDimens.Space12)) {
+            Icon(
+                Icons.Filled.Videocam,
+                contentDescription = null,
+                tint = OssmPrimary,
+                modifier = Modifier.size(OssmDimens.Space32),
+            )
             Text(
                 stringResource(R.string.ui2_camera_permission_title),
                 color = OssmOnSurface,
-                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.semantics { heading() },
             )
-            Text(
-                stringResource(if (refused) R.string.ui2_camera_permission_refused else R.string.ui2_camera_permission_body),
-                color = if (refused) OssmError else OssmOnSurfaceMuted,
-                fontSize = 13.sp,
-                lineHeight = 18.sp,
-            )
-            Button(
-                onClick = onRequest,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 48.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = OssmPrimary),
-            ) {
-                Text(stringResource(R.string.ui2_camera_permission_grant))
-            }
             if (refused) {
-                OutlinedButton(
+                OssmStatusLine(
+                    text = stringResource(R.string.ui2_camera_permission_refused),
+                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                    tone = OssmTone.Error,
+                )
+            } else {
+                Text(
+                    stringResource(R.string.ui2_camera_permission_body),
+                    color = OssmOnSurfaceMuted,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            OssmButton(
+                text = stringResource(R.string.ui2_camera_permission_grant),
+                onClick = onRequest,
+                modifier = Modifier.fillMaxWidth(),
+                kind = OssmButtonKind.Primary,
+            )
+            if (refused) {
+                OssmButton(
+                    text = stringResource(R.string.ui2_camera_permission_settings),
                     onClick = onOpenSettings,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 48.dp),
-                ) {
-                    Icon(Icons.Default.Settings, contentDescription = null, tint = OssmPrimaryLight)
-                    Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.ui2_camera_permission_settings), color = OssmPrimaryLight)
-                }
+                    modifier = Modifier.fillMaxWidth(),
+                    kind = OssmButtonKind.Secondary,
+                    icon = Icons.Filled.Settings,
+                )
             }
         }
     }

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Redesign: control screen (status, mode chips, settings, accented labels). -->
+    <string name="ctlrd_status_ready">Bluetooth connected · %1$s</string>
+    <string name="ctlrd_status_ready_short">Connected</string>
+    <string name="ctlrd_scale_min">−100</string>
+    <string name="ctlrd_scale_max">+100</string>
+    <string name="ctlrd_start">Start</string>
+    <string name="ctlrd_stop_mix">Stop</string>
+    <string name="ctlrd_rec_armed">Ready</string>
+    <string name="ctlrd_rec_playing">Stop the loop</string>
+    <string name="ctlrd_patterns_title">Modes</string>
+    <string name="ctlrd_patterns_hint">Tap a mode to activate it (the window closes). Long press: reorder.</string>
+    <string name="ctlrd_settings_section_input">Input</string>
+    <string name="ctlrd_settings_section_live">Live</string>
+    <string name="ctlrd_settings_section_guards">Safeguards</string>
+    <string name="ctlrd_settings_section_help">Reminders</string>
+    <string name="ctlrd_live_acceleration_title">Live acceleration</string>
+    <string name="ctlrd_depth_limits_title">Depth limits</string>
+    <string name="ctlrd_reorder_up">Move up</string>
+    <string name="ctlrd_reorder_down">Move down</string>
+</resources>

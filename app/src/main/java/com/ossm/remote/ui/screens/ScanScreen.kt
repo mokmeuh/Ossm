@@ -5,45 +5,120 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.os.PersistableBundle
-import androidx.compose.animation.*
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.BluetoothConnected
+import androidx.compose.material.icons.filled.BluetoothDisabled
+import androidx.compose.material.icons.filled.BluetoothSearching
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.NearMe
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Power
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Usb
+import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.ossm.remote.BuildConfig
 import com.ossm.remote.R
 import com.ossm.remote.model.BleConnectionState
 import com.ossm.remote.model.BleDevice
 import com.ossm.remote.remote.RemoteSessionState
-import com.ossm.remote.ui.components.BleStatusIndicator
 import com.ossm.remote.ui.components.GlassCard
-import com.ossm.remote.ui.theme.*
+import com.ossm.remote.ui.components.OssmButton
+import com.ossm.remote.ui.components.OssmButtonKind
+import com.ossm.remote.ui.components.OssmStatusLine
+import com.ossm.remote.ui.components.OssmTone
+import com.ossm.remote.ui.theme.OssmBackground
+import com.ossm.remote.ui.theme.OssmCaption
+import com.ossm.remote.ui.theme.OssmConnected
+import com.ossm.remote.ui.theme.OssmDimens
+import com.ossm.remote.ui.theme.OssmError
+import com.ossm.remote.ui.theme.OssmGlassBorder
+import com.ossm.remote.ui.theme.OssmOnSurface
+import com.ossm.remote.ui.theme.OssmOnSurfaceMuted
+import com.ossm.remote.ui.theme.OssmOutline
+import com.ossm.remote.ui.theme.OssmPrimary
+import com.ossm.remote.ui.theme.OssmSectionTitle
+import com.ossm.remote.ui.theme.OssmSurfaceRaised
+import com.ossm.remote.ui.theme.OssmValue
+import com.ossm.remote.ui.theme.OssmWarning
+
+/** Adresse que le gestionnaire BLE attribue à la liaison filaire USB-C. */
+private const val SCAN_USB_LINK_ADDRESS = "USB-C"
+
+/** Opacité du filet du badge de liaison (décoratif : l'état est porté par l'icône et le mot). */
+private const val SCAN_LINK_BADGE_BORDER_ALPHA = 0.5f
+
+/** Opacité d'une ligne d'appareil pendant une connexion (lignes inactives). */
+private const val SCAN_DEVICE_DISABLED_ALPHA = 0.6f
+
+// Tailles d'icônes et de repères propres à cet écran (la grille générale vient de OssmDimens).
+private val ScanLogoSize = 48.dp
+private val ScanIconSmall = 20.dp
+private val ScanIconMedium = 24.dp
+private val ScanIconDevice = 28.dp
+private val ScanIconHero = 44.dp
+private val ScanSpinnerStroke = 2.dp
+private val ScanSpinnerStrokeLarge = 4.dp
+private val ScanDeviceRowMinHeight = 64.dp
+private val ScanShareButtonMinHeight = 52.dp
 
 @Composable
 fun ScanScreen(
@@ -61,13 +136,27 @@ fun ScanScreen(
     val isConnecting = connectionState is BleConnectionState.Connecting
     val isConnected = connectionState is BleConnectionState.Connected
 
+    // Scan automatique au premier affichage.
     LaunchedEffect(Unit) {
         if (!isConnected && !isConnecting && !isScanning) onScan()
     }
 
+    // Connexion automatique à l'unique OSSM trouvé, uniquement pendant un scan.
     val autoConnectAddress = scanAutoConnectAddress(devices, connectionState)
     LaunchedEffect(autoConnectAddress) {
         autoConnectAddress?.let(onConnect)
+    }
+
+    // États vides : jamais d'écran blanc pendant un scan ou après un scan sans résultat.
+    val emptyState = if (devices.isEmpty()) {
+        when {
+            isScanning -> ScanEmptyState.SEARCHING
+            connectionState is BleConnectionState.Disconnected -> ScanEmptyState.NONE_FOUND
+            connectionState is BleConnectionState.Error -> ScanEmptyState.NONE_FOUND
+            else -> null
+        }
+    } else {
+        null
     }
 
     Box(
@@ -75,164 +164,282 @@ fun ScanScreen(
             .fillMaxSize()
             .background(OssmBackground)
     ) {
-        Column(
+        // Toute la page défile : rien n'est coupé sur petit écran ni à 130 % de taille de police.
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .testTag("scan_screen"),
+            contentPadding = PaddingValues(OssmDimens.ScreenGutter),
+            verticalArrangement = Arrangement.spacedBy(OssmDimens.Space12)
         ) {
-            // Header
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Image(
-                        painter = painterResource(id = R.drawable.ic_launcher_foreground),
-                        contentDescription = null,
-                        modifier = Modifier.size(48.dp)
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    Column {
-                        Text(
-                            "OSSM Remote",
-                            style = MaterialTheme.typography.headlineMedium,
-                            color = OssmOnSurface
-                        )
-                        Text(
-                            "v${BuildConfig.VERSION_NAME}",
-                            color = OssmOnSurfaceMuted,
-                            fontSize = 12.sp
-                        )
-                    }
-                }
-                BleStatusIndicator(state = connectionState)
-            }
+            item(key = "header") { ScanHeader(connectionState) }
 
-            // Scan button
-            Button(
-                onClick = if (isScanning) onStop else onScan,
-                enabled = !isConnecting && !isConnected,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 56.dp),
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isScanning) OssmError else OssmPrimary
+            item(key = "scan_action") {
+                ScanActionButton(
+                    isScanning = isScanning,
+                    enabled = !isConnecting && !isConnected,
+                    onScan = onScan,
+                    onStop = onStop
                 )
-            ) {
-                if (isScanning) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        color = OssmOnPrimary,
-                        strokeWidth = 2.dp
-                    )
-                    Spacer(Modifier.width(10.dp))
-                    Text(stringResource(R.string.scan_stop), fontWeight = FontWeight.Bold)
-                } else {
-                    Icon(Icons.Default.Bluetooth, null, modifier = Modifier.size(20.dp))
-                    Spacer(Modifier.width(10.dp))
-                    Text(stringResource(R.string.scan_devices), fontWeight = FontWeight.Bold)
-                }
             }
 
-            // Camera of the remote session (owner side): ALWAYS visible (2.3.16), placed above the
-            // device list so a long scan result can never push it off screen.
-            RemoteCameraCard(
-                section = remoteCamera,
-                onShareMyCamera = onShareMyCamera,
-                onStartRemoteSession = onStartRemoteSession,
-                onRegenerateRemoteLink = onRegenerateRemoteLink,
-            )
+            // Détail de la liaison : connecté, connexion en cours ou erreur.
+            when (connectionState) {
+                is BleConnectionState.Connected ->
+                    item(key = "status_connected") { ScanConnectedCard(connectionState) }
+                is BleConnectionState.Connecting ->
+                    item(key = "status_connecting") { ScanConnectingCard() }
+                is BleConnectionState.Error ->
+                    item(key = "status_error") { ScanErrorCard(connectionState.message) }
+                else -> Unit
+            }
 
-            // Device list
-            AnimatedVisibility(visible = devices.isNotEmpty()) {
-                GlassCard(modifier = Modifier.fillMaxWidth(), padding = 12.dp) {
+            // Caméra de la session distante (côté propriétaire) : TOUJOURS visible (2.3.16),
+            // placée au-dessus de la liste pour qu'un long résultat de scan ne la repousse pas.
+            item(key = "camera") {
+                RemoteCameraCard(
+                    section = remoteCamera,
+                    onShareMyCamera = onShareMyCamera,
+                    onStartRemoteSession = onStartRemoteSession,
+                    onRegenerateRemoteLink = onRegenerateRemoteLink,
+                )
+            }
+
+            if (devices.isNotEmpty()) {
+                item(key = "devices_title") {
                     Text(
                         stringResource(R.string.scan_found_count, devices.size),
-                        color = OssmPrimaryLight,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(devices, key = { it.address }) { device ->
-                            DeviceRow(
-                                device = device,
-                                isConnecting = isConnecting,
-                                onClick = { onConnect(device.address) }
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Connected info
-            AnimatedVisibility(visible = isConnected) {
-                if (connectionState is BleConnectionState.Connected) {
-                    GlassCard(modifier = Modifier.fillMaxWidth(), tint = OssmConnected) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.CheckCircle, null, tint = OssmConnected, modifier = Modifier.size(24.dp))
-                            Spacer(Modifier.width(12.dp))
-                            Column {
-                                Text(stringResource(R.string.scan_connected), color = OssmConnected, fontWeight = FontWeight.Bold)
-                                Text(connectionState.deviceName, color = OssmOnSurface, fontSize = 13.sp)
-                            }
-                        }
-                    }
-                }
-            }
-
-            if (isConnecting) {
-                GlassCard(modifier = Modifier.fillMaxWidth()) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = OssmWarning)
-                        Spacer(Modifier.width(12.dp))
-                        Text(stringResource(R.string.scan_connecting), color = OssmWarning)
-                    }
-                }
-            }
-
-            if (connectionState is BleConnectionState.Error) {
-                GlassCard(modifier = Modifier.fillMaxWidth(), tint = OssmError) {
-                    Row {
-                        Icon(Icons.Default.Error, null, tint = OssmError)
-                        Spacer(Modifier.width(8.dp))
-                        Text(connectionState.message, color = OssmError)
-                    }
-                }
-            }
-
-            // Empty states: never leave the screen blank while scanning or after an empty scan.
-            if (devices.isEmpty()) {
-                val emptyState = when {
-                    isScanning -> ScanEmptyState.SEARCHING
-                    connectionState is BleConnectionState.Disconnected -> ScanEmptyState.NONE_FOUND
-                    connectionState is BleConnectionState.Error -> ScanEmptyState.NONE_FOUND
-                    else -> null
-                }
-                if (emptyState != null) {
-                    ScanEmptyStateCard(
-                        state = emptyState,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f, fill = false)
+                        color = OssmOnSurfaceMuted,
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.semantics { heading() }
                     )
                 }
+                items(devices, key = { it.address }) { device ->
+                    DeviceRow(
+                        device = device,
+                        isConnecting = isConnecting,
+                        onClick = { onConnect(device.address) }
+                    )
+                }
+            }
+
+            if (emptyState != null) {
+                item(key = "empty") { ScanEmptyStateCard(state = emptyState) }
             }
         }
     }
 }
 
-/** What the Connexion tab shows for the camera of the remote session. */
+@Composable
+private fun ScanHeader(connectionState: BleConnectionState) {
+    Column(verticalArrangement = Arrangement.spacedBy(OssmDimens.Space12)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Image(
+                painter = painterResource(id = R.drawable.ic_launcher_foreground),
+                contentDescription = null,
+                modifier = Modifier.size(ScanLogoSize)
+            )
+            Spacer(Modifier.width(OssmDimens.Space12))
+            Column {
+                Text(
+                    stringResource(R.string.conn_app_title),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = OssmOnSurface,
+                    modifier = Modifier.semantics { heading() }
+                )
+                Text(
+                    "v${BuildConfig.VERSION_NAME}",
+                    color = OssmOnSurfaceMuted,
+                    style = OssmCaption
+                )
+            }
+        }
+        ConnectionLinkBadge(state = connectionState)
+    }
+}
+
+/** Liaison courante : icône, mot (USB, Bluetooth, hors ligne...) et ton d'état. */
+internal data class ConnectionLink(val icon: ImageVector, val labelRes: Int, val tone: OssmTone)
+
+internal fun connectionLinkOf(state: BleConnectionState): ConnectionLink = when (state) {
+    is BleConnectionState.Connected ->
+        if (state.address == SCAN_USB_LINK_ADDRESS) {
+            ConnectionLink(Icons.Filled.Usb, R.string.conn_link_usb, OssmTone.Ok)
+        } else {
+            ConnectionLink(Icons.Filled.BluetoothConnected, R.string.conn_link_bluetooth, OssmTone.Ok)
+        }
+    is BleConnectionState.Connecting ->
+        ConnectionLink(Icons.Filled.BluetoothSearching, R.string.conn_link_connecting, OssmTone.Warn)
+    is BleConnectionState.Scanning ->
+        ConnectionLink(Icons.Filled.BluetoothSearching, R.string.conn_link_scanning, OssmTone.Warn)
+    is BleConnectionState.Error ->
+        ConnectionLink(Icons.Filled.Error, R.string.conn_link_error, OssmTone.Error)
+    is BleConnectionState.EmergencyStop ->
+        ConnectionLink(Icons.Filled.Warning, R.string.conn_link_emergency, OssmTone.Error)
+    is BleConnectionState.Disconnected ->
+        ConnectionLink(Icons.Filled.BluetoothDisabled, R.string.conn_link_offline, OssmTone.Neutral)
+}
+
+private fun linkToneColor(tone: OssmTone): Color = when (tone) {
+    OssmTone.Neutral -> OssmOnSurfaceMuted
+    OssmTone.Ok -> OssmConnected
+    OssmTone.Warn -> OssmWarning
+    OssmTone.Error -> OssmError
+}
+
+/** Indicateur de liaison (icône + mot), partagé avec l'écran Diagnostic. */
+@Composable
+internal fun ConnectionLinkBadge(state: BleConnectionState, modifier: Modifier = Modifier) {
+    val link = connectionLinkOf(state)
+    val label = stringResource(link.labelRes)
+    val color = linkToneColor(link.tone)
+    val description = stringResource(R.string.conn_link_cd, label)
+    val shape = RoundedCornerShape(OssmDimens.FieldRadius)
+    Row(
+        modifier = modifier
+            .testTag("connection_link_badge")
+            .clip(shape)
+            .background(OssmSurfaceRaised)
+            .border(OssmDimens.BorderWidth, color.copy(alpha = SCAN_LINK_BADGE_BORDER_ALPHA), shape)
+            .padding(horizontal = OssmDimens.Space12, vertical = OssmDimens.Space8)
+            .clearAndSetSemantics { contentDescription = description },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(OssmDimens.Space8)
+    ) {
+        Icon(link.icon, contentDescription = null, tint = color, modifier = Modifier.size(ScanIconSmall))
+        Text(label, color = color, style = MaterialTheme.typography.labelLarge)
+    }
+}
+
+/** Action principale : scanner, ou arrêter le scan en cours. */
+@Composable
+private fun ScanActionButton(
+    isScanning: Boolean,
+    enabled: Boolean,
+    onScan: () -> Unit,
+    onStop: () -> Unit,
+) {
+    if (isScanning) {
+        OutlinedButton(
+            onClick = onStop,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = OssmDimens.TouchTarget)
+                .testTag("scan_action"),
+            shape = RoundedCornerShape(OssmDimens.ControlRadius),
+            border = BorderStroke(OssmDimens.BorderWidth, OssmOutline),
+            colors = ButtonDefaults.outlinedButtonColors(
+                containerColor = OssmSurfaceRaised,
+                contentColor = OssmOnSurface
+            )
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(ScanIconSmall),
+                color = OssmPrimary,
+                strokeWidth = ScanSpinnerStroke
+            )
+            Spacer(Modifier.width(OssmDimens.Space8))
+            Text(stringResource(R.string.scan_stop), fontWeight = FontWeight.Bold)
+        }
+    } else {
+        OssmButton(
+            text = stringResource(R.string.scan_devices),
+            onClick = onScan,
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("scan_action"),
+            kind = OssmButtonKind.Primary,
+            icon = Icons.Filled.Bluetooth,
+            enabled = enabled
+        )
+    }
+}
+
+@Composable
+private fun ScanConnectedCard(state: BleConnectionState.Connected) {
+    GlassCard(modifier = Modifier.fillMaxWidth(), tint = OssmConnected) {
+        Row(
+            modifier = Modifier.semantics(mergeDescendants = true) {},
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Filled.CheckCircle,
+                contentDescription = null,
+                tint = OssmConnected,
+                modifier = Modifier.size(ScanIconMedium)
+            )
+            Spacer(Modifier.width(OssmDimens.Space12))
+            Column {
+                Text(
+                    stringResource(R.string.scan_connected),
+                    color = OssmConnected,
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Text(
+                    state.deviceName,
+                    color = OssmOnSurface,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ScanConnectingCard() {
+    GlassCard(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite },
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(ScanIconSmall),
+                strokeWidth = ScanSpinnerStroke,
+                color = OssmWarning
+            )
+            Spacer(Modifier.width(OssmDimens.Space12))
+            Text(
+                stringResource(R.string.scan_connecting),
+                color = OssmWarning,
+                style = MaterialTheme.typography.bodyLarge
+            )
+        }
+    }
+}
+
+@Composable
+private fun ScanErrorCard(message: String) {
+    GlassCard(modifier = Modifier.fillMaxWidth(), tint = OssmError) {
+        Row(
+            modifier = Modifier.semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite },
+            verticalAlignment = Alignment.Top
+        ) {
+            Icon(
+                Icons.Filled.Error,
+                contentDescription = null,
+                tint = OssmError,
+                modifier = Modifier.size(ScanIconMedium)
+            )
+            Spacer(Modifier.width(OssmDimens.Space12))
+            Text(
+                message,
+                color = OssmError,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
+}
+
+/** Ce que l'onglet Connexion montre pour la caméra de la session distante. */
 sealed interface RemoteCameraSection {
-    /** No active remote session: the card invites to start one (same action as Réglages). */
+    /** Pas de session distante active : la carte invite à en démarrer une (comme dans Réglages). */
     data object NoSession : RemoteCameraSection
-    /** Session started but its host link is not known yet. */
+    /** Session démarrée mais le lien hôte n'est pas encore connu. */
     data object Starting : RemoteCameraSection
-    /** Active session but the broker gave no camera link (old site or link created before 2.3.15). */
+    /** Session active mais le serveur n'a donné aucun lien caméra (ancien site ou lien antérieur à 2.3.15). */
     data object Unavailable : RemoteCameraSection
-    /** Camera-only invitation; a secret, so [toString] never prints it. */
+    /** Invitation caméra seule ; c'est un secret, donc [toString] ne l'affiche jamais. */
     data class Available(val cameraUrl: String) : RemoteCameraSection {
         override fun toString(): String = "Available(cameraUrl=<redacted>)"
     }
@@ -248,7 +455,7 @@ internal fun remoteCameraSection(state: RemoteSessionState): RemoteCameraSection
     }
 }
 
-/** Explicit copy only; flagged sensitive so Android 13+ does not preview the link. */
+/** Copie explicite uniquement ; marquée sensible pour qu'Android 13+ n'affiche pas le lien. */
 private fun copyCameraLink(context: Context, label: String, cameraUrl: String) {
     val clipboard = context.getSystemService(ClipboardManager::class.java) ?: return
     val clip = ClipData.newPlainText(label, cameraUrl).apply {
@@ -265,16 +472,22 @@ private fun RemoteCameraCard(
     onRegenerateRemoteLink: () -> Unit,
 ) {
     val context = LocalContext.current
-    GlassCard(modifier = Modifier.fillMaxWidth().testTag("remote_camera_card"), padding = 16.dp) {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Videocam, contentDescription = null, tint = OssmAccent, modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(10.dp))
+    GlassCard(modifier = Modifier.fillMaxWidth().testTag("remote_camera_card")) {
+        Column(verticalArrangement = Arrangement.spacedBy(OssmDimens.Space12)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(OssmDimens.Space8)
+            ) {
+                Icon(
+                    Icons.Filled.Videocam,
+                    contentDescription = null,
+                    tint = OssmOnSurfaceMuted,
+                    modifier = Modifier.size(ScanIconMedium)
+                )
                 Text(
-                    stringResource(R.string.ui2_camera_section_title),
-                    color = OssmOnSurface,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp,
+                    stringResource(R.string.ui2_camera_section_title).uppercase(),
+                    color = OssmOnSurfaceMuted,
+                    style = OssmSectionTitle,
                     modifier = Modifier.semantics { heading() },
                 )
             }
@@ -282,66 +495,53 @@ private fun RemoteCameraCard(
                 RemoteCameraSection.NoSession -> {
                     Text(
                         stringResource(R.string.ui2_camera_no_session),
-                        color = OssmOnSurfaceMuted,
-                        fontSize = 13.sp,
-                        lineHeight = 18.sp,
+                        color = OssmOnSurface,
+                        style = MaterialTheme.typography.bodyMedium,
                     )
-                    Button(
+                    OssmButton(
+                        text = stringResource(R.string.ui2_camera_start_session),
                         onClick = onStartRemoteSession,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 48.dp),
-                        shape = RoundedCornerShape(14.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = OssmPrimary),
-                    ) {
-                        Text(stringResource(R.string.ui2_camera_start_session), fontWeight = FontWeight.Bold)
-                    }
+                        modifier = Modifier.fillMaxWidth(),
+                        kind = OssmButtonKind.Primary,
+                        icon = Icons.Filled.PlayArrow,
+                    )
                 }
-                RemoteCameraSection.Starting -> Text(
-                    stringResource(R.string.ui2_camera_session_starting),
-                    color = OssmOnSurfaceMuted,
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp,
+                RemoteCameraSection.Starting -> OssmStatusLine(
+                    text = stringResource(R.string.ui2_camera_session_starting),
+                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                    tone = OssmTone.Neutral,
                 )
                 RemoteCameraSection.Unavailable -> {
-                    Text(
-                        stringResource(R.string.ui2_camera_regenerate_needed),
-                        color = OssmWarning,
-                        fontSize = 13.sp,
-                        lineHeight = 18.sp,
+                    OssmStatusLine(
+                        text = stringResource(R.string.ui2_camera_regenerate_needed),
+                        tone = OssmTone.Warn,
                     )
-                    Button(
+                    OssmButton(
+                        text = stringResource(R.string.ui2_camera_regenerate),
                         onClick = onRegenerateRemoteLink,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 48.dp),
-                        shape = RoundedCornerShape(14.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = OssmWarning),
-                    ) {
-                        Text(stringResource(R.string.ui2_camera_regenerate), fontWeight = FontWeight.Bold)
-                    }
+                        modifier = Modifier.fillMaxWidth(),
+                        kind = OssmButtonKind.Secondary,
+                        icon = Icons.Filled.Refresh,
+                    )
                 }
                 is RemoteCameraSection.Available -> {
                     var copied by remember(section.cameraUrl) { mutableStateOf(false) }
                     Text(
                         stringResource(R.string.ui2_camera_section_body),
-                        color = OssmOnSurfaceMuted,
-                        fontSize = 13.sp,
-                        lineHeight = 18.sp,
+                        color = OssmOnSurface,
+                        style = MaterialTheme.typography.bodyMedium,
                     )
-                    Button(
+                    OssmButton(
+                        text = stringResource(R.string.ui2_camera_share_mine),
                         onClick = onShareMyCamera,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(min = 52.dp),
-                        shape = RoundedCornerShape(14.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = OssmPrimary),
-                    ) {
-                        Icon(Icons.Default.Videocam, contentDescription = null, modifier = Modifier.size(20.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text(stringResource(R.string.ui2_camera_share_mine), fontWeight = FontWeight.Bold)
-                    }
-                    OutlinedButton(
+                            .heightIn(min = ScanShareButtonMinHeight),
+                        kind = OssmButtonKind.Primary,
+                        icon = Icons.Filled.Videocam,
+                    )
+                    OssmButton(
+                        text = stringResource(R.string.ui2_camera_invite),
                         onClick = {
                             val shareIntent = Intent(Intent.ACTION_SEND).apply {
                                 type = "text/plain"
@@ -349,35 +549,25 @@ private fun RemoteCameraCard(
                             }
                             context.startActivity(Intent.createChooser(shareIntent, context.getString(R.string.ui2_camera_invite_chooser)))
                         },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 48.dp),
-                        shape = RoundedCornerShape(14.dp),
-                    ) {
-                        Icon(Icons.Default.Share, contentDescription = null, tint = OssmPrimaryLight, modifier = Modifier.size(20.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text(stringResource(R.string.ui2_camera_invite), color = OssmPrimaryLight)
-                    }
-                    OutlinedButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        kind = OssmButtonKind.Secondary,
+                        icon = Icons.Filled.Share,
+                    )
+                    OssmButton(
+                        text = stringResource(R.string.ui2_camera_copy),
                         onClick = {
                             copyCameraLink(context, context.getString(R.string.ui2_camera_invite_chooser), section.cameraUrl)
                             copied = true
                         },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 48.dp),
-                        shape = RoundedCornerShape(14.dp),
-                    ) {
-                        Icon(Icons.Default.ContentCopy, contentDescription = null, tint = OssmPrimaryLight, modifier = Modifier.size(20.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text(stringResource(R.string.ui2_camera_copy), color = OssmPrimaryLight)
-                    }
+                        modifier = Modifier.fillMaxWidth(),
+                        kind = OssmButtonKind.Secondary,
+                        icon = Icons.Filled.ContentCopy,
+                    )
                     if (copied) {
-                        Text(
-                            stringResource(R.string.ui2_camera_copied),
-                            color = OssmConnected,
-                            fontSize = 12.sp,
+                        OssmStatusLine(
+                            text = stringResource(R.string.ui2_camera_copied),
                             modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                            tone = OssmTone.Ok,
                         )
                     }
                 }
@@ -401,54 +591,52 @@ private fun ScanEmptyStateCard(
         ScanEmptyState.SEARCHING -> stringResource(R.string.ui2_scan_searching_body)
         ScanEmptyState.NONE_FOUND -> stringResource(R.string.ui2_scan_none_body)
     }
-    GlassCard(modifier = modifier, padding = 20.dp) {
+    GlassCard(modifier = modifier.fillMaxWidth().testTag("scan_empty_state")) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState()),
+            modifier = Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(OssmDimens.Space12)
         ) {
             when (state) {
                 ScanEmptyState.SEARCHING -> CircularProgressIndicator(
-                    modifier = Modifier.size(44.dp),
-                    color = OssmAccent,
-                    strokeWidth = 4.dp
+                    modifier = Modifier.size(ScanIconHero),
+                    color = OssmPrimary,
+                    strokeWidth = ScanSpinnerStrokeLarge
                 )
                 ScanEmptyState.NONE_FOUND -> Icon(
-                    Icons.Default.BluetoothSearching,
+                    Icons.Filled.BluetoothSearching,
                     contentDescription = null,
                     tint = OssmOnSurfaceMuted,
-                    modifier = Modifier.size(44.dp)
+                    modifier = Modifier.size(ScanIconHero)
                 )
             }
             Text(
                 title,
                 color = OssmOnSurface,
                 style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center
+                textAlign = TextAlign.Center,
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
             )
             Text(
                 body,
                 color = OssmOnSurfaceMuted,
-                fontSize = 14.sp,
+                style = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.Center
             )
             HorizontalDivider(color = OssmGlassBorder)
             Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(OssmDimens.Space8)
             ) {
                 Text(
                     stringResource(R.string.ui2_scan_tips_title),
-                    color = OssmPrimaryLight,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold
+                    color = OssmOnSurface,
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.semantics { heading() }
                 )
-                ScanTip(Icons.Default.Power, stringResource(R.string.ui2_scan_tip_power))
-                ScanTip(Icons.Default.NearMe, stringResource(R.string.ui2_scan_tip_close))
-                ScanTip(Icons.Default.Bluetooth, stringResource(R.string.ui2_scan_tip_bluetooth))
+                ScanTip(Icons.Filled.Power, stringResource(R.string.ui2_scan_tip_power))
+                ScanTip(Icons.Filled.NearMe, stringResource(R.string.ui2_scan_tip_close))
+                ScanTip(Icons.Filled.Bluetooth, stringResource(R.string.ui2_scan_tip_bluetooth))
             }
         }
     }
@@ -461,10 +649,10 @@ private fun ScanTip(icon: ImageVector, text: String) {
             .fillMaxWidth()
             .semantics(mergeDescendants = true) {},
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+        horizontalArrangement = Arrangement.spacedBy(OssmDimens.Space12)
     ) {
-        Icon(icon, contentDescription = null, tint = OssmAccent, modifier = Modifier.size(22.dp))
-        Text(text, color = OssmOnSurface, fontSize = 14.sp, modifier = Modifier.weight(1f))
+        Icon(icon, contentDescription = null, tint = OssmOnSurfaceMuted, modifier = Modifier.size(ScanIconMedium))
+        Text(text, color = OssmOnSurface, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
     }
 }
 
@@ -482,49 +670,97 @@ private fun DeviceRow(
     isConnecting: Boolean,
     onClick: () -> Unit
 ) {
+    val shape = RoundedCornerShape(OssmDimens.ControlRadius)
+    val quality = scanSignalQuality(device.rssi)
+    val qualityColor = scanSignalColor(quality)
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .clickable(enabled = !isConnecting) { onClick() }
+            .testTag("scan_device_${device.address}")
+            .alpha(if (isConnecting) SCAN_DEVICE_DISABLED_ALPHA else 1f)
+            .clip(shape)
             .background(OssmSurfaceRaised)
-            .heightIn(min = 64.dp)
-            .padding(12.dp),
+            .border(OssmDimens.BorderWidth, if (device.isOssm) OssmPrimary else OssmOutline, shape)
+            .clickable(
+                enabled = !isConnecting,
+                onClickLabel = stringResource(R.string.conn_device_connect_action),
+                role = Role.Button,
+                onClick = onClick
+            )
+            .heightIn(min = ScanDeviceRowMinHeight)
+            .padding(OssmDimens.Space12),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
-            imageVector = if (device.isOssm) Icons.Default.BluetoothConnected else Icons.Default.BluetoothSearching,
+            imageVector = if (device.isOssm) Icons.Filled.BluetoothConnected else Icons.Filled.BluetoothSearching,
             contentDescription = null,
-            tint = if (device.isOssm) OssmConnected else OssmPrimaryLight,
-            modifier = Modifier.size(28.dp)
+            tint = if (device.isOssm) OssmPrimary else OssmOnSurfaceMuted,
+            modifier = Modifier.size(ScanIconDevice)
         )
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(OssmDimens.Space12))
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                device.name,
-                fontWeight = if (device.isOssm) FontWeight.Bold else FontWeight.Normal,
-                color = if (device.isOssm) OssmOnSurface else OssmOnSurface.copy(0.7f)
-            )
-            Text(device.address, color = OssmOnSurfaceMuted, fontSize = 12.sp)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(OssmDimens.Space8)
+            ) {
+                Text(
+                    device.name,
+                    color = OssmOnSurface,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = if (device.isOssm) FontWeight.Bold else FontWeight.Normal,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                if (device.isOssm) ScanOssmBadge()
+            }
+            Text(device.address, color = OssmOnSurfaceMuted, style = OssmCaption)
         }
-        Text(
-            "${device.rssi} dBm",
-            color = rssiColor(device.rssi),
-            fontSize = 12.sp
-        )
-        if (device.isOssm) {
-            Spacer(Modifier.width(8.dp))
-            Text("OSSM", color = OssmConnected, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.width(OssmDimens.Space8))
+        Column(horizontalAlignment = Alignment.End) {
+            Text(
+                stringResource(R.string.conn_device_rssi, device.rssi),
+                color = qualityColor,
+                style = OssmValue
+            )
+            Text(stringResource(quality.labelRes), color = qualityColor, style = OssmCaption)
         }
     }
 }
 
-private fun rssiColor(rssi: Int) = when {
-    rssi > -60  -> OssmConnected
-    rssi > -75  -> OssmWarning
-    else        -> OssmError
+/** Pastille « OSSM » : repère les machines OSSM parmi les appareils Bluetooth. */
+@Composable
+private fun ScanOssmBadge() {
+    Text(
+        stringResource(R.string.conn_badge_ossm),
+        color = OssmPrimary,
+        style = OssmCaption,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier
+            .border(OssmDimens.BorderWidth, OssmPrimary, RoundedCornerShape(OssmDimens.FieldRadius))
+            .padding(horizontal = OssmDimens.Space8, vertical = OssmDimens.Space4)
+    )
 }
 
-/** An open camera share stays only while the session still offers exactly that camera link. */
+/** Qualité du signal : un mot et un nombre en plus de la couleur. */
+private enum class ScanSignalQuality(val labelRes: Int) {
+    STRONG(R.string.conn_device_signal_strong),
+    MEDIUM(R.string.conn_device_signal_medium),
+    WEAK(R.string.conn_device_signal_weak),
+}
+
+private fun scanSignalQuality(rssi: Int) = when {
+    rssi > -60 -> ScanSignalQuality.STRONG
+    rssi > -75 -> ScanSignalQuality.MEDIUM
+    else -> ScanSignalQuality.WEAK
+}
+
+private fun scanSignalColor(quality: ScanSignalQuality): Color = when (quality) {
+    ScanSignalQuality.STRONG -> OssmConnected
+    ScanSignalQuality.MEDIUM -> OssmWarning
+    ScanSignalQuality.WEAK -> OssmError
+}
+
+/** Un partage de caméra ouvert ne reste permis que tant que la session offre exactement ce lien caméra. */
 internal fun cameraShareStillAllowed(openedCameraUrl: String, section: RemoteCameraSection): Boolean =
     (section as? RemoteCameraSection.Available)?.cameraUrl == openedCameraUrl

@@ -25,20 +25,27 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.WarningAmber
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.ossm.remote.remote.RemoteSessionViewModel
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
@@ -50,6 +57,8 @@ import com.ossm.remote.model.isVoicePattern
 import com.ossm.remote.usb.FirmwareFlashViewModel
 import com.ossm.remote.usb.FirmwareFlashState
 import com.ossm.remote.overlay.OverlayService
+import com.ossm.remote.ui.components.OssmButton
+import com.ossm.remote.ui.components.OssmButtonKind
 import com.ossm.remote.ui.navigation.BottomNavScreens
 import com.ossm.remote.ui.navigation.Screen
 import com.ossm.remote.ui.navigation.navigationLabel
@@ -365,7 +374,10 @@ fun OssmApp(
     Box(modifier = Modifier.fillMaxSize()) {
     Scaffold(
         // While a full-screen route covers the tabs, keep them out of TalkBack.
-        modifier = if (fullScreenRoute != null) Modifier.clearAndSetSemantics {} else Modifier,
+        // imePadding : en bord à bord le clavier ne redimensionne plus la fenêtre ; sans cette marge
+        // il recouvrirait la barre STOP et la barre d'onglets pendant une saisie.
+        modifier = (if (fullScreenRoute != null) Modifier.clearAndSetSemantics {} else Modifier)
+            .imePadding(),
         containerColor = OssmBackground,
         bottomBar = {
             // The Live pad takes the whole screen: the tab bar is hidden there (the pattern
@@ -374,94 +386,29 @@ fun OssmApp(
                 controlUiState.rangeWizard == null &&
                 controlUiState.activePattern?.mode == com.ossm.remote.model.PatternControlMode.STREAMING &&
                 controlUiState.activePattern?.isVoicePattern() != true
-            if (!liveBare) {
-            val landscapeBar = LocalConfiguration.current.orientation ==
-                android.content.res.Configuration.ORIENTATION_LANDSCAPE
-            if (landscapeBar) {
-                // Landscape: one thin row (icon beside its label) so the control card keeps
-                // most of the screen height.
-                Row(
+            if (usbRecovering || !liveBare) {
+                // Bas de l'écran : bandeau « USB perdu » (en flux, il ne recouvre ni ne pousse
+                // jamais le STOP) puis barre d'onglets. Les marges système sont prises ici, une fois.
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .navigationBarsPadding()
-                        .padding(horizontal = 12.dp, vertical = 4.dp)
-                        .clip(RoundedCornerShape(16.dp))
                         .background(OssmSurface)
-                        .height(44.dp)
-                        .selectableGroup(),
-                    verticalAlignment = Alignment.CenterVertically
+                        .navigationBarsPadding()
                 ) {
-                    BottomNavScreens.forEach { screen ->
-                        val selected = currentRoute == screen.route
-                        val tint = if (selected) OssmPrimary else OssmOnSurfaceMuted
-                        Row(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                                .padding(4.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(if (selected) OssmPrimary.copy(0.15f) else Color.Transparent)
-                                .selectable(
-                                    selected = selected,
-                                    role = Role.Tab,
-                                    onClick = {
-                                        scope.launch {
-                                            pagerState.scrollToPage(BottomNavScreens.indexOf(screen))
-                                        }
-                                    }
-                                ),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(screen.icon, null, tint = tint, modifier = Modifier.size(20.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                text = stringResource(screen.navigationLabel),
-                                color = tint,
-                                maxLines = 1,
-                                softWrap = false,
-                                overflow = TextOverflow.Clip,
-                                fontSize = 13.sp
-                            )
-                        }
+                    if (usbRecovering) UsbRecoveringBanner()
+                    if (!liveBare) {
+                        OssmBottomNav(
+                            currentRoute = currentRoute,
+                            landscape = LocalConfiguration.current.orientation ==
+                                android.content.res.Configuration.ORIENTATION_LANDSCAPE,
+                            onSelect = { screen ->
+                                scope.launch {
+                                    pagerState.scrollToPage(BottomNavScreens.indexOf(screen))
+                                }
+                            }
+                        )
                     }
                 }
-            } else {
-            NavigationBar(
-                containerColor = OssmSurface,
-                modifier = Modifier
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
-                    .clip(RoundedCornerShape(20.dp))
-            ) {
-                BottomNavScreens.forEach { screen ->
-                    NavigationBarItem(
-                        selected = currentRoute == screen.route,
-                        onClick = {
-                            scope.launch {
-                                pagerState.scrollToPage(BottomNavScreens.indexOf(screen))
-                            }
-                        },
-                        icon = { Icon(screen.icon, null) },
-                        label = {
-                            Text(
-                                text = stringResource(screen.navigationLabel),
-                                maxLines = 1,
-                                softWrap = false,
-                                overflow = TextOverflow.Clip,
-                                fontSize = 12.sp
-                            )
-                        },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = OssmPrimary,
-                            selectedTextColor = OssmPrimary,
-                            unselectedIconColor = OssmOnSurfaceMuted,
-                            unselectedTextColor = OssmOnSurfaceMuted,
-                            indicatorColor = OssmPrimary.copy(0.15f)
-                        )
-                    )
-                }
-            }
-            }
             }
         }
     ) { padding ->
@@ -617,46 +564,182 @@ fun OssmApp(
             )
         }
     }
-    if (usbRecovering) {
-        Text(
-            text = stringResource(R.string.ctl_usb_recovering),
-            color = OssmOnSurface,
-            fontSize = 13.sp,
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .statusBarsPadding()
-                .padding(top = 4.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(OssmSurface)
-                .padding(horizontal = 12.dp, vertical = 6.dp)
-        )
-    }
     }
 
     if (showQuitDialog) {
-        AlertDialog(
-            onDismissRequest = { showQuitDialog = false },
-            containerColor = OssmSurface,
-            title = { Text("Quitter l'application ?", color = OssmOnSurface) },
-            text = {
-                Text(
-                    "La machine sera arrêtée avant de fermer l'application.",
-                    color = OssmOnSurface.copy(alpha = 0.8f)
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = onQuit,
-                    colors = ButtonDefaults.buttonColors(containerColor = OssmStop)
-                ) {
-                    Text("Quitter")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showQuitDialog = false }) {
-                    Text("Annuler", color = OssmPrimaryLight)
-                }
-            }
+        QuitDialog(
+            onConfirm = onQuit,
+            onDismiss = { showQuitDialog = false }
         )
     }
+}
+
+/** Hauteur d'une cellule d'onglet en portrait (cible tactile = cellule moins 2 x 4 dp de marge = 64 dp). */
+private val NavItemHeightPortrait = 72.dp
+
+/**
+ * Barre d'onglets du bas : quatre cellules égales, icône + libellé, séparées du contenu par un
+ * filet. Habillage seul : le changement de page est fait par l'appelant ([onSelect]).
+ * Portrait : icône au-dessus du libellé (cible de 64 dp de haut). Paysage : icône à côté du
+ * libellé sur une seule rangée fine (cible de 48 dp de haut).
+ */
+@Composable
+private fun OssmBottomNav(
+    currentRoute: String,
+    landscape: Boolean,
+    onSelect: (Screen) -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(OssmDimens.BorderWidth)
+                .background(OssmGlassBorder)
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .selectableGroup()
+        ) {
+            BottomNavScreens.forEach { screen ->
+                OssmNavItem(
+                    screen = screen,
+                    selected = currentRoute == screen.route,
+                    landscape = landscape,
+                    onClick = { onSelect(screen) },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Une cellule d'onglet. L'onglet actif se reconnaît sans la couleur : cellule en surface « haute »,
+ * contour de 2 dp et libellé en gras, en plus de l'icône et du texte en `OssmPrimary`.
+ * Rôle Tab + état « sélectionné » lus par TalkBack.
+ */
+@Composable
+private fun OssmNavItem(
+    screen: Screen,
+    selected: Boolean,
+    landscape: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val shape = RoundedCornerShape(OssmDimens.ControlRadius)
+    val tint = if (selected) OssmPrimary else OssmOnSurfaceMuted
+    val label = stringResource(screen.navigationLabel)
+    val labelStyle = (if (landscape) MaterialTheme.typography.labelMedium else OssmCaption)
+        .copy(fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
+    val minHeight = if (landscape) OssmDimens.TouchTarget + OssmDimens.Space8 else NavItemHeightPortrait
+
+    Box(
+        modifier = modifier
+            .heightIn(min = minHeight)
+            .padding(OssmDimens.Space4)
+            .clip(shape)
+            .background(if (selected) OssmSurfaceHigh else Color.Transparent)
+            .then(
+                if (selected) Modifier.border(OssmDimens.BorderWidth * 2, OssmPrimary, shape) else Modifier
+            )
+            .selectable(selected = selected, role = Role.Tab, onClick = onClick)
+            .testTag("nav_" + screen.route),
+        contentAlignment = Alignment.Center
+    ) {
+        if (landscape) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Icon(screen.icon, contentDescription = null, tint = tint, modifier = Modifier.size(OssmDimens.Space24))
+                Spacer(Modifier.width(OssmDimens.Space8))
+                Text(text = label, color = tint, style = labelStyle, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        } else {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Icon(screen.icon, contentDescription = null, tint = tint, modifier = Modifier.size(OssmDimens.Space24))
+                Spacer(Modifier.height(OssmDimens.Space4))
+                Text(text = label, color = tint, style = labelStyle, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
+}
+
+/**
+ * Bandeau « USB perdu, reconnexion » : icône + texte, annoncé par TalkBack à son apparition.
+ * Placé en bas, dans le flux (au-dessus de la barre d'onglets), pour ne jamais recouvrir le STOP.
+ */
+@Composable
+private fun UsbRecoveringBanner() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(OssmSurfaceRaised)
+            .semantics { liveRegion = LiveRegionMode.Polite }
+            .padding(horizontal = OssmDimens.ScreenGutter, vertical = OssmDimens.Space8),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = Icons.Filled.WarningAmber,
+            contentDescription = null,
+            tint = OssmWarning,
+            modifier = Modifier.size(OssmDimens.Space24)
+        )
+        Spacer(Modifier.width(OssmDimens.Space8))
+        Text(
+            text = stringResource(R.string.ctl_usb_recovering),
+            color = OssmOnSurface,
+            style = MaterialTheme.typography.labelMedium
+        )
+    }
+}
+
+/**
+ * Dialogue « Quitter l'application ? » : textes en ressources (FR/EN), bouton Quitter rouge
+ * (la machine est arrêtée avant de fermer), Annuler en bouton texte. Boutons de 48 dp minimum.
+ */
+@Composable
+private fun QuitDialog(
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = OssmSurface,
+        shape = RoundedCornerShape(OssmDimens.SheetRadius),
+        title = {
+            Text(
+                text = stringResource(R.string.shell_quit_title),
+                color = OssmOnSurface,
+                style = MaterialTheme.typography.titleLarge
+            )
+        },
+        text = {
+            Text(
+                text = stringResource(R.string.shell_quit_body),
+                color = OssmOnSurfaceMuted,
+                style = MaterialTheme.typography.bodyLarge
+            )
+        },
+        confirmButton = {
+            OssmButton(
+                text = stringResource(R.string.shell_quit_confirm),
+                onClick = onConfirm,
+                kind = OssmButtonKind.Danger,
+                modifier = Modifier.testTag("quit_confirm")
+            )
+        },
+        dismissButton = {
+            OssmButton(
+                text = stringResource(R.string.ctl_cancel),
+                onClick = onDismiss,
+                kind = OssmButtonKind.Text,
+                modifier = Modifier.testTag("quit_cancel")
+            )
+        }
+    )
 }
